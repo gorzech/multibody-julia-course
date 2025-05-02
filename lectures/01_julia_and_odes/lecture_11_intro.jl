@@ -127,6 +127,17 @@ md"""
 - Similar results you can get by using _Julia REPL_. 
 """
 
+# ╔═╡ ebd0e51e-93cc-416e-afd1-e3298d67c506
+md"""
+### Some more remarks
+
+- The code is similar to the MATLAB one.
+- However, there are many nuances, and comments in Julia start with #.
+- You should comment on nontrivial code -- the less, the better.
+- **Rule of thumb: program code is written for humans, not machines.**
+
+"""
+
 # ╔═╡ 2688c2ca-18a3-4975-ab4f-dc5a62d71293
 md"""
 ## Summary
@@ -1270,7 +1281,8 @@ version = "1.4.1+2"
 # ╠═824ca456-bb4f-422d-89bd-4fab25735b5f
 # ╠═9824b5b3-d9f3-40a8-8d07-691946975278
 # ╠═c40f969b-20e1-45bd-9f32-e996f07345a5
-# ╠═87c6585f-deca-45b1-a2bb-ab4d895ca950
+# ╟─87c6585f-deca-45b1-a2bb-ab4d895ca950
+# ╟─ebd0e51e-93cc-416e-afd1-e3298d67c506
 # ╟─2688c2ca-18a3-4975-ab4f-dc5a62d71293
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
