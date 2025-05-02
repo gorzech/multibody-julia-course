@@ -14,17 +14,61 @@ using LinearAlgebra
 md"""
 # Programming Multibody Systems in Julia
 
-## Lecture 1: Julia basics, ODE solving, and rigid body rotation
+### Lecture 1: Julia basics, ODE solving, and rigid body rotation
+
+Grzegorz Orzechowski
+"""
+
+# ╔═╡ 4e04a164-d25b-4dd9-b76b-e1d6dbb5ea76
+md"""
+## Outline
+
+- Organizational Matters
+- Why Julia?
+- First Julia Programs
+- Variables, Operations & Formatting
+- Arrays, Indexing & Broadcasting
+- Plotting with Plots.jl
+
+"""
+
+# ╔═╡ f248f27d-30d8-40a1-a7e7-f49cb4cea90e
+md"""
+## [Placeholder] Course content and Grades - 2-3 slides
 """
 
 # ╔═╡ 87e9a24a-238f-4e8c-9e95-f9195a1510de
 md"""
 ## Why Julia?
 
-- High-level language like Python/Matlab
-- Speed like C/Fortran (JIT compilation)
-- Designed for scientific computing
-- Excellent libraries for ODEs, optimization, machine learning
+- High-level language like Python/Matlab.
+- Designed for scientific computing.
+- Near‑C speeds via JIT compilation, multiple dispatch.  
+- Open Source & Modern: rich ecosystem (DifferentialEquations.jl, PlutoUI, Flux.jl).
+
+### Key Differences
+| Feature              | MATLAB                          | Julia                             |
+|----------------------|---------------------------------|-----------------------------------|
+| Indexing             | 1‑based                         | 1‑based                           |
+| Broadcasting         | `.` notation for arrays         | Same `.` syntax                   |
+| Functions            | `function...end` or scripts     | `function...end` or single‑line   |
+| Packages             | Proprietary toolboxes           | Pkg ecosystem (open source)       |
+| Performance          | slower interpreter              | JIT, LLVM‑backed                  |
+"""
+
+# ╔═╡ 63f2574f-08a9-4f2a-8eec-f06ea1859943
+md"""
+## Introduction to Pluto.jl
+- **Reactive notebooks:** cells automatically update when dependencies change.  
+- **Built-in UI integration:** sliders, buttons via PlutoUI.  
+- **Lightweight & shareable:** no hidden state; easy export as static HTML.  
+- **Installation:** `import Pkg; Pkg.add("Pluto")`  
+- **Launch:**  
+  ```julia
+  using Pluto  
+  Pluto.run()
+  ```
+- **Note:** Pluto cells support only one reactive statement per cell; for multiple expressions, wrap them in a `begin ... end` block.
 """
 
 # ╔═╡ d31c3064-fba2-4812-a8b8-3a94bd66adb7
@@ -49,6 +93,45 @@ begin
 	using Plots
 	plot(f, 0, 2π, label="f(x) = sin(2x)")
 end
+
+# ╔═╡ e937dfd4-7eff-4ac1-af69-820cdd970be4
+md"""
+## First Program
+
+A mathematical model of the ball thrown up in the air
+
+$𝑦=𝑣_0 𝑡−0.5𝑔𝑡^2$
+
+-  $𝑦$ is vertical body position
+-  $t$ is time
+-  $𝑣_0$ is the initial velocity 
+-  $𝑔$ is the acceleration of gravity (9.81 m/s²)
+
+"""
+
+# ╔═╡ 824ca456-bb4f-422d-89bd-4fab25735b5f
+begin
+	# Vertical kinematics example
+	g = 9.81                      # gravity (m/s^2)
+	v₀ = 5.0                      # initial velocity (m/s)
+	t  = 0.6                      # time (s)
+end; # ; supresses output
+
+# ╔═╡ 9824b5b3-d9f3-40a8-8d07-691946975278
+y  = v₀*t - 0.5g*t^2         # position (m)
+
+# ╔═╡ c40f969b-20e1-45bd-9f32-e996f07345a5
+println("Vertical position at t=", t," is ", y, " m")
+
+# ╔═╡ 87c6585f-deca-45b1-a2bb-ab4d895ca950
+md"""
+## First Program – Remarks 
+
+- Julia program is Unicode text -- to get v₀ type `v`, next `\_0` and press TAB.
+- Code in Julia is always compiled to native code before execution.
+- Julia is **strongly typed**.
+- Similar results you can get by using _Julia REPL_. 
+"""
 
 # ╔═╡ 7623d91f-d20f-4a64-8a35-3a56437b9ebe
 md"""
@@ -2782,13 +2865,21 @@ version = "1.4.1+2"
 """
 
 # ╔═╡ Cell order:
-# ╟─b778dff8-24ba-11f0-1e9e-0701f8eddd48
+# ╠═b778dff8-24ba-11f0-1e9e-0701f8eddd48
+# ╟─4e04a164-d25b-4dd9-b76b-e1d6dbb5ea76
+# ╠═f248f27d-30d8-40a1-a7e7-f49cb4cea90e
 # ╟─87e9a24a-238f-4e8c-9e95-f9195a1510de
+# ╟─63f2574f-08a9-4f2a-8eec-f06ea1859943
 # ╟─d31c3064-fba2-4812-a8b8-3a94bd66adb7
 # ╠═dae6b49b-0ddd-439c-b97e-d087271c259d
 # ╠═4c80aa00-11d2-4bab-b489-7e320c1e63d5
 # ╠═661004b9-bd43-45c2-ba49-8c6f4b4d0884
 # ╠═c7a66cd1-2023-4684-8e04-12f425346672
+# ╟─e937dfd4-7eff-4ac1-af69-820cdd970be4
+# ╠═824ca456-bb4f-422d-89bd-4fab25735b5f
+# ╠═9824b5b3-d9f3-40a8-8d07-691946975278
+# ╠═c40f969b-20e1-45bd-9f32-e996f07345a5
+# ╠═87c6585f-deca-45b1-a2bb-ab4d895ca950
 # ╟─7623d91f-d20f-4a64-8a35-3a56437b9ebe
 # ╠═ed818ef6-a0ea-4660-895a-36279bf76cee
 # ╠═55912956-041e-44ae-bf0a-d0a12f73057a

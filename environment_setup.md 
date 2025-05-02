@@ -19,7 +19,7 @@
 - Type `instantiate` to install all project's packages.
     Alternatively, if it fails, type:
     ```
-    add Pluto, DifferentialEquations, Plots```
+    add Pluto, DifferentialEquations, Plots, StaticArrays```
 
 ## Step 4: Run Pluto
 
