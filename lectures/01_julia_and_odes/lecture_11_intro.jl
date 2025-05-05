@@ -1,16 +1,37 @@
 ### A Pluto.jl notebook ###
-# v0.20.6
+# v0.20.8
 
 using Markdown
 using InteractiveUtils
+
+# ╔═╡ e737e1b0-fae7-49ff-aed9-54b22c00fb72
+# All using statements
+begin
+	using PlutoUI
+	using Plots
+	using Base64
+	function embed_image(path_to_image::AbstractString; height::Integer=240, type::String="png")
+	    img_bytes = read(path_to_image)
+	    # Build a data URL: "data:image/{type};base64,{...}"
+	    data_url = "data:image/$(type);base64," * base64encode(img_bytes)
+    	attrs = (:height => height,)
+	    PlutoUI.Resource(data_url, MIME("image/$(type)"), attrs)
+	end
+end;
 
 # ╔═╡ b778dff8-24ba-11f0-1e9e-0701f8eddd48
 md"""
 # Programming Multibody Systems in Julia
 
-### Lecture 1: Julia basics, ODE solving, and rigid body rotation
+### Lecture 1: Julia Programming
 
 Grzegorz Orzechowski
+"""
+
+# ╔═╡ a1713c6c-085b-4a23-b310-3f5fb32f4d6e
+md"""
+## Who am I?
+$(embed_image("../../assets/figures/lecture_11_go.png", height=300))
 """
 
 # ╔═╡ 4e04a164-d25b-4dd9-b76b-e1d6dbb5ea76
@@ -29,6 +50,12 @@ md"""
 # ╔═╡ f248f27d-30d8-40a1-a7e7-f49cb4cea90e
 md"""
 ## [Placeholder] Course content and Grades - 2-3 slides
+"""
+
+# ╔═╡ f1e869ea-3a81-40b4-bea4-85c94747581e
+md"""
+## What is Julia?
+$(embed_image("../../assets/figures/lecture_11_julia.png", height=250))
 """
 
 # ╔═╡ 87e9a24a-238f-4e8c-9e95-f9195a1510de
@@ -83,10 +110,7 @@ v_squared = v .^ 2
 f(x) = sin(2x)
 
 # ╔═╡ c7a66cd1-2023-4684-8e04-12f425346672
-begin
-	using Plots
-	plot(f, 0, 2π, label="f(x) = sin(2x)")
-end
+plot(f, 0, 2π, label="f(x) = sin(2x)")
 
 # ╔═╡ e937dfd4-7eff-4ac1-af69-820cdd970be4
 md"""
@@ -115,7 +139,7 @@ end; # ; supresses output
 y  = v₀*t - 0.5g*t^2         # position (m)
 
 # ╔═╡ c40f969b-20e1-45bd-9f32-e996f07345a5
-println("Vertical position at t=", t," is ", y, " m")
+println("Vertical position at t=$t is $y m")
 
 # ╔═╡ 87c6585f-deca-45b1-a2bb-ab4d895ca950
 md"""
@@ -138,23 +162,573 @@ md"""
 
 """
 
+# ╔═╡ b59bf6fa-a260-4c72-9fed-0504fe0a033d
+md"""
+## Using Library Functions
+
+What is the angle for a given ball distance x and vertical position y?
+
+ $(embed_image("../../assets/figures/lecture_11_ball_angle.png", height=160))
+
+An algorithm for angle $𝜃$:
+
+$\tan⁡𝜃=𝑦/𝑥$
+
+Thus:
+
+$𝜃=tan^{−1}(𝑦/𝑥)$
+
+"""
+
+# ╔═╡ edd3eb80-fa78-4a07-b10f-bab9b4c9d178
+begin
+	horizontal_position = 10  # horizontal position
+	vertical_position = 10  # vertical position
+	
+	angle = atan(vertical_position / horizontal_position)
+	angle_degrees = (angle * 180) / π # julia also knows pi
+end
+
+# ╔═╡ 936a622d-c32e-4d9a-9a3f-06a5c38aff5e
+md"""
+## Vectorization and Plotting
+
+We returned to the problem of a ball thrown up in the air.
+
+- Compute results at every millisecond for the first second of the flight
+- Draw a graph $𝑦$ versus $𝑡$ (vertical position vs. time)
+- The new program is like the original, but computes 𝑦 at 1000 points!
+
+"""
+
+# ╔═╡ c529772b-97dc-4e4a-b01e-f7c3521f190c
+# time vector from 0 to 1 s with 1001 points
+tv = range(0, stop=1, length=1001)
+
+# ╔═╡ a7b6e61f-e390-411d-8da0-b5bedf3104aa
+# height as a function of time
+yv = v₀ .* tv .- 0.5g .* tv .^ 2
+
+# ╔═╡ 83fe48d8-25d3-43b1-9187-2f882de0e50d
+plot(
+    tv, yv;
+    xlabel = "Time [s]",
+    ylabel = "Height [m]",
+    title  = "Vertical Motion under Gravity",
+    legend = false
+)
+
+# ╔═╡ 1de727ac-3dcf-4682-91a8-0dff320d0518
+md"""
+## New Things in the Code
+
+```julia
+tv = range(0, stop=1, length=1001)
+```
+- Returns equally spaced numbers from start (here 0) to stop. 
+- In the MATLAB it would be `linspace(0, 1, 1001)`
+- `tv` is `range` -- not a vector of numbers.
+```julia
+yv = v₀ .* tv .- 0.5g .* tv .^ 2
+```
+- Returns, as expected, a vector of numbers. 
+- Note the broadcasting operation.
+- Also note the semicolon `;` in `plot` function to separate positional and named parameters. 
+"""
+
+# ╔═╡ d719cb88-6a10-47e1-8bd0-7505a16a4d2c
+md"""
+## REPL (Read-Eval-Print Loop)
+
+* Julia’s REPL allows interactive use
+* Great for fast and simple computations
+* `julia>` is the default prompt
+* Use the up and down arrows to access history
+* Edit commands before hitting enter
+* Expressions without assignment print their result **and** create `ans` variable
+"""
+
+# ╔═╡ 5c9f6116-5771-460d-93e0-e98cc1e75334
+md"""
+## REPL Modes
+
+- **Standard Mode** (default)  
+
+  Type any Julia expression at the `julia>` prompt to evaluate it immediately.
+
+- **Help Mode** (`?`)  
+
+  Enter by typing `?` at the prompt.  
+  ```julia
+  julia> ?sin
+  search: sin sinc sinh sign since ...
+  
+    sin(x)
+      Compute the sine of x (in radians).
+  ```
+
+- **Package Mode** (])
+
+  Enter by typing ]. Use Pkg to manage packages.
+
+  ```julia 
+  (@v1.11) pkg> status
+  (@v1.11) pkg> add DataFrames
+  ```
+
+- **Shell Mode** (;)
+
+  Enter by typing ;. Run OS shell commands.
+
+  ```julia
+  ; ls
+  file1.jl  file2.csv  Project.toml
+  ```
+
+- **Prompt Shortcuts**
+
+  - Edit previous entry: Up/Down arrows
+  - Interrupt: **Ctrl+C**
+  - Clear output: **Ctrl+L**
+  - Exit: **Ctrl+D** or `exit()`
+
+- **Macros & Profiling**
+
+  - Macro mode: Use macros like @time, @code_warntype inline
+  - Profiler: @profile to collect execution data
+
+"""
+
+# ╔═╡ 90dea9b4-c1ce-4728-9d85-60a2f6a1f357
+md"""
+## Arithmetic Operators Precedence
+
+* Operators: `=`, `+`, `-`, `*`, `/`, `^`
+* Precedence order: `^` → `*`,`/` → `+`,`-` → `=` (evaluated left to right)
+* Use parentheses `()` to group when in doubt
+* Example:
+
+  ```julia
+  x = 3*5^2 + 10*2 - 1.0/4
+  # 5^2 = 25; 3*25 = 75; 10*2 = 20; 75 + 20 = 95; 1.0/4 = 0.25; 95 - 0.25 = 94.75
+  # x = 94.75
+  ```
+"""
+
+# ╔═╡ 6226e983-495e-461a-99e5-4eafc4473b60
+md"""
+## Parentheses and Rounding Errors
+
+* Let say we want to compute $\frac{1}{𝑥+1}$ for $𝑥=4$
+
+  ```julia
+  julia> x = 4
+  julia> 1.0/x+1
+  ```
+
+* And the answer is ...
+
+"""
+
+# ╔═╡ b1c99b40-c5d7-445b-b94c-3896471a21e5
+x = 4
+
+# ╔═╡ 054d04a3-8ccb-48a8-81c2-9f2a843fdd0e
+#1.0/x+1
+
+# ╔═╡ 22859e81-386d-4d04-bc70-3115b5408dd7
+md"""
+## Floating-Point Rounding Behavior
+
+* Example:
+
+  ```julia
+  julia> x = 4
+  julia> 1.0/(x+1)
+  julia> @printf("%.17f\n", ans)
+  0.20000000000000001
+  ```
+
+* Most real numbers are approximated in binary, causing _rounding errors_
+* To see more precision: use `@printf("%.17f\n", 0.2)` from the `Printf` standard library
+"""
+
+# ╔═╡ bc8811ab-eda4-4a93-88b3-6c7e3e820ea4
+md"""
+## Variable Types in Julia
+
+* **Primitive Types**: `Int64`, `Float64`, `Bool`, `Char`, `String`
+
+* **Type Inspection**: Use `typeof(x)` to query an object's type
+
+* **Type Conversion**: Convert with constructors: `Int(3.7)`, `Float64(2)`, `string(x)`
+
+* **Composite Types**:
+
+  * **Tuples**: `(1, "a", true)` for fixed-size heterogeneous collections
+
+  * **Arrays**: `Vector{T}`, `Matrix{T}` e.g. `Vector{Int}` or `Matrix{Float64}`
+
+  * **Dictionaries**: `Dict{K,V}` e.g. `Dict{String,Int}`
+
+  * **Named Tuples**: `(a=1, b="x")` for lightweight structs
+
+* **Custom Types**: Define with `struct` (immutable) or `mutable struct`
+
+  ```julia
+  struct Person
+      name::String
+      age::Int
+  end
+  ```
+
+* **Parametric Types**: Generic containers, e.g., `Array{T,N}` or `Dict{K,V}`
+
+* **Union Types & Type Aliases**:
+
+  ```julia
+  const Number = Union{Int,Float64}
+  x::Number = 3.14
+  ```
+
+* **Abstract Types**: Define hierarchies:
+
+  ```julia
+  abstract type Shape end
+  struct Circle <: Shape
+      radius::Float64
+  end
+  ```
+
+* **Dynamic Typing**: Variables are dynamically typed, but types can be annotated for performance
+
+***
+"""
+
+# ╔═╡ bb5e9e4a-e136-4616-a95e-b67f358a1962
+md"""
+## Variable Names in Julia
+
+* **Conventions**:
+
+  * Lowercase with \_ separators: `my_variable` (snake\_case)
+
+  * Constants in all uppercase: `MAX_ITER`, `PI_VALUE`
+
+* **Allowed Characters**:
+
+  * Unicode letters, digits (not as first character), and underscores
+
+  * Examples: `α`, `Δt`, `x1`, `temperature_C`
+
+* **Case Sensitivity**:
+
+  * Julia is case-sensitive: `data` ≠ `Data` ≠ `DATA`
+
+* **Avoid Names**:
+
+  * Do not start with a digit: `1value`
+
+  * Avoid names starting with underscore for public API: `_temp`
+
+  * Reserved words: `if`, `while`, `function`, `struct`, etc.
+
+* **Naming Tips**:
+
+  * Choose descriptive names: `velocity`, `avg_temperature`
+
+  * Short names (`i`, `j`) acceptable for loop indices
+
+  * Use names that reflect units or dimensions: `time_s`, `distance_km`
+
+***
+
+"""
+
+# ╔═╡ 9369aa1e-2d31-4104-a6be-937039844454
+md"""
+## Formatting Output
+
+* Use `@printf` from `Printf` for C‐style formatting:
+
+  ```julia
+  using Printf
+  @printf("real=%.3f, integer=%d, string=%s\n", r, i, s)
+  ```
+* Placeholders:
+
+  * `%f`: floating‐point
+  * `%d`: integer
+  * `%s`: string
+  * `%.3f`: three decimals
+  * `%5d`: width of five characters
+* For simple printing, use `println` and string interpolation:
+
+  ```julia
+  println("Value of x: $x, y: $(round(y,digits=3))")
+  ```
+
+"""
+
+# ╔═╡ 8eeb1de2-bfeb-47d9-9cbb-572773288b2f
+md"""
+## Strings and Conversion
+
+* `string(x)` or `string(var1, var2)` to join values
+* `repr(x)` for a raw representation
+* `parse(Int, "123")` to convert strings to numbers
+"""
+
+# ╔═╡ 31ed7633-036e-423d-b8f4-722609394d79
+md"""
+## Arrays
+
+* Julia arrays are 1-based indexed, like MATLAB
+* Create arrays:
+
+  ```julia
+  h = Float64[1.60, 1.85, 1.75, 1.80]
+  ```
+* Access elements:
+
+  ```julia
+  h[end]           # last element
+  h[1:2]           # first two
+  h[1:2:end]       # every second element
+  ```
+* Vector and matrix operations:
+
+  ```julia
+  x = [3, 2]
+  A = I(2)         # identity matrix
+  y = A * x        # matrix-vector product
+  ```
+
+"""
+
+# ╔═╡ cbcea6d9-377d-47bc-8500-ef63fba219dd
+md"""
+## Random Numbers
+
+* Use the `Random` standard library:
+
+  ```julia
+  using Random
+  A = rand(10,20)    # 10×20 matrix of Uniform(0,1)
+  ```
+
+"""
+
+# ╔═╡ 9c99e762-aeb6-4eda-8f9b-e04b143bf747
+md"""
+## Plotting with Plots.jl
+
+* Install via `import Pkg; Pkg.add("Plots")` then:
+
+  ```julia
+  using Plots
+
+  family_member = 1:4
+  h = [1.6, 1.85, 1.75, 1.8]
+  H = [0.5, 0.7, 1.9, 1.75]
+
+  # two curves in one plot
+  plot(family_member, h, label="h", marker=:star)
+  plot!(family_member, H, linestyle=:dash, marker=:circle, label="H")
+  xlabel!("Family member")
+  ylabel!("Height")
+  title!("Family Heights")
+  ```
+* Save figure:
+
+  ```julia
+  savefig("some_plot.png")
+  ```
+"""
+
+# ╔═╡ ade75380-42db-483c-864d-ffa01dd21e7c
+md"""
+## User Input
+
+* Read from console:
+
+  ```julia
+  age = parse(Int, readline(stdin, "What is your age? "))
+  println("In five years, you'll be $(age + 5)")
+  ```
+"""
+
+# ╔═╡ 81139dba-8333-4c96-8914-7192415ebace
+md"""
+## Symbolic Computations with Symbolics.jl
+
+* Install via `Pkg.add("Symbolics")`
+* Example:
+
+  ```julia
+  using Symbolics
+  @variables x y
+  f = x^2 + x^3
+  simplify(f / x^2)
+  diff(x^2, x)
+  integrate(cos(x), x)
+  limit(sin(x)/x, x=>0)
+  solve(15*x - 15, x)
+  ```
+"""
+
+# ╔═╡ ed4fc5ff-a7b4-4100-a2a3-b139a77942a7
+md"""
+## Conditionals
+
+* Syntax:
+
+  ```julia
+  if condition
+      # ...
+  elseif other_condition
+      # ...
+  else
+      # ...
+  end
+  ```
+"""
+
+# ╔═╡ 04fd8fff-cba9-4a5d-bc77-21e5f530e873
+md"""
+## Boolean Expressions
+
+* Relational: `==`, `!=`, `<`, `>`, `<=`, `>=`
+* Logical: `&&`, `||`, `!`
+"""
+
+# ╔═╡ 82847c24-9993-4fc7-a9c9-1546459769b3
+md"""
+## Functions
+
+* Define functions:
+
+  ```julia
+  function vertical_position(t; v0=5.0, g=9.81)
+      v0*t - 0.5*g*t^2
+  end
+  ```
+* Call functions:
+
+  ```julia
+  println(vertical_position(0.6))
+  ```
+* Anonymous functions:
+
+  ```julia
+  sqr = t -> t^2
+  ```
+"""
+
+# ╔═╡ 73ec936f-e3d6-423d-af80-17154e672de4
+md"""
+## Loops
+
+* For loop:
+
+  ```julia
+  for ii in 7:-1:3
+      println(ii^2)
+  end
+  ```
+* While loop:
+
+  ```julia
+  ii = 1
+  while y[ii] >= 0
+      ii += 1
+  end
+  println("First negative at t=$(t[ii])")
+  ```
+* Breaking and continuing with `break`, `continue`
+
+"""
+
+# ╔═╡ 39030336-57fd-4fc3-b489-9c25177ab03e
+md"""
+## File I/O
+
+* Reading and writing delimited text:
+
+  ```julia
+  using DelimitedFiles
+  data = readdlm("tmp.dat")
+  A = Float64.(data)
+  A[:,2] = log.(A[:,2])
+  writedlm("tmp_out2.dat", A)
+  ```
+
+"""
+
+# ╔═╡ 1f675743-49fc-4e25-a3fb-663caf46c45d
+md"""
+## Performance Tips
+
+* Use vectorized or broadcasting operations (`.`) for performance: `sin.(x)`, `A .* B`
+* Profile code with `@profile`
+* Use `@inbounds`, `@simd`, and type annotations when needed
+"""
+
+# ╔═╡ 118d407e-b6c9-4611-aec0-f89dfa390776
+md"""
+
+## Best Practices
+
+* Document with docstrings:
+
+  ```julia
+  \"\"\"
+  vertical_position(t; v0, g) -> height
+  \"\"\"
+  function vertical_position(...) end
+  ```
+* Use packages from the Julia ecosystem
+* Balance readability and performance
+* Consult the Julia docs and community for help
+
+"""
+
 # ╔═╡ 2688c2ca-18a3-4975-ab4f-dc5a62d71293
 md"""
 ## Summary
 
-- Julia enables high-performance scientific computing
-- Solving ODEs is easy with DifferentialEquations.jl
-- We can simulate rigid body motion using quaternions
-- Next lecture: multibody dynamics and Lie groups!
+* **Interactive Workflow**: Use the Julia REPL (standard, help, pkg, shell modes) for exploration and quick tasks.
+
+* **Core Syntax**: Familiar arithmetic operators, precedence, and broadcasting with `.` for elementwise operations.
+
+* **Types & Variables**: Dynamic typing with introspection (`typeof`), rich primitive and composite types, and custom structs.
+
+* **Formatting & I/O**: C‑style formatting via `Printf`, string interpolation, console input (`readline`), and file reading/writing with `DelimitedFiles`.
+
+* **Data Structures**: 1-based `Array`s, `Tuple`, `Dict`, and NamedTuples for structured data; random sampling with `rand`.
+
+* **Visualization**: Plotting using Plots.jl with intuitive syntax and saving figures using `savefig`.
+
+* **Symbolics**: Symbolics.jl for symbolic math: simplification, differentiation, integration, limits, solving.
+
+* **Control Flow**: Conditionals (`if`, `elseif`, `else`), looping constructs (`for`, `while`), and control keywords (`break`, `continue`).
+
+* **Functions**: First‑class functions, anonymous functions, keyword arguments, and performance via broadcasting and macros (`@time`, `@profile`).
+
+* **Best Practices**: Docstrings, type annotations for performance, vectorized operations, and leveraging the Julia package ecosystem.
+
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
+Base64 = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 
 [compat]
 Plots = "~1.40.13"
+PlutoUI = "~0.7.23"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -163,7 +737,13 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "e5ea54724743b90e9989aa3e76021cba564ab36a"
+project_hash = "ff3bf6e1e95eb5ac23efcd2b987118918632b519"
+
+[[deps.AbstractPlutoDingetjes]]
+deps = ["Pkg"]
+git-tree-sha1 = "6e1d2a35f2f90a4bc7c2ed98079b2ba09c35b83a"
+uuid = "6e696c72-6542-2067-7265-42206c756150"
+version = "1.3.2"
 
 [[deps.AliasTables]]
 deps = ["PtrArrays", "Random"]
@@ -419,6 +999,24 @@ deps = ["Artifacts", "Cairo_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll",
 git-tree-sha1 = "55c53be97790242c29031e5cd45e8ac296dadda3"
 uuid = "2e76f6c2-a576-52d4-95c1-20adfe4de566"
 version = "8.5.0+0"
+
+[[deps.Hyperscript]]
+deps = ["Test"]
+git-tree-sha1 = "8d511d5b81240fc8e6802386302675bdf47737b9"
+uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
+version = "0.0.4"
+
+[[deps.HypertextLiteral]]
+deps = ["Tricks"]
+git-tree-sha1 = "7134810b1afce04bbc1045ca1985fbe81ce17653"
+uuid = "ac1192a8-f4b3-4bfe-ba22-af5b92cd3ab2"
+version = "0.9.5"
+
+[[deps.IOCapture]]
+deps = ["Logging", "Random"]
+git-tree-sha1 = "b6d6bfdd7ce25b0f9b2f6b3dd56b2673a66c8770"
+uuid = "b5f81e59-6552-4d32-b1f0-c071b021bf89"
+version = "0.2.5"
 
 [[deps.InteractiveUtils]]
 deps = ["Markdown"]
@@ -748,6 +1346,12 @@ version = "1.40.13"
     ImageInTerminal = "d8c32880-2388-543b-8c61-d9f865259254"
     Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
+[[deps.PlutoUI]]
+deps = ["AbstractPlutoDingetjes", "Base64", "Dates", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "Markdown", "Random", "Reexport", "UUIDs"]
+git-tree-sha1 = "5152abbdab6488d5eec6a01029ca6697dff4ec8f"
+uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+version = "0.7.23"
+
 [[deps.PrecompileTools]]
 deps = ["Preferences"]
 git-tree-sha1 = "5aa36f7049a63a1528fe8f7c3f2113413ffd4e1f"
@@ -935,6 +1539,11 @@ version = "1.11.0"
 git-tree-sha1 = "0c45878dcfdcfa8480052b6ab162cdd138781742"
 uuid = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
 version = "0.11.3"
+
+[[deps.Tricks]]
+git-tree-sha1 = "6cae795a5a9313bbb4f60683f7263318fc7d1505"
+uuid = "410a4b4d-49e4-4fbc-ab6d-cb71b17b3775"
+version = "0.1.10"
 
 [[deps.URIs]]
 git-tree-sha1 = "cbbebadbcc76c5ca1cc4b4f3b0614b3e603b5000"
@@ -1267,9 +1876,12 @@ version = "1.4.1+2"
 """
 
 # ╔═╡ Cell order:
-# ╠═b778dff8-24ba-11f0-1e9e-0701f8eddd48
+# ╟─b778dff8-24ba-11f0-1e9e-0701f8eddd48
+# ╟─e737e1b0-fae7-49ff-aed9-54b22c00fb72
+# ╟─a1713c6c-085b-4a23-b310-3f5fb32f4d6e
 # ╟─4e04a164-d25b-4dd9-b76b-e1d6dbb5ea76
 # ╠═f248f27d-30d8-40a1-a7e7-f49cb4cea90e
+# ╟─f1e869ea-3a81-40b4-bea4-85c94747581e
 # ╟─87e9a24a-238f-4e8c-9e95-f9195a1510de
 # ╟─63f2574f-08a9-4f2a-8eec-f06ea1859943
 # ╟─d31c3064-fba2-4812-a8b8-3a94bd66adb7
@@ -1283,6 +1895,36 @@ version = "1.4.1+2"
 # ╠═c40f969b-20e1-45bd-9f32-e996f07345a5
 # ╟─87c6585f-deca-45b1-a2bb-ab4d895ca950
 # ╟─ebd0e51e-93cc-416e-afd1-e3298d67c506
+# ╠═b59bf6fa-a260-4c72-9fed-0504fe0a033d
+# ╠═edd3eb80-fa78-4a07-b10f-bab9b4c9d178
+# ╠═936a622d-c32e-4d9a-9a3f-06a5c38aff5e
+# ╠═c529772b-97dc-4e4a-b01e-f7c3521f190c
+# ╠═a7b6e61f-e390-411d-8da0-b5bedf3104aa
+# ╠═83fe48d8-25d3-43b1-9187-2f882de0e50d
+# ╟─1de727ac-3dcf-4682-91a8-0dff320d0518
+# ╟─d719cb88-6a10-47e1-8bd0-7505a16a4d2c
+# ╟─5c9f6116-5771-460d-93e0-e98cc1e75334
+# ╟─90dea9b4-c1ce-4728-9d85-60a2f6a1f357
+# ╠═6226e983-495e-461a-99e5-4eafc4473b60
+# ╠═b1c99b40-c5d7-445b-b94c-3896471a21e5
+# ╠═054d04a3-8ccb-48a8-81c2-9f2a843fdd0e
+# ╟─22859e81-386d-4d04-bc70-3115b5408dd7
+# ╟─bc8811ab-eda4-4a93-88b3-6c7e3e820ea4
+# ╟─bb5e9e4a-e136-4616-a95e-b67f358a1962
+# ╟─9369aa1e-2d31-4104-a6be-937039844454
+# ╠═8eeb1de2-bfeb-47d9-9cbb-572773288b2f
+# ╟─31ed7633-036e-423d-b8f4-722609394d79
+# ╟─cbcea6d9-377d-47bc-8500-ef63fba219dd
+# ╟─9c99e762-aeb6-4eda-8f9b-e04b143bf747
+# ╟─ade75380-42db-483c-864d-ffa01dd21e7c
+# ╟─81139dba-8333-4c96-8914-7192415ebace
+# ╟─ed4fc5ff-a7b4-4100-a2a3-b139a77942a7
+# ╟─04fd8fff-cba9-4a5d-bc77-21e5f530e873
+# ╟─82847c24-9993-4fc7-a9c9-1546459769b3
+# ╟─73ec936f-e3d6-423d-af80-17154e672de4
+# ╟─39030336-57fd-4fc3-b489-9c25177ab03e
+# ╟─1f675743-49fc-4e25-a3fb-663caf46c45d
+# ╟─118d407e-b6c9-4611-aec0-f89dfa390776
 # ╟─2688c2ca-18a3-4975-ab4f-dc5a62d71293
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
