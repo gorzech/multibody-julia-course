@@ -22,16 +22,24 @@ The course consists of:
 
 - Additional 2x3h lectures after the hackathon
 
-### Course Timeline
+### Course Content
 
-|Phase|Duration|Content/Activity|
-|---|---|---|
-|Lecture Block 1|6 hours (2x3h)|Intro to Julia & ODEs, rigid body dynamics with Euler parameters|
-|Lab 1|~7 hours|Julia warm-up, solving ODEs, simulating a rigid body using quaternions|
-|Lecture Block 2|6 hours (2x3h)|Multibody dynamics, Lie group integration|
-|Lab 2|~7 hours|Multibody simulations, double pendulum, Lie group integration in practice|
-|Lecture Block 3|6 hours (2x3h)|Hydraulics modeling, machine learning basics|
-|Lab 3|~7 hours|Hydraulic actuator simulation, training basic ML models (Flux.jl)|
-|Hackathon Project|8 hours|Team-based project integrating ML and simulation|
-|Lecture Block 4|6 hours (2x3h)|Advanced ML topics, flexible bodies, physics-informed ML, presentations|
+#### Section 1: Numerical Methods (~3 lectures)
+
+- Julia Programming 
+- Ordinary Differential Equations
+- Functions and their derivatives
+- Nonlinear equations
+
+#### Section 2: Rigid Multibody Dynamics (~3 lectures)
+
+- Euler Parameters
+- Kinematics of Multibody Systems
+- Dynamics of Multibody Systems
+
+#### Section 3: Reinforcement Learning and Extras (~2 lectures)
+
+- Reinforcement Learning
+- Lie group algebra
+- Hydraulics
 

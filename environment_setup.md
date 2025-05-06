@@ -17,9 +17,6 @@
     You should change terminal mode to package manager. The command prompt should change from `julia>` to `(@1.11) pkg>` or similar.
 - Type `activate .` to activate new project.
 - Type `instantiate` to install all project's packages.
-    Alternatively, if it fails, type:
-    ```
-    add Pluto, PlutoUI, DifferentialEquations, Plots, Symbolics, LaTeXStrings```
 
 ## Step 4: Run Pluto
 
