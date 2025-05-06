@@ -135,7 +135,7 @@ md"""
 
 | # | What students do | When |
 |---|------------------|------|
-| **1** | **Quick‑Fire Pluto.jl Worksheets × 3**. Brief in‑class sheet (calc + short answer) | One per teaching week 1, 2 & 3 |
+| **1** | **Quick‑Fire Pluto.jl Worksheets × 3**. Brief in‑class sheet (calc + short answer) | One per teaching week 1, 2 & 3, on Saturday at 9:15 |
 | **2** | **Lab Demos × 3**. Show working simulation/calculation for 2‑3 checkpoints | Immediately after each lab cluster |
 | **3** | **Mini‑Team Challenge** (“Hackathon‑Lite”). 8‑min pitch + working code | Final lab day | 3‑line rubric: ✔ Tech OK? ✔ 10 % energy saving? ✔ Pitch clear? |
 | **4** | **One‑Page Reflection** (≈ 250 words) | Right after pitch |
@@ -297,7 +297,7 @@ $𝑦=𝑣_0 𝑡−0.5𝑔𝑡^2$
 begin
 	# Vertical kinematics example
 	g = 9.81                      # gravity (m/s^2)
-	v₀ = 5.0                      # initial velocity (m/s)
+	v₀ = 7.0                      # initial velocity (m/s)
 	t  = 0.6                      # time (s)
 end; # ; supresses output
 
@@ -500,7 +500,7 @@ md"""
 x = 4
 
 # ╔═╡ 054d04a3-8ccb-48a8-81c2-9f2a843fdd0e
-#1.0/x+1
+1.0/x+1
 
 # ╔═╡ 22859e81-386d-4d04-bc70-3115b5408dd7
 md"""
@@ -809,7 +809,7 @@ md"""
 """
 
 # ╔═╡ a1c21616-4990-4a12-bf57-483fa7e39321
-sqr(x) = x^2
+sqr(x::Number) = x^2
 
 # ╔═╡ 1ec4ee26-43dd-424b-8ece-be6e10af1533
 sqr(1.2)
@@ -953,21 +953,6 @@ md"""
 * Breaking and continuing with `break`, `continue`
 
 """
-
-# ╔═╡ 81a033e4-4b5c-4ae2-8fde-a9036faa9a78
-md"""
-## Compute π example
-
-- Consider two computational schemes for the number 𝜋:
-  - by Leibniz (1646–1716): $𝜋=8∑_{𝑘=0}^∞\frac{1}{(4𝑘+1)(4𝑘+3)}$
-  - and by Euler (1707–1783): $𝜋=\sqrt{6∑_{𝑘=1}^∞\frac{1}{𝑘^2} }$
-- Write a program that takes $𝑁$ as input from the user and plots the error development with both schemes as the number of iterations approaches $𝑁$. 
-- Your program should also print out the final error achieved with both schemes, i.e., when the number of terms is $𝑁$. 
-- Run the program with $𝑁=100$ and explain briefly what the graphs show.
-"""
-
-# ╔═╡ 3d2ada54-617d-4614-991e-3c3d53f67992
-
 
 # ╔═╡ 1f675743-49fc-4e25-a3fb-663caf46c45d
 md"""
@@ -2811,7 +2796,7 @@ version = "1.4.1+2"
 
 # ╔═╡ Cell order:
 # ╟─b778dff8-24ba-11f0-1e9e-0701f8eddd48
-# ╠═e737e1b0-fae7-49ff-aed9-54b22c00fb72
+# ╟─e737e1b0-fae7-49ff-aed9-54b22c00fb72
 # ╟─a1713c6c-085b-4a23-b310-3f5fb32f4d6e
 # ╟─cd09f2c0-0e65-4d44-afc7-28008aae6602
 # ╟─e5e88982-733c-4c14-a955-1b2b0f215db9
@@ -2820,7 +2805,7 @@ version = "1.4.1+2"
 # ╟─bc0d8c5e-9204-4b2b-ac8d-64366d05281c
 # ╟─3e5ccd40-d983-449e-8eaf-16ba80862b1f
 # ╟─f248f27d-30d8-40a1-a7e7-f49cb4cea90e
-# ╠═f1e869ea-3a81-40b4-bea4-85c94747581e
+# ╟─f1e869ea-3a81-40b4-bea4-85c94747581e
 # ╟─87e9a24a-238f-4e8c-9e95-f9195a1510de
 # ╟─63f2574f-08a9-4f2a-8eec-f06ea1859943
 # ╟─b7d6a9b7-4141-4ce1-92ba-49007b6b7e47
@@ -2838,7 +2823,7 @@ version = "1.4.1+2"
 # ╟─ebd0e51e-93cc-416e-afd1-e3298d67c506
 # ╟─b59bf6fa-a260-4c72-9fed-0504fe0a033d
 # ╠═edd3eb80-fa78-4a07-b10f-bab9b4c9d178
-# ╠═936a622d-c32e-4d9a-9a3f-06a5c38aff5e
+# ╟─936a622d-c32e-4d9a-9a3f-06a5c38aff5e
 # ╠═c529772b-97dc-4e4a-b01e-f7c3521f190c
 # ╠═a7b6e61f-e390-411d-8da0-b5bedf3104aa
 # ╠═83fe48d8-25d3-43b1-9187-2f882de0e50d
@@ -2856,7 +2841,7 @@ version = "1.4.1+2"
 # ╠═98fbd29b-d87c-48c7-a404-444c21ab2042
 # ╟─70dc7fd4-73dd-492d-ab2d-ec2a291ac4bd
 # ╠═bc92cc31-a75f-4d4f-8e96-44f1ce898144
-# ╠═8eeb1de2-bfeb-47d9-9cbb-572773288b2f
+# ╟─8eeb1de2-bfeb-47d9-9cbb-572773288b2f
 # ╟─31ed7633-036e-423d-b8f4-722609394d79
 # ╟─cbcea6d9-377d-47bc-8500-ef63fba219dd
 # ╟─9c99e762-aeb6-4eda-8f9b-e04b143bf747
@@ -2871,7 +2856,7 @@ version = "1.4.1+2"
 # ╠═8e0f81e3-5475-4236-b230-91926a285c78
 # ╠═e7aa9415-a0c1-4a4a-83c5-e97b0159acff
 # ╟─ed4fc5ff-a7b4-4100-a2a3-b139a77942a7
-# ╠═04fd8fff-cba9-4a5d-bc77-21e5f530e873
+# ╟─04fd8fff-cba9-4a5d-bc77-21e5f530e873
 # ╟─82847c24-9993-4fc7-a9c9-1546459769b3
 # ╠═b73ef2a9-ced4-4a6a-bcb5-73d1cfaf0e26
 # ╟─5601c325-ce28-4153-b355-078898bb5a07
@@ -2901,8 +2886,6 @@ version = "1.4.1+2"
 # ╠═000a531a-4285-4f6a-a94a-244bdc09d3b4
 # ╟─3c09293c-ed07-428b-85a6-610faa21ceb2
 # ╟─73ec936f-e3d6-423d-af80-17154e672de4
-# ╟─81a033e4-4b5c-4ae2-8fde-a9036faa9a78
-# ╠═3d2ada54-617d-4614-991e-3c3d53f67992
 # ╟─1f675743-49fc-4e25-a3fb-663caf46c45d
 # ╟─118d407e-b6c9-4611-aec0-f89dfa390776
 # ╟─2688c2ca-18a3-4975-ab4f-dc5a62d71293

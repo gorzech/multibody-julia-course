@@ -1,13 +1,27 @@
 ### A Pluto.jl notebook ###
-# v0.20.6
+# v0.20.8
 
 using Markdown
 using InteractiveUtils
 
-# ╔═╡ 98d8b123-54e0-4d51-a88c-a6efca4381ee
+# This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
+macro bind(def, element)
+    #! format: off
+    return quote
+        local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
+        local el = $(esc(element))
+        global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
+        el
+    end
+    #! format: on
+end
+
+# ╔═╡ 528ac3a6-437c-4350-961d-0a8d03efa9b9
 begin
 	using DifferentialEquations
 	using Plots
+	using LaTeXStrings
+	using PlutoUI
 end
 
 # ╔═╡ 8e74a0cc-2721-11f0-2a36-1984c8274c4e
@@ -19,42 +33,1363 @@ md"""
 Grzegorz Orzechowski
 """
 
-# ╔═╡ 5ae4987f-439e-4859-b731-635b7d64d020
+# ╔═╡ 1ad03e95-20dc-4da1-b810-e741b50bba35
 md"""
-## Solving an ODE
-
-Example: $\dot{u}(t) = 0.5 u(t)$
+## Ordinary Differential Equations (ODEs)
+- Powerful mathematical tool to understand and predict dynamical systems
+  - In nature, engineering, society, etc.
+- Dynamical system has state that evolves in time
+  - Pendulum, car, Mars lander
+  - Spreading of diseases
+  - Weather
+- Rules of dynamical systems take the form of differential equations
 """
 
-# ╔═╡ e59398b1-8d8d-4d8d-a159-185088499508
-# Define the ODE function
-function exp_growth!(du, u, p, t)
-    du[1] = 0.5 * u[1]
+# ╔═╡ 0be6d60d-8ad6-4ff1-b351-5c3dfa848398
+md"""
+## Ordinary Differential Equations (ODEs)
+
+- The unknown in a differential equation is a function, e.g., $𝑦(𝑥)$
+- Equation usually involve the function, its derivatives and some other terms
+  - Explicit form:    $𝑦^′=𝐹(𝑥, 𝑦)$
+  - Implicit form:   $𝐹(𝑥, 𝑦, 𝑦^′ )=0$
+- We will start with simple first-order ordinary differential equations
+- Then we will move to oscillating mechanical systems
+- Forward Euler, Euler-Cromer scheme, Runge-Kutta schemes
+"""
+
+# ╔═╡ c7144f55-b94b-4d33-88aa-21b645c95336
+md"""
+## Population Growth 
+
+- Model growth of cell culture, animal or human population. 
+-  $N(t)$ is the number of individuals in the population at time $t$
+$N'(t) = rN(t)$
+-  $N$ is integer in real life, but we model it as real values. $r$ is a number
+- Solution of this example is 
+$N(t) = Ce^{rt}$
+-  $C$ is any number. To make solution unique we must define it
+  - Using, e.g., initial conditions: $N(0) = N_0$. Then $N(t) = N_0 e^{rt}$
+- In general model consist of differential equation and initial conditions
+"""
+
+# ╔═╡ 7a16922d-8d3d-4f4d-b493-73a7fdccdfd7
+md"""
+
+## Numerical Solution
+
+There is a large collection of numerical methods for solving equations
+
+$u'(t) = F(t,u)$ 
+
+where $u(t)$ is the unknown function, and $F$ is some known formula. For example, $F(t,u) = ru$. 
+
+1. Introduce a mesh in time. We look for the unknown $u$ at $t_n$
+2. Assume that the differential equation is valid at the mesh points
+3. Approximate derivatives by finite differences
+4. Formulate an algorithm to get $u^n$ having previous $u^i$, $i < n$
+
+"""
+
+# ╔═╡ b3c5195e-a5ae-46bd-b4cc-f00d4edee220
+md"""
+## Numerical Solution
+
+### Approximated derivative
+"""
+
+# ╔═╡ 1738e92d-007f-49f0-8b0d-003b927e799f
+### Pluto.jl cell ### ChatGPT generated.
+function plot_forward_difference()
+    # 1) test function
+    u(t) = exp(-0.3t) * (1 + 0.4*sin(2t))
+
+    # 2) mesh and current point
+    Δt   = 1.0
+    t_n  = 4.0
+    t_nm = t_n - Δt
+    t_np = t_n + Δt
+
+    # 3) sample
+    t = range(0, 8, length=400)
+
+    # 4) slopes
+    u_n    = u(t_n)
+    u_np   = u(t_np)
+    slopeF = (u_np - u_n) / Δt
+    δ      = 1e-3
+    slopeT = (u(t_n+δ) - u(t_n-δ)) / (2δ)
+
+    # 5) lines
+    tline = range(t_n-2, t_n+2, length=50)
+    Lf    = u_n .+ slopeF .* (tline .- t_n)
+    Lt    = u_n .+ slopeT .* (tline .- t_n)
+
+    # 6) plot with custom xticks
+    plt = plot(
+        t, u.(t);
+        color     = :black,
+        linewidth = 2,
+        legend    = false,
+        xlabel    = L"t",
+        ylabel    = L"u(t)",
+        framestyle= :box,
+        xticks    = (
+            [t_nm, t_n, t_np],
+            [L"t_{n-1}", L"t_{n}", L"t_{n+1}"]
+        )
+    )
+
+    # tangents
+    plot!(plt, tline, Lf; color=:red, linestyle=:dash)
+    plot!(plt, tline, Lt; color=:gray, linestyle=:dot)
+
+    # vertical lines & markers
+    vline!(plt, [t_nm, t_n, t_np]; color=:black, alpha=0.3, linewidth=1)
+    scatter!(
+        plt,
+        [t_n, t_np], [u_n, u_np];
+        markershape      = :circle,
+        markerstrokecolor= [:blue, :red],
+        markerstrokewidth= 2,
+        markersize       = 8,
+        color            = :white
+    )
+
+    # annotation
+    annotate!(
+      plt,
+      (t_np+0.5, Lf[end], text("forward", :red, 10, :left))
+    )
+
+    plt
 end
 
-# ╔═╡ d1b442d1-0b16-43a2-8919-edd439773b8b
-# Initial condition and time span
+# ╔═╡ 485c75c6-1400-4fb2-8da5-09bc0bf8c856
+plot_forward_difference()
+
+# ╔═╡ 3935d2cb-862b-4cda-8434-0cac8483e196
+md"""
+### Mesh and solution interpolation
+"""
+
+# ╔═╡ cbfe73af-386f-4532-ac99-c2bd240c5a09
+### Pluto.jl cell ###
 begin
-	u0 = [1.0]
-	tspan = (0.0, 5.0)
-	prob = ODEProblem(exp_growth!, u0, tspan)
+
+    """
+    piecewise_demo(; Δ=1.0, u_true) →
+      Plot a dashed “true” curve u_true(t) and the
+      piecewise‐linear samples (t_i,u_i) at t=0:Δ:5,
+      with LaTeX tick labels t₀…t₅ and annotations u⁰…u⁵.
+    """
+    function piecewise_demo(;u_true = t -> exp(-0.2t)*(1 + 0.5*sin(2t)))
+        # sample points
+        t_samples = 0:5
+        u_samples = u_true.(t_samples)
+
+        # fine grid for dashed “true” curve
+        t_fine = range(first(t_samples), last(t_samples), length=300)
+
+        # custom xticks (no $ in the strings!)
+        xt_vals = collect(t_samples)
+        xt_labs = [LaTeXString("\$t_{" * string(i) * "}\$") for i in xt_vals]
+
+        # build the plot
+        plt = plot(
+            t_fine, u_true.(t_fine);
+            linestyle   = :dash,
+            linewidth   = 2,
+            color       = :gray,
+            label       = "",
+            xlabel      = L"t",
+            ylabel      = L"u",
+            framestyle  = :box,
+            xticks      = (xt_vals, xt_labs),
+            yticks      = nothing
+        )
+
+        # overlay the piecewise‐linear samples
+        plot!(
+            plt,
+            t_samples, u_samples;
+            linestyle  = :solid,
+            marker     = :circle,
+            markersize = 6,
+            color      = :black,
+            label      = ""
+        )
+
+		yspan   = maximum(u_samples) - minimum(u_samples)
+		y_offset = 0.05*yspan
+        # annotate each sample with u^i (again, no $ needed)
+        for (idx, (t, u)) in enumerate(zip(t_samples, u_samples))
+            lab = LaTeXString("\$u^{" * string(idx-1) * "}\$")
+            annotate!(plt, (t, u+y_offset, text(lab, 8, :center)))
+        end
+
+        return plt
+    end
+
+    # Call it (you can pass a different Δ or your own u_true)
+    piecewise_demo()
 end
 
-# ╔═╡ 648d30d9-58e1-4bf8-88c9-6fa3e53475c2
-sol = solve(prob)
+# ╔═╡ 74444d3a-ac80-46d3-912b-353aa04692da
+md"""
+## Numerical Solution
 
-# ╔═╡ 9dd494c8-f1af-4162-8cc1-82f82a31f3db
-plot(sol, label="u(t)", xlabel="Time", ylabel="Value")
+1. Introduce a mesh in time (uniform). We look for the unknown $u$ at $t_n$
+$t_n = n\Delta t, \, n=0,1,\ldots,N_t$
+2. Assume that the differential equation is valid at the mesh points (original equation is valid for all $t$ – an approximation)
+$u'(t_n) = f(t_n, u^n), \, n=0,1,\ldots,N_t$
+   - So, for our model $u' = ru$, we have 
+$u'(t_n) = ru^n, \, n=0,1,\ldots,N_t$
+
+"""
+
+# ╔═╡ ddae639d-fa3a-4091-bd88-57f0e830e970
+md"""
+## Numerical Solution
+
+3. Approximate derivatives by finite differences
+   - Using derivative definition from calculus books (there are other formulas): 
+$u'(t) = \lim_{\Delta t \to 0} \frac{u(t + \Delta t) - u(t)}{\Delta t}$
+   - And at the mesh point 
+$u'(t_n) = \lim_{\Delta t \to 0} \frac{u^{n+1} - u^n}{\Delta t}$
+   - Instead of limit use small $\Delta t$, giving computable approximation (forward difference)
+$u'(t_n) \approx \frac{u^{n+1} - u^n}{\Delta t}$
+
+"""
+
+# ╔═╡ 8b4e5acc-cc1e-4d7f-9995-ddc91aa99dd7
+plot_forward_difference()
+
+# ╔═╡ 70ffd663-5b03-4490-a93c-1ad5d0da91e9
+md"""
+
+## Numerical Solution
+
+4. Formulate an algorithm to get $u^n$ having previous $u^i, \, i < n$
+   - Plugin forward difference into differential equation 
+$\frac{u^{n+1} - u^n}{\Delta t} = f(t_n, u^n)$
+   - After rearrangement 
+$u^{n+1} = u^n + \Delta t f(t_n, u^n)$
+   - Now, having starting value $u^0 = U_0$ we can advance in time
+   - This is the famous _Forward Euler scheme_ (_Euler’s method_) for the differential equations
+"""
+
+# ╔═╡ 65fe909f-ee6d-442d-b4ca-9c8d13983dbd
+md"""
+
+## Population Growth
+
+- Having Forward Euler numerical scheme 
+$u^{n+1} = u^n + \Delta t f(t_n, u^n), \, u_0 = U_0, \, n=0,1,\ldots,N_t-1$
+- We can write special formula for population growth model 
+$u^{n+1} = u^n + \Delta t r u^n, \, u_0 = U_0, \, n=0,1,\ldots,N_t-1$
+- Or using original notion 
+$N^{n+1} = N^n + \Delta t r N^n, \, N_0 = N_0, \, n=0,1,\ldots,N_t-1$
+- As usual we prefer general solution
+- Often in practice more accurate and efficient methods are used
+
+"""
+
+# ╔═╡ 8512e3ca-b453-48f9-a918-d9f2c973827e
+md"""
+
+## Forward Euler – Special Case
+
+- Let analyze program to compute 
+$N^{n+1} = N^n + \Delta t r N^n, \, N_0 = N_0, \, n=0,1,\ldots,N_t-1$
+- Forward Euler is accurate for practical purposes
+- This method has simple geometric interpretation: 
+To progress the solution from $t_n$ to $t_{n+1}$ we draw a line from point $(t_n, u^n)$ with the slope $u'(t_n) = f(t_n, u^n)$
+
+Differential equation gives a formula for the further direction of the solution curve
+
+"""
+
+# ╔═╡ 56f293f1-538a-47b7-9742-135a308cd134
+begin
+	
+	"""
+	    growth_special_case(N0, r, Δt, Nt; show_exact=true)
+	
+	Solve `dN/dt = r*N` with Forward Euler over `0:Δt:Nt*Δt`,
+	starting from `N(0)=N0`, and plot the numerical solution.
+	If `show_exact=true`, overlay the exact `N(t)=N0*exp(r*t)`.
+	
+	# Arguments
+	- `N0::Float64` : initial population
+	- `r::Float64`  : net growth rate
+	- `Δt::Float64` : time‐step size
+	- `Nt::Int`     : number of steps
+	- `show_exact`  : whether to plot the analytic solution
+	
+	# Returns
+	- The `Plots.Plot` object
+	"""
+	function growth_special_case(N0::Float64, r::Float64, Δt::Float64, Nt::Int; show_exact::Bool=true)
+	    # time vector
+	    t = range(0, stop=Nt*Δt, length=Nt+1)
+	    N = zeros(length(t))
+	    N[1] = N0
+	
+	    # Forward‐Euler loop
+	    for n in 1:Nt
+	        N[n+1] = N[n] + r*Δt * N[n]
+	    end
+	
+	    # Pick plot style
+	    plt = Nt < 70 ? scatter(t, N; marker=:circle, label="numerical") :
+	                   plot(t, N; label="numerical")
+	
+	    # Optionally overlay exact solution
+	    if show_exact
+	        plot!(plt, t, N0 .* exp.(r .* t); color=:red, label="exact")
+	    end
+	
+	    xlabel!(plt, "t")
+	    ylabel!(plt, "N(t)")
+	    return plt
+	end
+	
+	# — Example usage —
+	growth_special_case(100.0, 0.1, 0.5, 50)
+	# display(plt)
+	# savefig(plt, "growth.png")
+end
+
+# ╔═╡ d59fdb44-f2d5-49db-b03b-9bc3b3d1a374
+md"""
+
+## Hands-on – Forward Euler by Hand
+
+- Geometric construction of the solution for Forward Euler method
+- Consider equation $u' = u$ with $u(0) = 1$ and time steps $\Delta t = 1$
+1. Start at $t = 0$, draw line with slope $u'(0) = 1$. Mark point at $t = \Delta t$
+2. Draw line from $(\Delta t, u^1)$ with slope $u'(\Delta t) = u^1$. Mark point at $t = 2\Delta t$
+3. Draw line from $(2\Delta t, u^2)$ with slope $u'(2\Delta t) = u^2$. Mark point at $t = 3\Delta t$
+4. Apply Forward Euler scheme $u^{n+1} = u^n + \Delta t f(t_n, u^n)$ for the above problem and calculate $u^1, u^2$ and $u^3$
+- Are the numbers the same? We will write test base on this exercise soon
+"""
+
+# ╔═╡ 85588d28-b44c-493e-b302-a00dde4ea875
+md"""
+## Forward Euler – General Case
+
+- Program to solve the whole class of problems of the form 
+$u'(t) = f(t,u), \quad u(0) = U_0, t \in [0,T]$
+- The Forward Euler scheme is 
+$u^{n+1} = u^n + \Delta t f(t_n, u^n), \quad u_0 = U_0, n = 0,1,\ldots,N_t-1$
+- Let analyze general implementation of the Euler’s method. 
+- Create a demo (not test!) to solve population growth problem.
+
+"""
+
+# ╔═╡ c7ffd589-814d-450b-b400-e79070d5690a
+md"""
+
+## Hands-on – Test Script for the FE
+
+- Create script `test_ode_FE.m` with `ode_FE` tests. 
+1. Make a section in test file that calls `ode_FE` to compute 3 time steps in the problem $u' = u$, $u(0) = 1$, and compare to the three values $u^1$, $u^2$ and $u^3$ obtained earlier. 
+2. Problem $u' = ru$ has closed form solution for the Forward Euler method: $u^n = U_0 (1 + r \Delta t)^n$. Use this result to construct second test that runs several steps in `ode_FE` and compares the computed solution with the listed formula for $u^n$.
+
+
+"""
+
+# ╔═╡ 74ccd301-c5f8-4f33-a729-06862f71d179
+md"""
+
+## Vibrations
+
+“Everything in life is vibration.” Albert Einstein
+
+Water under sinusoidal vibration of 11 Hz by Jordi Torrents from Spain.
+![Water under sinusoidal vibration of 11 Hz by Jordi Torrents from Spain.](https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Water_under_11_Hz_vibration.jpg/960px-Water_under_11_Hz_vibration.jpg)
+"""
+
+# ╔═╡ f2d114b3-98bb-4a55-ae95-20fa15466e27
+md"""
+## Oscillating 1D System
+
+- The most fundamental model in dynamics. 
+- Numerous materials act like springs. 
+- The simplest meaningful model of free vibrations is 
+$\ddot{u}(t) + \omega_0^2 u(t) = 0$ 
+where $\omega_0$ is given parameter – natural frequency. 
+- We need two initial conditions $u(0)$, $\dot{u}(0)$. 
+- We use Newton’s notation ($\dot{u}$) instead of Lagrange’s ($u^′$) to denote time derivative. 
+
+![](https://upload.wikimedia.org/wikipedia/commons/4/45/Mass_spring_damper.svg)
+
+"""
+
+# ╔═╡ 7c6ca66f-b221-439b-ace1-be9243e0c4db
+md"""
+
+## Derivation of the 1D Model
+
+$\ddot{x} + \omega_0^2 x = 0, \quad \omega_0 = \sqrt{k/m}$
+
+This is a second-order differential equation, so we need two initial conditions: on the position $x(0)$ and on the velocity $\dot{x}(0)$. 
+Let assume body at rest with initial displacement 
+
+$x(0) = X_0, \quad \dot{x}(0) = 0$
+
+The exact solution of above problem is 
+
+$x(t) = X_0 \cos(\omega_0 t)$
+
+"""
+
+# ╔═╡ 9f70f41f-de9b-4d2b-9a2a-900a7043fe21
+md"""
+
+## Numerical Solution
+
+- Can we solve second-order derivatives using Forward Euler method? 
+- We can use a “trick” to rewrite 2nd order equation as two 1st order ones. 
+- Let introduce $u = x$ and $v = \dot{x} = \dot{u}$. Now $\ddot{x} + \omega_0^2 x = 0$ became:
+$\dot{u} = v$
+$\dot{v} = -\omega_0^2 u$
+
+- Now we can apply the Forward Euler method 
+
+$(u^{n+1} - u^n)/\Delta t = v^n$  
+
+$(v^{n+1} - v^n)/\Delta t = -\omega_0^2 u^n$.
+
+"""
+
+# ╔═╡ 1481d751-6c65-44bb-8346-cc094d18c13d
+md"""
+
+## Hands-on – 1D System; the Special Case
+
+- For 1D oscillating mass-spring system we have a scheme:
+$u^{n+1} = u^n + \Delta t v^n$
+$v^{n+1} = v^n - \Delta t \omega_0^2 u^n$
+
+- Implement system and plot exact ($X_0 \cos(\omega_0 t)$) and numerical results:
+-  $\omega_0 = 2$ rad/s, and $X_0 = 2$ m
+- Oscillation period is $T_0 = 2\pi/\omega_0$
+- Use $\Delta t = T_0/20$ and $t_k = 3T_0$
+
+"""
+
+# ╔═╡ d5759bd3-a013-41a4-a0c7-06ca010abec2
+"""
+    mass_spring_fe(; ω₀=2.0, X₀=2.0, steps_per_period=20, n_periods=3, show_exact=true)
+
+Simulate and plot the simple harmonic oscillator
+
+\$u'' + ω₀^2\\,u = 0\$
+
+using Forward Euler:
+
+- ω₀            : natural frequency
+- X₀            : initial displacement
+- steps_per_period : number of time‐steps per period (\$Δt = T₀/steps\\_per\\_period\$)
+- n_periods     : how many periods to run
+- show_exact    : overlay the exact \$X₀\\cos(ω₀ t)\$ solution
+
+Returns the `Plots.Plot` object.
+"""
+function mass_spring_fe(; ω₀::Float64=2.0,
+                         X₀::Float64=2.0,
+                         steps_per_period::Int=20,
+                         n_periods::Int=3,
+                         show_exact::Bool=true)
+
+    # Derived parameters
+    T₀   = 2π/ω₀
+    Δt   = T₀/steps_per_period
+    t_end = n_periods * T₀
+    N_t  = floor(Int, t_end/Δt)
+
+    # Time vector and solution arrays
+    t = range(0, stop=N_t*Δt, length=N_t+1)
+    u = zeros(Float64, N_t+1)
+    v = zeros(Float64, N_t+1)
+
+    # Initial conditions
+    u[1] = X₀
+    v[1] = 0.0
+
+    # Forward Euler time‐march
+    for n in 1:N_t
+        u[n+1] = u[n] + Δt * v[n]
+        v[n+1] = v[n] - Δt * ω₀^2 * u[n]
+    end
+
+    # Plot numerical solution
+    plt = plot(
+        t, u;
+        label = "numerical",
+        color = :blue,
+        xlabel = "t [s]",
+        ylabel = "u"
+    )
+
+    # Overlay exact solution if desired
+    if show_exact
+        plot!(
+            plt,
+            t,
+            X₀ .* cos.(ω₀ .* t);
+            label     = "exact",
+            color     = :red,
+            linestyle = :dash
+        )
+    end
+
+    # Title
+	title!(plt, L"Displacements FE $\Delta t=T_0/%$steps_per_period$, $t_k=%$n_periods T_0$")
+
+    return plt
+end;
+
+# ╔═╡ 3a7925e3-fc75-4fa8-959d-5995290fb5d7
+mass_spring_fe(ω₀=2.0, X₀=2.0, steps_per_period=20, n_periods=3)
+
+# ╔═╡ b09059a6-7b83-4014-b7ee-f946f62d6476
+md"""
+
+## Hands-on – 1D System Cnt.
+
+- Results don’t look promising. 
+- First, verify an implementation. For our inputs we should have:
+  -  $u^1 = 2$, $v^1 = -1.25663706$
+  -  $u^2 = 1.80260791$, $v^2 = -2.51327412$
+
+- Now reduce time step to $T_0/40$, $T_0/160$, $T_0/2000$ (you can use command figure to open new plot window). 
+- Do results look correct?
+"""
+
+# ╔═╡ 67339b24-26d6-4e68-a4ec-037d34b0c313
+@bind steps_per_period Slider([20, 40, 160, 2000], default=20)
+
+# ╔═╡ 0d9ff402-e63f-4212-8dc0-ad3c89494818
+mass_spring_fe(ω₀=2.0, X₀=2.0, steps_per_period=steps_per_period, n_periods=3)
+
+# ╔═╡ 67cb17e3-5329-4bdd-bc66-7f47b9f6da22
+md"""
+## A “Magic Fix” to Forward Euler
+
+- Forward Euler is not effective in solving oscillating systems. 
+- Now we will use $u^{n+1}$ instead of $u^n$ for the second equation. 
+- Use $v^{n+1} = v^n - \Delta t \omega_0^2 u^{n+1}$ instead of $v^{n+1} = v^n - \Delta t \omega_0^2 u^n$. 
+- This method performs far better than Forward Euler.
+
+"""
+
+# ╔═╡ d1d8049c-b187-4c0d-8f60-6871fb028b47
+"""
+    mass_spring_fe_fix(; ω₀=2.0, X₀=2.0, steps_per_period=20, n_periods=3, show_exact=true)
+
+Simulate and plot the simple harmonic oscillator
+
+\$u'' + ω₀^2\\,u = 0\$
+
+using modified Forward Euler:
+
+- ω₀            : natural frequency
+- X₀            : initial displacement
+- steps_per_period : number of time‐steps per period (\$Δt = T₀/steps\\_per\\_period\$)
+- n_periods     : how many periods to run
+- show_exact    : overlay the exact \$X₀\\cos(ω₀ t)\$ solution
+
+Returns the `Plots.Plot` object.
+"""
+function mass_spring_fe_fix(; ω₀::Float64=2.0,
+                         X₀::Float64=2.0,
+                         steps_per_period::Int=20,
+                         n_periods::Int=3,
+                         show_exact::Bool=true)
+
+    # Derived parameters
+    T₀   = 2π/ω₀
+    Δt   = T₀/steps_per_period
+    t_end = n_periods * T₀
+    N_t  = floor(Int, t_end/Δt)
+
+    # Time vector and solution arrays
+    t = range(0, stop=N_t*Δt, length=N_t+1)
+    u = zeros(Float64, N_t+1)
+    v = zeros(Float64, N_t+1)
+
+    # Initial conditions
+    u[1] = X₀
+    v[1] = 0.0
+
+    # Forward Euler time‐march
+    for n in 1:N_t
+        u[n+1] = u[n] + Δt * v[n]
+        v[n+1] = v[n] - Δt * ω₀^2 * u[n+1] # The only change w.r.t. previous script
+    end
+
+    # Plot numerical solution
+    plt = plot(
+        t, u;
+        label = "numerical",
+        color = :blue,
+        xlabel = "t [s]",
+        ylabel = "u"
+    )
+
+    # Overlay exact solution if desired
+    if show_exact
+        plot!(
+            plt,
+            t,
+            X₀ .* cos.(ω₀ .* t);
+            label     = "exact",
+            color     = :red,
+            linestyle = :dash
+        )
+    end
+
+    # Title and legend
+    title!(plt, L"Displacements FE-fix $\Delta t=T_0/%$steps_per_period$, $t_k=%$n_periods T_0$")
+
+    return plt
+end;
+
+# ╔═╡ 74402f7b-7c4c-4a11-b538-e698c379aae8
+@bind steps_per_period_fe_fix Slider([20, 40, 160, 2000], default=20)
+
+# ╔═╡ f5ca5142-0e92-405d-8c04-74b704fe9ab0
+mass_spring_fe_fix(ω₀=2.0, X₀=2.0, steps_per_period=steps_per_period_fe_fix, n_periods=3)
+
+# ╔═╡ 7d5c990c-5c5a-4071-bba5-5d9fd488733f
+md"""
+
+## How the new Scheme Works?
+
+- New scheme gives far better results – what has happened?
+$(u^{n+1} - u^n)/\Delta t = v^n$
+$(v^{n+1} - v^n)/\Delta t = -\omega_0^2 u^{n+1}$
+
+- First equation forms a _forward difference_ (as is done in Forward Euler). 
+  - As we have $v^n$ at RHS, we interpret it as evaluated at $t_n$. 
+- The second one can be interpreted as evaluated at $t_{n+1}$ (due to $u^{n+1}$). 
+  - Thus, LHS is a backward difference 
+$v'(t_{n+1}) \approx (v^{n+1} - v^n)/\Delta t, \quad \text{or} \quad v'(t_n) \approx (v^n - v^{n-1})/\Delta t$.
+
+"""
+
+# ╔═╡ d3412d9d-1734-4832-a0e7-15b5a32c01ef
+md"""
+## How the new Scheme Works?
+
+Forward difference:
+- $(u^{n+1} - u^n)/\Delta t = v^n$
+"""
+
+# ╔═╡ 771add05-1ef5-4a5b-9ac1-4a8eaca81141
+plot_forward_difference()
+
+# ╔═╡ 4a1145a3-854f-41c6-954a-4feda93d330d
+md"""
+Backward difference:
+- $(u^{n+1} - u^n)/\Delta t = v^{n+1}$
+
+"""
+
+# ╔═╡ 5266c1b6-ff24-4344-b351-452c8c6e2b73
+### Pluto.jl cell ###
+function plot_backward_difference()
+    # gr()                  # GR backend
+
+    # 1) define your test function
+    u(t) = exp(-0.3t) * (1 + 0.4*sin(2t))
+
+    # 2) pick the mesh
+    Δt   = 1.0
+    t_n  = 4.0
+    t_nm = t_n - Δt
+    t_np = t_n + Δt
+
+    # 3) sample the curve
+    t = range(0, 8, length=400)
+
+    # 4) compute values & slopes
+    u_n   = u(t_n)
+    u_nm  = u(t_nm)
+    slopeB = (u_n - u_nm)/Δt                      # backward difference
+    δ      = 1e-3
+    slopeT = (u(t_n+δ) - u(t_n-δ)) / (2δ)          # “true” slope
+
+    # 5) build the tangent‐lines
+    tline = range(t_n-2, t_n+2, length=50)
+    Lb    = u_n .+ slopeB .* (tline .- t_n)
+    Lt    = u_n .+ slopeT .* (tline .- t_n)
+
+    # 6) do the plot
+    plt = plot(
+        t, u.(t);
+        color     = :black,
+        linewidth = 2,
+        legend    = false,
+        xlabel    = L"t",
+        ylabel    = L"u(t)",
+        framestyle= :box,
+        xticks    = (
+            [t_nm, t_n, t_np],
+            [L"t_{n-1}", L"t_{n}", L"t_{n+1}"]
+        ),
+        yticks    = nothing
+    )
+
+    # backward‐difference tangent (dashed green)
+    plot!(plt, tline, Lb; color=:green, linestyle=:dash)
+
+    # “true” tangent (dotted gray)
+    plot!(plt, tline, Lt; color=:gray, linestyle=:dot)
+
+    # vertical mesh‐lines
+    vline!(plt, [t_nm, t_n, t_np]; color=:black, alpha=0.3, linewidth=1)
+
+    # highlight the two points used in backward diff
+    scatter!(
+        plt,
+        [t_nm, t_n],
+        [u_nm, u_n];
+        markershape       = :circle,
+        markerstrokecolor = [:green, :blue],
+        markerstrokewidth = 2,
+        markersize        = 8,
+        color             = :white
+    )
+
+    # label the backward line
+    annotate!(
+        plt,
+        (t_nm - 0.4, Lb[1], text("backward", :green, 10, halign=:right, valign=:bottom))
+    )
+
+    plt
+end;
+
+# ╔═╡ bcf7a471-1507-4bd9-9aaa-1fe5627aa8cc
+plot_backward_difference()
+
+# ╔═╡ 70e35114-582f-4d52-ac68-ea2b5eb97fca
+md"""
+## How the new Scheme Works?
+
+- Scheme that uses backward difference is often called _Backward Euler_. 
+  - Backward Euler has better _stability_ properties, but BE is an _implicit_ method (as compared with _explicit_ Forward Euler). 
+- The standard way to express this scheme is to apply forward difference to velocity eq. ($\dot{v} = -\omega_0^2 u$) and backward one to position ($\dot{u} = v$):
+$v^{n+1} = v^n - \Delta t \omega_0^2 u^n$
+$u^{n+1} = u^n + \Delta t v^{n+1}$
+
+- Both schemes' accuracy is the same. 
+- The scheme above is called _Semi-implicit Euler_ or _Euler-Cromer_.
+
+"""
+
+# ╔═╡ 13c50daf-22dd-4e80-810e-76ff1c69f556
+"""
+    mass_spring_ec(; ω₀=2.0, X₀=2.0, steps_per_period=20, n_periods=3, show_exact=true)
+
+Simulate and plot the simple harmonic oscillator
+
+\$u'' + ω₀^2\\,u = 0\$
+
+using Euler-Cromer:
+
+- ω₀            : natural frequency
+- X₀            : initial displacement
+- steps_per_period : number of time‐steps per period (\$Δt = T₀/steps\\_per\\_period\$)
+- n_periods     : how many periods to run
+- show_exact    : overlay the exact \$X₀\\cos(ω₀ t)\$ solution
+
+Returns the `Plots.Plot` object.
+"""
+function mass_spring_ec(; ω₀::Float64=2.0,
+                         X₀::Float64=2.0,
+                         steps_per_period::Int=20,
+                         n_periods::Int=3,
+                         show_exact::Bool=true)
+
+    # Derived parameters
+    T₀   = 2π/ω₀
+    Δt   = T₀/steps_per_period
+    t_end = n_periods * T₀
+    N_t  = floor(Int, t_end/Δt)
+
+    # Time vector and solution arrays
+    t = range(0, stop=N_t*Δt, length=N_t+1)
+    u = zeros(Float64, N_t+1)
+    v = zeros(Float64, N_t+1)
+
+    # Initial conditions
+    u[1] = X₀
+    v[1] = 0.0
+
+    # Forward Euler time‐march
+    for n in 1:N_t
+        v[n+1] = v[n] - Δt * ω₀^2 * u[n]
+        u[n+1] = u[n] + Δt * v[n+1]
+    end
+
+    # Plot numerical solution
+    plt = plot(
+        t, u;
+        label = "numerical",
+        color = :blue,
+        xlabel = "t [s]",
+        ylabel = "u"
+    )
+
+    # Overlay exact solution if desired
+    if show_exact
+        plot!(
+            plt,
+            t,
+            X₀ .* cos.(ω₀ .* t);
+            label     = "exact",
+            color     = :red,
+            linestyle = :dash
+        )
+    end
+
+    # Title and legend
+    title!(plt, L"Displacements EC $\Delta t=T_0/%$steps_per_period$, $t_k=%$n_periods T_0$")
+
+    return plt
+end;
+
+# ╔═╡ 1b325ba8-c02d-47ef-a7df-352b4b56405f
+@bind steps_per_period_ec Slider([20, 40, 160, 2000], default=20)
+
+# ╔═╡ 4b163710-09f4-4d63-86cd-600a91df3e6f
+mass_spring_ec(ω₀=2.0, X₀=2.0, steps_per_period=steps_per_period_ec, n_periods=3)
+
+# ╔═╡ c04ab6ab-f4cc-47cc-bfbc-216d0cd66f0e
+md"""
+
+## Heun’s Method
+
+- 2nd-order Runge-Kutta method (RK2) for first order ODEs. 
+- Based on the _centered difference approximation_ 
+$u'(t_n + \frac{1}{2} \Delta t) \approx \frac{u^{n+1} - u^n}{\Delta t}$
+- Error proportional to $\Delta t^2$ (in BD & ED to $\Delta t$).
+
+$$u' = f(t, u) \Rightarrow \frac{u^{n+1} - u^n}{\Delta t} = f(t_{n + \frac{1}{2}}, u_{n + \frac{1}{2}})$$
+
+- As $u_{n + \frac{1}{2}}$ is unknown value, we approximate $f$ using arithmetic average of values at $t_n$ and $t_{n+1}$.
+"""
+
+# ╔═╡ 4457c0a1-3e2f-4b9d-9190-a650a0422106
+### Pluto.jl cell ### ChatGPT
+begin
+
+    """
+    secant_demo(; Δ=1.0,
+                u_fun = t -> exp(-0.3t)*(1 + 0.4*sin(2t)),
+                t1 = 4.0)
+
+  Plot u(t) in black, sample at t₀ = t₁–Δ, t₁, t₂ = t₁+Δ,
+  draw the secant line through (t₀,u₀),(t₂,u₂) (blue dashed),
+  and overlay the true tangent at t₁ (gray dotted).
+    """
+    function secant_demo(; Δ::Float64 = 1.0,
+                          u_fun::Function = t -> exp(-0.3t)*(1 + 0.4*sin(2t)),
+                          t1::Float64 = 4.0)
+
+        # mesh points
+        t0 = t1 - Δ      # tₙ
+        t2 = t1 + Δ      # tₙ₊₂
+
+        # sample curve
+        t = range(0, 8, length=400)
+        u0, u1, u2 = u_fun.( (t0, t1, t2) )
+
+        # secant slope through (t0,u0)→(t2,u2)
+        slopeS = (u2 - u0)/(t2 - t0)
+
+        # “true” tangent slope at t1
+        δ = 1e-3
+        slopeT = (u_fun(t1+δ) - u_fun(t1-δ)) / (2δ)
+
+        # build line segments
+        tline = range(t0-2Δ, t2+2Δ, length=60)
+        Ls    = u0 .+ slopeS .* (tline .- t0)
+        Lt    = u1 .+ slopeT .* (tline .- t1)
+
+        # base plot
+        plt = plot(
+            t, u_fun.(t);
+            color      = :black,
+            linewidth  = 2,
+            legend     = false,
+            xlabel     = L"t",
+            ylabel     = L"u(t)",
+            framestyle = :box,
+            xticks     = (
+               [t0, t1, t2],
+               [L"t_{n}", L"t_{n+1}", L"t_{n+2}"]
+            ),
+            yticks     = nothing
+        )
+
+        # secant and true tangents
+        plot!(plt, tline, Ls; color=:blue,  linestyle=:dash)
+        plot!(plt, tline, Lt; color=:gray,  linestyle=:dot)
+
+        # vertical mesh‐lines
+        vline!(plt, [t0]; color=:green,  linestyle=:dash, linewidth=1)
+        vline!(plt, [t1]; color=:blue,   linestyle=:dot,  linewidth=1)
+        vline!(plt, [t2]; color=:red,    linestyle=:dash, linewidth=1)
+
+        # markers at t0,t1,t2
+        scatter!(
+            plt,
+            [t0,t1,t2], [u0,u1,u2];
+            marker            = :circle,
+            markersize        = 8,
+            color             = :white,
+            markerstrokecolor = [:green, :blue, :red],
+            markerstrokewidth = 2,
+            label             = ""
+        )
+
+        # annotate the secant line at its midpoint
+        mid = Int(length(tline) ÷ 2)
+        annotate!(
+            plt,
+            (tline[mid], Ls[mid],
+             text("secant", :blue, 10, halign=:center, valign=:bottom))
+        )
+
+        return plt
+    end
+
+    # call it:
+    secant_demo()
+end
+
+# ╔═╡ 25c3e4e3-6f27-4570-9f85-7c9bfc49fb1b
+md"""
+## Heun’s Method (RK2)
+
+$$f(t_{n + \frac{1}{2}}, u_{n + \frac{1}{2}}) \approx \frac{1}{2} (f(t_n, u^n) + f(t_{n+1}, u^{n+1}))$$
+
+And we obtain:
+
+$$\frac{u^{n+1} - u^n}{\Delta t} = \frac{1}{2} (f(t_n, u^n) + f(t_{n+1}, u^{n+1}))$$
+
+But now $u^{n+1}$ appears at both sides of the equation resulting in a nonlinear equation. To deal with this term, we approximate it using Forward Euler:
+
+$$u^{n+1} = u^n + \Delta t f(t_n, u^n)$$
+"""
+
+# ╔═╡ b9889048-03cb-46de-b195-c57fb766ea62
+md"""
+## Heun’s Method (RK2)
+
+This led us to the following 2-stage scheme:
+
+$$u^* = u^n + \Delta t f(t_n, u^n)$$
+
+$$u^{n+1} = u^n + \Delta t / 2 (f(t_n, u^n) + f(t_{n+1}, u^*))$$
+
+- As compared to Forward Euler, this method gives a smaller error. 
+- However, in the case of an oscillating system, the Euler-Cromer method is still much better.
+"""
+
+# ╔═╡ 2abcb547-2362-43b3-9e69-2764b4ce834c
+### Pluto.jl cell ###
+begin
+    """
+    osc_heun(X0, ω, dt, T) → (t, u, v)
+
+    Solve u'' + ω^2 u = 0 with Heun's method:
+      u* = uₙ + Δt·vₙ
+      v* = vₙ - Δt·ω^2·uₙ
+      uₙ₊₁ = uₙ + ½Δt·(vₙ + v*)
+      vₙ₊₁ = vₙ - ½Δt·ω^2·(uₙ + u*)
+    """
+    function osc_heun(X0::Float64, ω::Float64, dt::Float64, T::Float64)
+        N = floor(Int, T/dt)
+        t = range(0, step=dt, length=N+1)
+        u = zeros(Float64, N+1)
+        v = zeros(Float64, N+1)
+        u[1], v[1] = X0, 0.0
+        for n in 1:N
+            u_star = u[n] + dt*v[n]
+            v_star = v[n] - dt*ω^2*u[n]
+            u[n+1] = u[n] + 0.5*dt*(v[n] + v_star)
+            v[n+1] = v[n] - 0.5*dt*ω^2*(u[n] + u_star)
+        end
+        return t, u, v
+    end
+
+    """
+    plot_osc_heun(t, u; X0, ω, show_exact=true) → Plot
+
+    Plot numerical Heun solution (solid blue) and exact
+    X0·cos(ωt) (dashed red).
+    """
+    function plot_osc_heun(t, u; X0::Float64, ω::Float64, show_exact::Bool=true)
+        plt = plot(
+            t, u;
+            label      = "numerical",
+            color      = :blue,
+            linewidth  = 2,
+            xlabel     = L"t",
+            ylabel     = L"u(t)",
+            framestyle = :box
+        )
+        if show_exact
+            plot!(
+                plt,
+                t, X0 .* cos.(ω .* t);
+                label     = "exact",
+                linestyle = :dash,
+                color     = :red
+            )
+        end
+        return plt
+    end
+
+    """
+    demo_osc_heun(; ω0=2.0, steps_per_period=20, n_periods=10, X0=2.0)
+
+    Convenience demo:
+      • Δt = T₀/steps_per_period,  T = n_periods·T₀
+      • solves via osc_heun, then plots via plot_osc_heun.
+    """
+    function demo_osc_heun(; ω0::Float64=2.0,
+                            steps_per_period::Int=20,
+                            n_periods::Int=10,
+                            X0::Float64=2.0)
+        T0   = 2π/ω0
+        dt   = T0/steps_per_period
+        T    = n_periods * T0
+        t, u, v = osc_heun(X0, ω0, dt, T)
+        plt = plot_osc_heun(t, u; X0=X0, ω=ω0)
+        display(plt)
+        return plt
+    end
+
+    # Run the demo (customize arguments if you like):
+    demo_osc_heun()
+end
+
+# ╔═╡ 52957617-45ac-472c-901c-9fdc87e90303
+md"""
+## Software for Solving ODEs
+
+* In Julia, the go-to package is **DifferentialEquations.jl**, which implements dozens of solvers:
+
+  – **Tsit5()** (explicit 5th-order Runge–Kutta, analogous to MATLAB’s ode45)
+
+  – **Rodas5()**, **CVODE\_BDF()**, **VCABM()**, … (stiff solvers)
+
+* All adaptive-step methods instead of selecting $\Delta t$, user gives absolute and relative tolerance (w.r.t. local error estimate $E_i$).
+
+$$|E_i| \leq \max(\text{RelTol} \cdot |u^i|, \text{AbsTol})$$
+
+The basic call interface is common: 
+
+```julia
+using DifferentialEquations
+
+prob = ODEProblem(odefun!, u₀, (t₀, t_f), p)
+sol  = solve(prob, Tsit5(); reltol=1e-6, abstol=1e-6)
+```
+
+* where
+
+  * `odefun!(du,u,p,t)` fills `du` given `u` at time `t`,
+
+  * `u₀` is the initial state (vector),
+
+  * `(t₀,t_f)` is the time span,
+
+  * `p` holds any parameters,
+
+  * `Tsit5()` (or another algorithm) is chosen,
+
+  * `reltol/abstol` sets the adaptive‐step accuracy.
+
+"""
+
+# ╔═╡ 6b7c8941-d55f-415d-b56a-4e2a4cf5b316
+md"""
+## Hands-on – Tsit5
+
+Using Julia `Tsit5` function, solve the following initial value problems:
+
+$$\begin{cases}
+u' = u \\
+u(0) = 2
+\end{cases}$$
+
+$$\begin{cases}
+x'' + \omega_0^2 x = 0 \\
+x(0) = X_0 \\
+x' (0) = 0
+\end{cases}$$
+
+Try to change the value of solver tolerances and compare results.
+"""
+
+# ╔═╡ 09eae286-efd4-414b-9958-2ec5815bad79
+begin
+	# 1) define the ODE
+	function f!(du, u, p, t)
+	    du[1] = u[1]
+	end
+	
+	# 2) set up problem and solve
+	prob1 = ODEProblem(f!, [2.0], (0.0, 5.0))
+	sol1  = solve(prob1, Tsit5(); reltol=1e-3, abstol=1e-6)
+	
+	# 3) quick plot
+	plot(sol1; xlabel="t", ylabel="u(t)", label="numeric")
+end
+	
+
+# ╔═╡ 884cfe12-124e-41c5-a908-13aad58151e1
+begin
+	# 1) second-order → first-order system
+	function osc!(du, u, p, t)
+	    du[1] = u[2]                # u₁ = x, u₂ = x'
+	    du[2] = -p.ω0^2 * u[1]
+	end
+	
+	# 2) parameters and initial state
+	X0     = 1.0
+	ω0     = 2.0
+	params = (ω0=ω0,)
+	
+	# 3) solve with Tsit5
+	prob2 = ODEProblem(osc!, [X0, 0.0], (0.0, 10.0), params)
+	sol2  = solve(prob2, Tsit5(); reltol=1e-8, abstol=1e-8)
+	
+	# 4) overlay exact solution
+	exact(t) = X0*cos(ω0*t)
+	plot(sol2; label="numeric", xlabel="t", ylabel="x(t)")
+	plot!(sol2.t, exact.(sol2.t); linestyle=:dash, color=:red, label="exact")
+end
+
+# ╔═╡ b322fbc8-c065-481f-b1ce-d03c11097b1e
+md"""
+## The Runge-Kutta Method
+
+The 4th order Runge-Kutta method. The most widely used method to solve ODEs. Provides high accuracy with reasonable time steps.
+
+$$u^{n+1} = u^n + \Delta t / 6 (f^n + 2\hat{f}^{n+1/2} + 2\bar{f}^{n+1/2} + \tilde{f}^{n+1})$$
+
+$$\hat{f}^{n+1/2} = f(t_{n+1/2}, u^n + 1/2 \Delta t f^n)$$
+
+$$\bar{f}^{n+1/2} = f(t_{n+1/2}, u^n + 1/2 \Delta t \hat{f}^{n+1/2})$$
+
+$$\tilde{f}^{n+1} = f(t_{n+1}, u^n + \Delta t \bar{f}^{n+1/2})$$
+
+"""
+
+# ╔═╡ b2421d3a-fed4-4a1d-a8c7-eca522bdc7bc
+md"""
+## How to Derive RK4?
+
+Start with integrating ODE $u' = f(t, u)$ over a time step:
+
+$$u(t_{n+1}) - u(t_n) = \int_{t_n}^{t_{n+1}} f(t, u(t)) dt$$
+
+We want to get $u(t_{n+1})$ but the integral involves $u$ between $t_n$ and $t_{n+1}$. 
+Approximate the integral with the famous Simpson's rule:
+
+$$\int_{t_n}^{t_{n+1}} f(t, u(t)) dt \approx \Delta t / 6 (f^n + 4f^{n+1/2} + f^{n+1})$$
+
+But here we don’t know either $f^{n+1/2}$, nor $f^{n+1}$.
+"""
+
+# ╔═╡ edbd8a1a-ce40-4dd2-bbde-c858d7a542b6
+md"""
+## RK4 Derivation
+
+Use various approximations for unknown $f^{n+1/2}$, and $f^{n+1}$. 
+
+Let split the integral into four terms:
+
+$$\int_{t_n}^{t_{n+1}} f(t, u(t)) dt \approx \Delta t / 6 (f^n + 2\hat{f}^{n+1/2} + 2\bar{f}^{n+1/2} + \tilde{f}^{n+1})$$
+
+And $\hat{f}^{n+1/2}$, $\bar{f}^{n+1/2}$, and $\tilde{f}^{n+1}$ are approximations to $f^{n+1/2}$, and $f^{n+1}$ that use already known quantities.
+"""
+
+# ╔═╡ a9f19212-3fd1-4036-ae73-62d2327bb08d
+md"""
+## RK4 Derivation
+
+Firstly, we approximate $\hat{f}^{n+1/2}$ with Forward Euler using step $\Delta t / 2$:
+
+$$\hat{f}^{n+1/2} = f(t_{n+1/2}, u^n + 1/2 \Delta t f^n)$$
+
+Having $\hat{f}^{n+1/2}$ we approximate $\bar{f}^{n+1/2}$ with Backward Euler to get $u^{n+1/2}$:
+
+$$\bar{f}^{n+1/2} = f(t_{n+1/2}, u^n + 1/2 \Delta t \hat{f}^{n+1/2})$$
+
+With $\bar{f}^{n+1/2}$ as an approximation of $f^{n+1/2}$, we can use a midpoint method (central difference, Crank-Nicolson method) to approximate $u^{n+1}$:
+
+$$\tilde{f}^{n+1} = f(t_{n+1}, u^n + \Delta t \bar{f}^{n+1/2})$$
+"""
+
+# ╔═╡ 4eb507b8-6b95-45ef-b105-08f8ae92a14d
+md"""
+## RK4 Derivation
+
+We have used in the context of Simpson's rule:
+- Forward Euler
+- Backward Euler
+- Central difference approximation
+
+By combining all those approximations, we hope to get a better method than individual steps (which have errors proportional to $\Delta t$ or $\Delta t^2$). 
+
+RK4 error is proportional to $C\Delta t^4$, so the error is reduced very quickly. 
+
+Also, RK4 is a fully _explicit method_. 
+
+There is a large family of _implicit_ Runge-Kutta methods (e.g., Radau 5).
+"""
+
+# ╔═╡ c55a9be0-8a67-467a-a20d-81312418f399
+md"""
+## Hands-on – RK4
+
+Implement the RK4 method to solve the following initial value problem:
+$$u' = u, \quad u(0) = 1$$
+Compare the results with the exact solution $u(t) = e^t$. Use different time steps $\Delta t$ and observe the convergence of the numerical solution to the exact solution.
+"""
+
+# ╔═╡ abd87a03-07f3-4712-9d3d-f7b600639b9f
+md"""
+## Hands-on – RK4 Cnt.
+
+Implement the RK4 method to solve the following initial value problem:
+
+$$x'' + \omega_0^2 x = 0, \quad x(0) = X_0, \quad x'(0) = 0$$
+
+Compare the results with the exact solution $x(t) = X_0 \cos(\omega_0 t)$. 
+
+Use different time steps $\Delta t$ and observe the convergence of the numerical solution to the exact solution.
+"""
+
+# ╔═╡ 2ddf5403-b507-4448-8c4b-c6457995a441
+### Pluto.jl cell ###
+begin
+    """
+    osc_rk4(X0, ω, dt, T) → (t, u, v)
+
+    Solve u'' + ω^2 u = 0 with classic RK4:
+
+      k1u = vₙ,                         k1v = -ω^2·uₙ
+      k2u = vₙ + (dt/2)·k1v,            k2v = -ω^2·(uₙ + (dt/2)·k1u)
+      k3u = vₙ + (dt/2)·k2v,            k3v = -ω^2·(uₙ + (dt/2)·k2u)
+      k4u = vₙ +    dt  ·k3v,           k4v = -ω^2·(uₙ +    dt  ·k3u)
+
+      uₙ₊₁ = uₙ + (dt/6)·(k1u + 2k2u + 2k3u + k4u)
+      vₙ₊₁ = vₙ + (dt/6)·(k1v + 2k2v + 2k3v + k4v)
+    """
+    function osc_rk4(X0::Float64, ω::Float64, dt::Float64, T::Float64)
+        N = floor(Int, T/dt)
+        t = range(0, step=dt, length=N+1)
+        u = zeros(Float64, N+1)
+        v = zeros(Float64, N+1)
+        u[1], v[1] = X0, 0.0
+
+        for n in 1:N
+            # stage 1
+            k1u = v[n]
+            k1v = -ω^2 * u[n]
+            # stage 2
+            k2u = v[n] + 0.5*dt*k1v
+            k2v = -ω^2 * (u[n] + 0.5*dt*k1u)
+            # stage 3
+            k3u = v[n] + 0.5*dt*k2v
+            k3v = -ω^2 * (u[n] + 0.5*dt*k2u)
+            # stage 4
+            k4u = v[n] +     dt*k3v
+            k4v = -ω^2 * (u[n] +     dt*k3u)
+
+            # update
+            u[n+1] = u[n] + (dt/6)*(k1u + 2k2u + 2k3u + k4u)
+            v[n+1] = v[n] + (dt/6)*(k1v + 2k2v + 2k3v + k4v)
+        end
+
+        return t, u, v
+    end
+
+    """
+    plot_osc_rk4(t, u; X0, ω, show_exact=true) → Plot
+
+    Plot the RK4 solution (solid blue) and exact u(t)=X0*cos(ωt) (dashed red).
+    """
+    function plot_osc_rk4(t, u; X0::Float64, ω::Float64, show_exact::Bool=true)
+        plt = plot(
+            t, u;
+            label      = "RK4",
+            color      = :blue,
+            linewidth  = 2,
+            xlabel     = L"t",
+            ylabel     = L"u(t)",
+            framestyle = :box
+        )
+        if show_exact
+            plot!(
+                plt,
+                t, X0 .* cos.(ω .* t);
+                label     = "exact",
+                linestyle = :dash,
+                color     = :red
+            )
+        end
+        return plt
+    end
+
+    """
+    demo_osc_rk4(; ω0=2.0, steps_per_period=20, n_periods=10, X0=2.0)
+
+    Convenience demo: sets dt = T₀/steps_per_period, T = n_periods·T₀,
+    runs osc_rk4 → plot_osc_rk4, and displays the plot.
+    """
+    function demo_osc_rk4(; ω0::Float64=2.0,
+                           steps_per_period::Int=20,
+                           n_periods::Int=10,
+                           X0::Float64=2.0)
+        T0   = 2π/ω0
+        dt   = T0/steps_per_period
+        T    = n_periods * T0
+        t, u, v = osc_rk4(X0, ω0, dt, T)
+        plt = plot_osc_rk4(t, u; X0=X0, ω=ω0)
+        display(plt)
+        return plt
+    end
+
+    # run the demo (adjust keywords as desired)
+    demo_osc_rk4()
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
+LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 
 [compat]
 DifferentialEquations = "~7.16.1"
+LaTeXStrings = "~1.4.0"
 Plots = "~1.40.13"
+PlutoUI = "~0.7.23"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -63,7 +1398,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "c03b42d9fc9389df8efc11056810685bb717047b"
+project_hash = "332a723f9224164ba9a03965aa8b0679353a4ff2"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e2478490447631aedba0823d4d7a80b2cc8cdb32"
@@ -75,6 +1410,12 @@ weakdeps = ["ChainRulesCore", "ConstructionBase", "EnzymeCore"]
     ADTypesChainRulesCoreExt = "ChainRulesCore"
     ADTypesConstructionBaseExt = "ConstructionBase"
     ADTypesEnzymeCoreExt = "EnzymeCore"
+
+[[deps.AbstractPlutoDingetjes]]
+deps = ["Pkg"]
+git-tree-sha1 = "6e1d2a35f2f90a4bc7c2ed98079b2ba09c35b83a"
+uuid = "6e696c72-6542-2067-7265-42206c756150"
+version = "1.3.2"
 
 [[deps.Accessors]]
 deps = ["CompositionsBase", "ConstructionBase", "Dates", "InverseFunctions", "MacroTools"]
@@ -209,10 +1550,10 @@ uuid = "62783981-4cbd-42fc-bca8-16325de8dc4b"
 version = "0.1.6"
 
 [[deps.BoundaryValueDiffEq]]
-deps = ["ADTypes", "ArrayInterface", "BoundaryValueDiffEqAscher", "BoundaryValueDiffEqCore", "BoundaryValueDiffEqFIRK", "BoundaryValueDiffEqMIRK", "BoundaryValueDiffEqMIRKN", "BoundaryValueDiffEqShooting", "DiffEqBase", "FastClosures", "ForwardDiff", "LinearAlgebra", "Reexport", "SciMLBase"]
-git-tree-sha1 = "e3829b5aa0cb49348956c81b927b5edf64cdf6bf"
+deps = ["ADTypes", "BoundaryValueDiffEqAscher", "BoundaryValueDiffEqCore", "BoundaryValueDiffEqFIRK", "BoundaryValueDiffEqMIRK", "BoundaryValueDiffEqMIRKN", "BoundaryValueDiffEqShooting", "DiffEqBase", "FastClosures", "ForwardDiff", "LinearAlgebra", "Reexport", "SciMLBase"]
+git-tree-sha1 = "ca42053e5c1f2c1ec52111a2ab3e5a0908d9276d"
 uuid = "764a87c0-6b3e-53db-9096-fe964310641d"
-version = "5.16.0"
+version = "5.16.1"
 
     [deps.BoundaryValueDiffEq.extensions]
     BoundaryValueDiffEqODEInterfaceExt = "ODEInterface"
@@ -221,40 +1562,40 @@ version = "5.16.0"
     ODEInterface = "54ca160b-1b9f-5127-a996-1867f4bc2a2c"
 
 [[deps.BoundaryValueDiffEqAscher]]
-deps = ["ADTypes", "AlmostBlockDiagonals", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
-git-tree-sha1 = "a3ed69c1c0249a53622bd4435384c4e76ac547d9"
+deps = ["ADTypes", "AlmostBlockDiagonals", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastClosures", "ForwardDiff", "LinearAlgebra", "PreallocationTools", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield"]
+git-tree-sha1 = "61fbc62e8277c4d540e1e1954962ec2fdfca5965"
 uuid = "7227322d-7511-4e07-9247-ad6ff830280e"
-version = "1.5.0"
+version = "1.5.1"
 
 [[deps.BoundaryValueDiffEqCore]]
-deps = ["ADTypes", "Adapt", "ArrayInterface", "ConcreteStructs", "DiffEqBase", "ForwardDiff", "LineSearch", "LinearAlgebra", "LinearSolve", "Logging", "NonlinearSolveFirstOrder", "PreallocationTools", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays", "SparseConnectivityTracer", "SparseMatrixColorings"]
-git-tree-sha1 = "832ade257129d0c222a53b66e2d7e6f5d937ae34"
+deps = ["ADTypes", "Adapt", "ArrayInterface", "ConcreteStructs", "DiffEqBase", "ForwardDiff", "LineSearch", "LinearAlgebra", "Logging", "NonlinearSolveFirstOrder", "PreallocationTools", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays", "SparseConnectivityTracer", "SparseMatrixColorings"]
+git-tree-sha1 = "8278c1ff5aa1875e9167d2da8c419f5b8362a171"
 uuid = "56b672f2-a5fe-4263-ab2d-da677488eb3a"
-version = "1.8.0"
+version = "1.8.1"
 
 [[deps.BoundaryValueDiffEqFIRK]]
-deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
-git-tree-sha1 = "a92feb2cbb12c6c9adc4d3c4e7427709e9477540"
+deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
+git-tree-sha1 = "5030e5ef731082893f744272dc592978dd6fae7c"
 uuid = "85d9eb09-370e-4000-bb32-543851f73618"
-version = "1.6.0"
+version = "1.6.1"
 
 [[deps.BoundaryValueDiffEqMIRK]]
-deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
-git-tree-sha1 = "4cd74dc128326804f780ad6e18ec4886279293de"
+deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
+git-tree-sha1 = "c02fa2e95ccffe1dc7a4acb602c25740dfa8bfdf"
 uuid = "1a22d4ce-7765-49ea-b6f2-13c8438986a6"
-version = "1.6.0"
+version = "1.6.1"
 
 [[deps.BoundaryValueDiffEqMIRKN]]
-deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
-git-tree-sha1 = "0db565e02c9784e254325b616a8dd6c0dfec7403"
+deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
+git-tree-sha1 = "3f5635756bcffa7aa522e6dd61da39bbbe0cd3df"
 uuid = "9255f1d6-53bf-473e-b6bd-23f1ff009da4"
-version = "1.5.0"
+version = "1.5.1"
 
 [[deps.BoundaryValueDiffEqShooting]]
-deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
-git-tree-sha1 = "7429a95010c57e67bd10e52dd3f276db4d2abdeb"
+deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
+git-tree-sha1 = "400776e8f37030321d6e46576cf613142668cc55"
 uuid = "ed55bfe0-3725-4db6-871e-a1dc9f42a757"
-version = "1.6.0"
+version = "1.6.1"
 
 [[deps.BracketingNonlinearSolve]]
 deps = ["CommonSolve", "ConcreteStructs", "NonlinearSolveBase", "PrecompileTools", "Reexport", "SciMLBase"]
@@ -454,9 +1795,9 @@ version = "1.16.2+0"
 
 [[deps.DelayDiffEq]]
 deps = ["ArrayInterface", "DataStructures", "DiffEqBase", "LinearAlgebra", "Logging", "OrdinaryDiffEq", "OrdinaryDiffEqCore", "OrdinaryDiffEqDefault", "OrdinaryDiffEqDifferentiation", "OrdinaryDiffEqNonlinearSolve", "OrdinaryDiffEqRosenbrock", "Printf", "RecursiveArrayTools", "Reexport", "SciMLBase", "SimpleNonlinearSolve", "SimpleUnPack", "SymbolicIndexingInterface"]
-git-tree-sha1 = "f21c4d910df39e556a4656db85df077218287a39"
+git-tree-sha1 = "8b416f6b1f9ef8df4c13dd0fe6c191752722b36f"
 uuid = "bcd4f6db-9728-5f36-b5f7-82caef46ccdb"
-version = "5.53.0"
+version = "5.53.1"
 
 [[deps.DelimitedFiles]]
 deps = ["Mmap"]
@@ -466,9 +1807,9 @@ version = "1.9.1"
 
 [[deps.DiffEqBase]]
 deps = ["ArrayInterface", "ConcreteStructs", "DataStructures", "DocStringExtensions", "EnumX", "EnzymeCore", "FastBroadcast", "FastClosures", "FastPower", "FunctionWrappers", "FunctionWrappersWrappers", "LinearAlgebra", "Logging", "Markdown", "MuladdMacro", "Parameters", "PrecompileTools", "Printf", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators", "SciMLStructures", "Setfield", "Static", "StaticArraysCore", "Statistics", "SymbolicIndexingInterface", "TruncatedStacktraces"]
-git-tree-sha1 = "ae6f0576b4a99e1aab7fde7532efe7e47539b588"
+git-tree-sha1 = "2d4efdfcd0070e4ba9041f8edb0f3660a650deca"
 uuid = "2b5f629d-d688-5b77-993f-72d75c75574e"
-version = "6.170.1"
+version = "6.171.0"
 
     [deps.DiffEqBase.extensions]
     DiffEqBaseCUDAExt = "CUDA"
@@ -696,9 +2037,9 @@ version = "4.4.4+1"
 
 [[deps.FastAlmostBandedMatrices]]
 deps = ["ArrayInterface", "ArrayLayouts", "BandedMatrices", "ConcreteStructs", "LazyArrays", "LinearAlgebra", "MatrixFactorizations", "PrecompileTools", "Reexport"]
-git-tree-sha1 = "3f03d94c71126b6cfe20d3cbcc41c5cd27e1c419"
+git-tree-sha1 = "9482a2b4face8ade73792c23a54796c79ed1bcbf"
 uuid = "9d29842c-ecb8-4973-b1e9-a27b1157504e"
-version = "0.1.4"
+version = "0.1.5"
 
 [[deps.FastBroadcast]]
 deps = ["ArrayInterface", "LinearAlgebra", "Polyester", "Static", "StaticArrayInterface", "StrideArraysCore"]
@@ -910,6 +2251,24 @@ git-tree-sha1 = "68c173f4f449de5b438ee67ed0c9c748dc31a2ec"
 uuid = "34004b35-14d8-5ef3-9330-4cdb6864b03a"
 version = "0.3.28"
 
+[[deps.Hyperscript]]
+deps = ["Test"]
+git-tree-sha1 = "8d511d5b81240fc8e6802386302675bdf47737b9"
+uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
+version = "0.0.4"
+
+[[deps.HypertextLiteral]]
+deps = ["Tricks"]
+git-tree-sha1 = "7134810b1afce04bbc1045ca1985fbe81ce17653"
+uuid = "ac1192a8-f4b3-4bfe-ba22-af5b92cd3ab2"
+version = "0.9.5"
+
+[[deps.IOCapture]]
+deps = ["Logging", "Random"]
+git-tree-sha1 = "b6d6bfdd7ce25b0f9b2f6b3dd56b2673a66c8770"
+uuid = "b5f81e59-6552-4d32-b1f0-c071b021bf89"
+version = "0.2.5"
+
 [[deps.IfElse]]
 git-tree-sha1 = "debdd00ffef04665ccbb3e150747a77560e8fad1"
 uuid = "615f187c-cbe4-4ef1-ba3b-2fcf58d6d173"
@@ -990,9 +2349,9 @@ weakdeps = ["FastBroadcast"]
 
 [[deps.Krylov]]
 deps = ["LinearAlgebra", "Printf", "SparseArrays"]
-git-tree-sha1 = "efadd12a94e5e73b7652479c2693cd394d684f95"
+git-tree-sha1 = "b94257a1a8737099ca40bc7271a8b374033473ed"
 uuid = "ba0b0d4f-ebba-5204-a429-3ac8c609bfb7"
-version = "0.10.0"
+version = "0.10.1"
 
 [[deps.LAME_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
@@ -1162,9 +2521,9 @@ version = "1.11.0"
 
 [[deps.LinearSolve]]
 deps = ["ArrayInterface", "ChainRulesCore", "ConcreteStructs", "DocStringExtensions", "EnumX", "GPUArraysCore", "InteractiveUtils", "Krylov", "LazyArrays", "Libdl", "LinearAlgebra", "MKL_jll", "Markdown", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators", "Setfield", "StaticArraysCore", "UnPack"]
-git-tree-sha1 = "1e1f3ba20d745a9ea57831b7f30e7b275731486e"
+git-tree-sha1 = "dd7a3f6e0cc5ded5d936692d7f9f7981243d75ef"
 uuid = "7ed4a6bd-45f5-4d41-b270-4a48e9bafcae"
-version = "3.9.0"
+version = "3.10.0"
 
     [deps.LinearSolve.extensions]
     LinearSolveBandedMatricesExt = "BandedMatrices"
@@ -1735,6 +3094,12 @@ version = "1.40.13"
     ImageInTerminal = "d8c32880-2388-543b-8c61-d9f865259254"
     Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
+[[deps.PlutoUI]]
+deps = ["AbstractPlutoDingetjes", "Base64", "Dates", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "Markdown", "Random", "Reexport", "UUIDs"]
+git-tree-sha1 = "5152abbdab6488d5eec6a01029ca6697dff4ec8f"
+uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+version = "0.7.23"
+
 [[deps.PoissonRandom]]
 deps = ["Random"]
 git-tree-sha1 = "a0f1159c33f846aa77c3f30ebbc69795e5327152"
@@ -1761,9 +3126,9 @@ version = "0.2.4"
 
 [[deps.PreallocationTools]]
 deps = ["Adapt", "ArrayInterface", "ForwardDiff"]
-git-tree-sha1 = "4406f9a118bfcf362290d755fcb46c0c4894beae"
+git-tree-sha1 = "6d98eace73d82e47f5b16c393de198836d9f790a"
 uuid = "d236fae5-4411-538c-8e31-a6e3d9e00b46"
-version = "0.4.26"
+version = "0.4.27"
 
     [deps.PreallocationTools.extensions]
     PreallocationToolsReverseDiffExt = "ReverseDiff"
@@ -1951,9 +3316,9 @@ version = "0.1.0"
 
 [[deps.SciMLBase]]
 deps = ["ADTypes", "Accessors", "ArrayInterface", "CommonSolve", "ConstructionBase", "Distributed", "DocStringExtensions", "EnumX", "FunctionWrappersWrappers", "IteratorInterfaceExtensions", "LinearAlgebra", "Logging", "Markdown", "Moshi", "PrecompileTools", "Preferences", "Printf", "RecipesBase", "RecursiveArrayTools", "Reexport", "RuntimeGeneratedFunctions", "SciMLOperators", "SciMLStructures", "StaticArraysCore", "Statistics", "SymbolicIndexingInterface"]
-git-tree-sha1 = "70744adfa4d6875dfcb2c41749d20d73a90edd7d"
+git-tree-sha1 = "341c75a6ba4fa155a2471f5609163df5e3184e7b"
 uuid = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
-version = "2.86.1"
+version = "2.86.2"
 
     [deps.SciMLBase.extensions]
     SciMLBaseChainRulesCoreExt = "ChainRulesCore"
@@ -1984,9 +3349,9 @@ version = "0.1.3"
 
 [[deps.SciMLOperators]]
 deps = ["Accessors", "ArrayInterface", "DocStringExtensions", "LinearAlgebra", "MacroTools"]
-git-tree-sha1 = "1c4b7f6c3e14e6de0af66e66b86d525cae10ecb4"
+git-tree-sha1 = "05bab217b1f4b504f5a605fe02bc0e9fb92ccf02"
 uuid = "c0aeaf25-5076-4817-a8d5-81caf7dfa961"
-version = "0.3.13"
+version = "0.3.14"
 weakdeps = ["SparseArrays", "StaticArraysCore"]
 
     [deps.SciMLOperators.extensions]
@@ -2077,9 +3442,9 @@ version = "1.11.0"
 
 [[deps.SparseConnectivityTracer]]
 deps = ["ADTypes", "DocStringExtensions", "FillArrays", "LinearAlgebra", "Random", "SparseArrays"]
-git-tree-sha1 = "cccc976f8fdd51bb3a6c3dcd9e1e7d110582e083"
+git-tree-sha1 = "fadb2d7010dd92912e5eb31a493613ad4b8c9583"
 uuid = "9f842d2f-2579-4b1d-911e-f412cf18a3f5"
-version = "0.6.17"
+version = "0.6.18"
 
     [deps.SparseConnectivityTracer.extensions]
     SparseConnectivityTracerDataInterpolationsExt = "DataInterpolations"
@@ -2199,9 +3564,9 @@ version = "1.7.0"
 
 [[deps.StatsBase]]
 deps = ["AliasTables", "DataAPI", "DataStructures", "LinearAlgebra", "LogExpFunctions", "Missings", "Printf", "Random", "SortingAlgorithms", "SparseArrays", "Statistics", "StatsAPI"]
-git-tree-sha1 = "29321314c920c26684834965ec2ce0dacc9cf8e5"
+git-tree-sha1 = "b81c5035922cc89c2d9523afc6c54be512411466"
 uuid = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
-version = "0.34.4"
+version = "0.34.5"
 
 [[deps.StatsFuns]]
 deps = ["HypergeometricFunctions", "IrrationalConstants", "LogExpFunctions", "Reexport", "Rmath", "SpecialFunctions"]
@@ -2324,6 +3689,11 @@ version = "0.5.28"
 git-tree-sha1 = "0c45878dcfdcfa8480052b6ab162cdd138781742"
 uuid = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
 version = "0.11.3"
+
+[[deps.Tricks]]
+git-tree-sha1 = "6cae795a5a9313bbb4f60683f7263318fc7d1505"
+uuid = "410a4b4d-49e4-4fbc-ab6d-cb71b17b3775"
+version = "0.1.10"
 
 [[deps.TruncatedStacktraces]]
 deps = ["InteractiveUtils", "MacroTools", "Preferences"]
@@ -2669,19 +4039,74 @@ uuid = "dfaa095f-4041-5dcd-9319-2fabd8486b76"
 version = "3.5.0+0"
 
 [[deps.xkbcommon_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Wayland_jll", "Wayland_protocols_jll", "Xorg_libxcb_jll", "Xorg_xkeyboard_config_jll"]
-git-tree-sha1 = "63406453ed9b33a0df95d570816d5366c92b7809"
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Wayland_jll", "Wayland_protocols_jll", "Xorg_libxcb_jll", "Xorg_xkeyboard_config_jll"]
+git-tree-sha1 = "c950ae0a3577aec97bfccf3381f66666bc416729"
 uuid = "d8fb68d0-12a3-5cfd-a85a-d49703b185fd"
-version = "1.4.1+2"
+version = "1.8.1+0"
 """
 
 # ╔═╡ Cell order:
 # ╠═8e74a0cc-2721-11f0-2a36-1984c8274c4e
-# ╟─5ae4987f-439e-4859-b731-635b7d64d020
-# ╠═98d8b123-54e0-4d51-a88c-a6efca4381ee
-# ╠═e59398b1-8d8d-4d8d-a159-185088499508
-# ╠═d1b442d1-0b16-43a2-8919-edd439773b8b
-# ╠═648d30d9-58e1-4bf8-88c9-6fa3e53475c2
-# ╠═9dd494c8-f1af-4162-8cc1-82f82a31f3db
+# ╠═528ac3a6-437c-4350-961d-0a8d03efa9b9
+# ╠═1ad03e95-20dc-4da1-b810-e741b50bba35
+# ╠═0be6d60d-8ad6-4ff1-b351-5c3dfa848398
+# ╠═c7144f55-b94b-4d33-88aa-21b645c95336
+# ╠═7a16922d-8d3d-4f4d-b493-73a7fdccdfd7
+# ╠═b3c5195e-a5ae-46bd-b4cc-f00d4edee220
+# ╠═1738e92d-007f-49f0-8b0d-003b927e799f
+# ╠═485c75c6-1400-4fb2-8da5-09bc0bf8c856
+# ╟─3935d2cb-862b-4cda-8434-0cac8483e196
+# ╟─cbfe73af-386f-4532-ac99-c2bd240c5a09
+# ╠═74444d3a-ac80-46d3-912b-353aa04692da
+# ╟─ddae639d-fa3a-4091-bd88-57f0e830e970
+# ╠═8b4e5acc-cc1e-4d7f-9995-ddc91aa99dd7
+# ╠═70ffd663-5b03-4490-a93c-1ad5d0da91e9
+# ╠═65fe909f-ee6d-442d-b4ca-9c8d13983dbd
+# ╟─8512e3ca-b453-48f9-a918-d9f2c973827e
+# ╟─56f293f1-538a-47b7-9742-135a308cd134
+# ╠═d59fdb44-f2d5-49db-b03b-9bc3b3d1a374
+# ╠═85588d28-b44c-493e-b302-a00dde4ea875
+# ╠═c7ffd589-814d-450b-b400-e79070d5690a
+# ╠═74ccd301-c5f8-4f33-a729-06862f71d179
+# ╠═f2d114b3-98bb-4a55-ae95-20fa15466e27
+# ╠═7c6ca66f-b221-439b-ace1-be9243e0c4db
+# ╠═9f70f41f-de9b-4d2b-9a2a-900a7043fe21
+# ╟─1481d751-6c65-44bb-8346-cc094d18c13d
+# ╟─d5759bd3-a013-41a4-a0c7-06ca010abec2
+# ╠═3a7925e3-fc75-4fa8-959d-5995290fb5d7
+# ╠═b09059a6-7b83-4014-b7ee-f946f62d6476
+# ╟─67339b24-26d6-4e68-a4ec-037d34b0c313
+# ╠═0d9ff402-e63f-4212-8dc0-ad3c89494818
+# ╠═67cb17e3-5329-4bdd-bc66-7f47b9f6da22
+# ╠═d1d8049c-b187-4c0d-8f60-6871fb028b47
+# ╠═74402f7b-7c4c-4a11-b538-e698c379aae8
+# ╠═f5ca5142-0e92-405d-8c04-74b704fe9ab0
+# ╠═7d5c990c-5c5a-4071-bba5-5d9fd488733f
+# ╠═d3412d9d-1734-4832-a0e7-15b5a32c01ef
+# ╠═771add05-1ef5-4a5b-9ac1-4a8eaca81141
+# ╠═4a1145a3-854f-41c6-954a-4feda93d330d
+# ╠═5266c1b6-ff24-4344-b351-452c8c6e2b73
+# ╠═bcf7a471-1507-4bd9-9aaa-1fe5627aa8cc
+# ╠═70e35114-582f-4d52-ac68-ea2b5eb97fca
+# ╠═13c50daf-22dd-4e80-810e-76ff1c69f556
+# ╠═1b325ba8-c02d-47ef-a7df-352b4b56405f
+# ╠═4b163710-09f4-4d63-86cd-600a91df3e6f
+# ╠═c04ab6ab-f4cc-47cc-bfbc-216d0cd66f0e
+# ╟─4457c0a1-3e2f-4b9d-9190-a650a0422106
+# ╠═25c3e4e3-6f27-4570-9f85-7c9bfc49fb1b
+# ╠═b9889048-03cb-46de-b195-c57fb766ea62
+# ╠═2abcb547-2362-43b3-9e69-2764b4ce834c
+# ╠═52957617-45ac-472c-901c-9fdc87e90303
+# ╠═6b7c8941-d55f-415d-b56a-4e2a4cf5b316
+# ╠═09eae286-efd4-414b-9958-2ec5815bad79
+# ╠═884cfe12-124e-41c5-a908-13aad58151e1
+# ╠═b322fbc8-c065-481f-b1ce-d03c11097b1e
+# ╠═b2421d3a-fed4-4a1d-a8c7-eca522bdc7bc
+# ╠═edbd8a1a-ce40-4dd2-bbde-c858d7a542b6
+# ╠═a9f19212-3fd1-4036-ae73-62d2327bb08d
+# ╠═4eb507b8-6b95-45ef-b105-08f8ae92a14d
+# ╠═c55a9be0-8a67-467a-a20d-81312418f399
+# ╠═abd87a03-07f3-4712-9d3d-f7b600639b9f
+# ╠═2ddf5403-b507-4448-8c4b-c6457995a441
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
