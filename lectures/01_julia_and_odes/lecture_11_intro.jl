@@ -954,6 +954,93 @@ md"""
 
 """
 
+# ╔═╡ 12059d24-3fde-491b-afe0-e4a40467615b
+md"""
+## Dictionaries in Julia
+
+- **Type‐parametric** container: `Dict{K,V}` holds keys of type K and values of type V
+    
+- **Construction:**
+    
+```julia
+d = Dict{String,Int}("a" => 1, "b" => 2)
+```
+    
+- **Comparison to Python’s dict:**
+    
+    - Julia’s `Dict` is **type‐stable** and specialized per key/value types → faster inner loops
+        
+    - Python `dict` is dynamically typed (heterogeneous keys/values allowed)
+        
+    - Methods in Julia (`get`, `haskey`, `delete!`, broadcasting with `get.(...)`) leverage multiple dispatch
+        
+    
+- **Equivalent in MATLAB:**
+    
+    - `containers.Map(keys, values)`
+        
+    - Less performant, keys are often restricted to strings or numbers
+        
+    - No built‐in comprehensions or rich dispatch on maps
+        
+    
+- **Common operations:**
+    
+    - Lookup: `d["a"]` or `get(d, "c", default)`
+        
+    - Insertion/update: `d["c"] = 3`
+        
+    - Iteration: `for (k,v) in d ... end`
+        
+    - Views: `keys(d)`, `values(d)`, `pairs(d)`
+"""
+
+# ╔═╡ 1fcfdec5-2448-4fbe-819b-b7b3d221adb0
+md"""
+## Developing Julia Packages
+
+- **Why package your code?**
+    
+    - **Modularity & reuse:** turn scripts into reusable libraries
+        
+    - **Versioning & dependency management:** `Project.toml`/`Manifest.toml` track compatibilities
+        
+    - **Testing & CI:** include `test/runtests.jl` and integrate with GitHub Actions via `Documenter.jl`
+    
+- **Basics of a Julia package:**
+    
+  1. **Create:** `] generate MyPackage` (uses `PkgTemplates.jl` under the hood)
+
+  2. **Structure:**
+
+  ```
+  MyPackage/
+  ├── Project.toml    # name, version, deps
+  ├── src/
+  │   └── MyPackage.jl
+  └── test/
+      └── runtests.jl
+  ```
+  3. **Register & publish:** submit to General registry or host privately
+    
+- **Practical tips:**
+    
+    - **SemVer:** bump major/minor/patch in `Project.toml`
+        
+    - **Documentation:** use `Documenter.jl` to auto‐generate docs from docstrings
+        
+    - **Continuous integration:** add GitHub Actions workflows via `PkgTemplates.jl`
+        
+    - **When to package:**
+        
+        - you’re sharing code across projects or with others
+            
+        - code grows beyond a single file
+            
+        - you need formal dependency resolution and testing
+            
+"""
+
 # ╔═╡ 1f675743-49fc-4e25-a3fb-663caf46c45d
 md"""
 ## Performance Tips in Julia
@@ -2886,6 +2973,8 @@ version = "1.4.1+2"
 # ╠═000a531a-4285-4f6a-a94a-244bdc09d3b4
 # ╟─3c09293c-ed07-428b-85a6-610faa21ceb2
 # ╟─73ec936f-e3d6-423d-af80-17154e672de4
+# ╟─12059d24-3fde-491b-afe0-e4a40467615b
+# ╟─1fcfdec5-2448-4fbe-819b-b7b3d221adb0
 # ╟─1f675743-49fc-4e25-a3fb-663caf46c45d
 # ╟─118d407e-b6c9-4611-aec0-f89dfa390776
 # ╟─2688c2ca-18a3-4975-ab4f-dc5a62d71293
