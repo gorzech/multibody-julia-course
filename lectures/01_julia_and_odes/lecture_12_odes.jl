@@ -22,6 +22,7 @@ begin
 	using Plots
 	using LaTeXStrings
 	using PlutoUI
+	using LinearAlgebra
 end
 
 # ╔═╡ 8e74a0cc-2721-11f0-2a36-1984c8274c4e
@@ -91,11 +92,93 @@ where $u(t)$ is the unknown function, and $F$ is some known formula. For example
 
 """
 
-# ╔═╡ b3c5195e-a5ae-46bd-b4cc-f00d4edee220
+# ╔═╡ 74444d3a-ac80-46d3-912b-353aa04692da
 md"""
 ## Numerical Solution
 
-### Approximated derivative
+1. Introduce a mesh in time (uniform). We look for the unknown $u$ at $t_n$
+$t_n = n\Delta t, \, n=0,1,\ldots,N_t$
+2. Assume that the differential equation is valid at the mesh points (original equation is valid for all $t$ – an approximation)
+$u'(t_n) = f(t_n, u^n), \, n=0,1,\ldots,N_t$
+   - So, for our model $u' = ru$, we have 
+$u'(t_n) = ru^n, \, n=0,1,\ldots,N_t$
+
+"""
+
+# ╔═╡ cbfe73af-386f-4532-ac99-c2bd240c5a09
+### Pluto.jl cell ###
+begin
+
+    """
+    piecewise_demo(; Δ=1.0, u_true) →
+      Plot a dashed “true” curve u_true(t) and the
+      piecewise‐linear samples (t_i,u_i) at t=0:Δ:5,
+      with LaTeX tick labels t₀…t₅ and annotations u⁰…u⁵.
+    """
+    function piecewise_demo(;u_true = t -> exp(-0.2t)*(1 + 0.5*sin(2t)))
+        # sample points
+        t_samples = 0:5
+        u_samples = u_true.(t_samples)
+
+        # fine grid for dashed “true” curve
+        t_fine = range(first(t_samples), last(t_samples), length=300)
+
+        # custom xticks (no $ in the strings!)
+        xt_vals = collect(t_samples)
+        xt_labs = [LaTeXString("\$t_{" * string(i) * "}\$") for i in xt_vals]
+
+        # build the plot
+        plt = plot(
+            t_fine, u_true.(t_fine);
+            linestyle   = :dash,
+            linewidth   = 2,
+            color       = :gray,
+            label       = "",
+            xlabel      = L"t",
+            ylabel      = L"u",
+            framestyle  = :box,
+            xticks      = (xt_vals, xt_labs),
+            yticks      = nothing
+        )
+
+        # overlay the piecewise‐linear samples
+        plot!(
+            plt,
+            t_samples, u_samples;
+            linestyle  = :solid,
+            marker     = :circle,
+            markersize = 6,
+            color      = :black,
+            label      = ""
+        )
+
+		yspan   = maximum(u_samples) - minimum(u_samples)
+		y_offset = 0.05*yspan
+        # annotate each sample with u^i (again, no $ needed)
+        for (idx, (t, u)) in enumerate(zip(t_samples, u_samples))
+            lab = LaTeXString("\$u^{" * string(idx-1) * "}\$")
+            annotate!(plt, (t, u+y_offset, text(lab, 8, :center)))
+        end
+
+        return plt
+    end
+
+    # Call it (you can pass a different Δ or your own u_true)
+    piecewise_demo()
+end
+
+# ╔═╡ ddae639d-fa3a-4091-bd88-57f0e830e970
+md"""
+## Numerical Solution
+
+3. Approximate derivatives by finite differences
+   - Using derivative definition from calculus books (there are other formulas): 
+$u'(t) = \lim_{\Delta t \to 0} \frac{u(t + \Delta t) - u(t)}{\Delta t}$
+   - And at the mesh point 
+$u'(t_n) = \lim_{\Delta t \to 0} \frac{u^{n+1} - u^n}{\Delta t}$
+   - Instead of limit use small $\Delta t$, giving computable approximation (forward difference)
+$u'(t_n) \approx \frac{u^{n+1} - u^n}{\Delta t}$
+
 """
 
 # ╔═╡ 1738e92d-007f-49f0-8b0d-003b927e799f
@@ -163,104 +246,7 @@ function plot_forward_difference()
     )
 
     plt
-end
-
-# ╔═╡ 485c75c6-1400-4fb2-8da5-09bc0bf8c856
-plot_forward_difference()
-
-# ╔═╡ 3935d2cb-862b-4cda-8434-0cac8483e196
-md"""
-### Mesh and solution interpolation
-"""
-
-# ╔═╡ cbfe73af-386f-4532-ac99-c2bd240c5a09
-### Pluto.jl cell ###
-begin
-
-    """
-    piecewise_demo(; Δ=1.0, u_true) →
-      Plot a dashed “true” curve u_true(t) and the
-      piecewise‐linear samples (t_i,u_i) at t=0:Δ:5,
-      with LaTeX tick labels t₀…t₅ and annotations u⁰…u⁵.
-    """
-    function piecewise_demo(;u_true = t -> exp(-0.2t)*(1 + 0.5*sin(2t)))
-        # sample points
-        t_samples = 0:5
-        u_samples = u_true.(t_samples)
-
-        # fine grid for dashed “true” curve
-        t_fine = range(first(t_samples), last(t_samples), length=300)
-
-        # custom xticks (no $ in the strings!)
-        xt_vals = collect(t_samples)
-        xt_labs = [LaTeXString("\$t_{" * string(i) * "}\$") for i in xt_vals]
-
-        # build the plot
-        plt = plot(
-            t_fine, u_true.(t_fine);
-            linestyle   = :dash,
-            linewidth   = 2,
-            color       = :gray,
-            label       = "",
-            xlabel      = L"t",
-            ylabel      = L"u",
-            framestyle  = :box,
-            xticks      = (xt_vals, xt_labs),
-            yticks      = nothing
-        )
-
-        # overlay the piecewise‐linear samples
-        plot!(
-            plt,
-            t_samples, u_samples;
-            linestyle  = :solid,
-            marker     = :circle,
-            markersize = 6,
-            color      = :black,
-            label      = ""
-        )
-
-		yspan   = maximum(u_samples) - minimum(u_samples)
-		y_offset = 0.05*yspan
-        # annotate each sample with u^i (again, no $ needed)
-        for (idx, (t, u)) in enumerate(zip(t_samples, u_samples))
-            lab = LaTeXString("\$u^{" * string(idx-1) * "}\$")
-            annotate!(plt, (t, u+y_offset, text(lab, 8, :center)))
-        end
-
-        return plt
-    end
-
-    # Call it (you can pass a different Δ or your own u_true)
-    piecewise_demo()
-end
-
-# ╔═╡ 74444d3a-ac80-46d3-912b-353aa04692da
-md"""
-## Numerical Solution
-
-1. Introduce a mesh in time (uniform). We look for the unknown $u$ at $t_n$
-$t_n = n\Delta t, \, n=0,1,\ldots,N_t$
-2. Assume that the differential equation is valid at the mesh points (original equation is valid for all $t$ – an approximation)
-$u'(t_n) = f(t_n, u^n), \, n=0,1,\ldots,N_t$
-   - So, for our model $u' = ru$, we have 
-$u'(t_n) = ru^n, \, n=0,1,\ldots,N_t$
-
-"""
-
-# ╔═╡ ddae639d-fa3a-4091-bd88-57f0e830e970
-md"""
-## Numerical Solution
-
-3. Approximate derivatives by finite differences
-   - Using derivative definition from calculus books (there are other formulas): 
-$u'(t) = \lim_{\Delta t \to 0} \frac{u(t + \Delta t) - u(t)}{\Delta t}$
-   - And at the mesh point 
-$u'(t_n) = \lim_{\Delta t \to 0} \frac{u^{n+1} - u^n}{\Delta t}$
-   - Instead of limit use small $\Delta t$, giving computable approximation (forward difference)
-$u'(t_n) \approx \frac{u^{n+1} - u^n}{\Delta t}$
-
-"""
+end;
 
 # ╔═╡ 8b4e5acc-cc1e-4d7f-9995-ddc91aa99dd7
 plot_forward_difference()
@@ -284,14 +270,13 @@ md"""
 
 ## Population Growth
 
-- Having Forward Euler numerical scheme 
+- Having the Forward Euler numerical scheme 
 $u^{n+1} = u^n + \Delta t f(t_n, u^n), \, u_0 = U_0, \, n=0,1,\ldots,N_t-1$
-- We can write special formula for population growth model 
+- We can write a special formula for the population growth model 
 $u^{n+1} = u^n + \Delta t r u^n, \, u_0 = U_0, \, n=0,1,\ldots,N_t-1$
-- Or using original notion 
+- Or using the original notion 
 $N^{n+1} = N^n + \Delta t r N^n, \, N_0 = N_0, \, n=0,1,\ldots,N_t-1$
-- As usual we prefer general solution
-- Often in practice more accurate and efficient methods are used
+- Often in practice, more accurate and efficient methods are used
 
 """
 
@@ -357,7 +342,6 @@ begin
 	
 	# — Example usage —
 	growth_special_case(100.0, 0.1, 0.5, 50)
-	# display(plt)
 	# savefig(plt, "growth.png")
 end
 
@@ -387,6 +371,122 @@ $u^{n+1} = u^n + \Delta t f(t_n, u^n), \quad u_0 = U_0, n = 0,1,\ldots,N_t-1$
 - Create a demo (not test!) to solve population growth problem.
 
 """
+
+# ╔═╡ 9fdcbd44-b6f8-4931-ba8b-b537db0fba70
+"""
+ode_FE(f, tspan, U0) → (t, u)
+
+Forward Euler:
+  uₙ₊₁ = uₙ + Δt⋅f(tₙ, uₙ)
+
+# Arguments
+- `f(t,u)`      : derivative function (return scalar or vector)
+- `tspan=(Δt,T_end)`
+- `U0`          : initial state vector
+"""
+function ode_FE(f::Function,
+				tspan::Tuple{Float64,Float64},
+				U0::AbstractVector{T}) where T
+	dt, T_end = tspan
+	N = floor(Int, T_end/dt)
+	t = range(0, step=dt, length=N+1)
+	u = zeros(T, N+1, length(U0))       # (time × state)
+	u[1, :] = U0
+	for n in 1:N
+		u[n+1, :] = u[n, :] .+ dt .* f(t[n], u[n, :])
+	end
+	return t, u
+end
+
+# ╔═╡ 537be827-1872-4ef7-9548-7e9adf122539
+### Pluto.jl cell ###
+begin
+    using Test          # for @test
+    # assume you've already defined `ode_FE` in a prior cell
+
+    """
+    test_ode_FE(a) → DefaultTestSet
+
+    Run two hand‐made tests of `ode_FE`:
+    1. u' = u, dt=1, U₀=1, T=3 → u = [1,2,4,8]
+    """
+    function test_ode_FE()
+        # — Test 1: exponential growth —
+		@testset "ode_FE exponential growth hand calculations" begin
+	        f1(t, u) = u
+	        dt1, U0_1, T1 = 1.0, [1.0], 3.0
+	        time, sol = ode_FE(f1, (dt1, T1), U0_1)
+	        expected = [1.0, 2.0, 4.0, 8.0]
+	        expected_time = 0:dt1:T1
+	        tol = eps(1e2)
+	        @test length(sol) == length(expected)
+	        @test length(time) == length(expected_time)
+			@test isapprox(sol[:,1], expected) atol=tol
+	        @test norm(time .- expected_time) < tol
+		end
+
+		@testset "ode_FE population growth test" begin
+	        # Parameters matching the MATLAB snippet
+	        r1, r2 = 0.1234, 0.4321
+	        dt     = 0.336
+	        U0     = 5.64
+	        n      = 46
+	        T      = n * dt
+	
+	        # Forward‐Euler right‐hand side for two independent growth rates
+	        f(t, u) = ([r1, r2] .* u)
+	
+	        # Expected time vector and solution matrix
+	        t_expected = 0:dt:T
+	        expected = hcat(
+	            U0 .* (1 .+ r1*dt) .^ collect(0:n),
+	            U0 .* (1 .+ r2*dt) .^ collect(0:n)
+	        )
+	
+	        # Run the solver
+	        t, sol = ode_FE(f, (dt, T), [U0, U0])
+	
+	        # Tolerances
+	        tol = eps() * 1e5
+	
+	        # Tests
+	        @test norm(t .- t_expected) < tol
+	        @test size(sol) == size(expected)
+	        @test isapprox(sol, expected) atol=tol
+	    end
+    end
+
+    test_ode_FE()
+end
+
+# ╔═╡ 178edb27-e37f-437d-9b5c-da3a79bf6bbe
+md"""
+## General FE -- application to population growth
+"""
+
+# ╔═╡ 1a697883-9d2b-4a9d-b325-eb1715379c41
+"""
+plot_FE(t, u; labels, colors) → Plot
+
+Plot each column of `u` vs. `t`. Optionally pass own legends/colors.
+"""
+function plot_FE(t,
+				 u::AbstractMatrix;
+				 labels = ["u[$i]" for i in 1:size(u,2)])
+	plt = plot(xlabel = L"t", ylabel = L"u", legend = :best, framestyle = :box)
+	for i in 1:size(u,2)
+		plot!(plt, t, u[:, i];
+			  label = labels[i],
+			  linewidth = 2)
+	end
+	return plt
+end
+
+# ╔═╡ bc59440c-96d4-4b8a-9d2a-7ca3a6dc28a2
+Tr, Ur = ode_FE((t, u) -> 0.1u, (0.5, 25.0), [100.0])
+
+# ╔═╡ d3ad424c-6962-43e4-8652-0de9c5a363db
+plot_FE(Tr, Ur)
 
 # ╔═╡ c7ffd589-814d-450b-b400-e79070d5690a
 md"""
@@ -561,11 +661,7 @@ md"""
 ## Hands-on – 1D System Cnt.
 
 - Results don’t look promising. 
-- First, verify an implementation. For our inputs we should have:
-  -  $u^1 = 2$, $v^1 = -1.25663706$
-  -  $u^2 = 1.80260791$, $v^2 = -2.51327412$
-
-- Now reduce time step to $T_0/40$, $T_0/160$, $T_0/2000$ (you can use command figure to open new plot window). 
+- Let's reduce time step to $T_0/40$, $T_0/160$, $T_0/2000$. 
 - Do results look correct?
 """
 
@@ -933,7 +1029,7 @@ begin
             framestyle = :box,
             xticks     = (
                [t0, t1, t2],
-               [L"t_{n}", L"t_{n+1}", L"t_{n+2}"]
+               [L"t_{n}", L"t_{n+\frac{1}{2}}", L"t_{n+1}"]
             ),
             yticks     = nothing
         )
@@ -1382,8 +1478,10 @@ PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
 LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
 DifferentialEquations = "~7.16.1"
@@ -1398,7 +1496,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "332a723f9224164ba9a03965aa8b0679353a4ff2"
+project_hash = "5e758745160b288896683c0b16f6d516988c412e"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e2478490447631aedba0823d4d7a80b2cc8cdb32"
@@ -4046,67 +4144,70 @@ version = "1.8.1+0"
 """
 
 # ╔═╡ Cell order:
-# ╠═8e74a0cc-2721-11f0-2a36-1984c8274c4e
+# ╟─8e74a0cc-2721-11f0-2a36-1984c8274c4e
 # ╠═528ac3a6-437c-4350-961d-0a8d03efa9b9
-# ╠═1ad03e95-20dc-4da1-b810-e741b50bba35
-# ╠═0be6d60d-8ad6-4ff1-b351-5c3dfa848398
-# ╠═c7144f55-b94b-4d33-88aa-21b645c95336
-# ╠═7a16922d-8d3d-4f4d-b493-73a7fdccdfd7
-# ╠═b3c5195e-a5ae-46bd-b4cc-f00d4edee220
-# ╠═1738e92d-007f-49f0-8b0d-003b927e799f
-# ╠═485c75c6-1400-4fb2-8da5-09bc0bf8c856
-# ╟─3935d2cb-862b-4cda-8434-0cac8483e196
+# ╟─1ad03e95-20dc-4da1-b810-e741b50bba35
+# ╟─0be6d60d-8ad6-4ff1-b351-5c3dfa848398
+# ╟─c7144f55-b94b-4d33-88aa-21b645c95336
+# ╟─7a16922d-8d3d-4f4d-b493-73a7fdccdfd7
+# ╟─74444d3a-ac80-46d3-912b-353aa04692da
 # ╟─cbfe73af-386f-4532-ac99-c2bd240c5a09
-# ╠═74444d3a-ac80-46d3-912b-353aa04692da
 # ╟─ddae639d-fa3a-4091-bd88-57f0e830e970
+# ╟─1738e92d-007f-49f0-8b0d-003b927e799f
 # ╠═8b4e5acc-cc1e-4d7f-9995-ddc91aa99dd7
-# ╠═70ffd663-5b03-4490-a93c-1ad5d0da91e9
-# ╠═65fe909f-ee6d-442d-b4ca-9c8d13983dbd
+# ╟─70ffd663-5b03-4490-a93c-1ad5d0da91e9
+# ╟─65fe909f-ee6d-442d-b4ca-9c8d13983dbd
 # ╟─8512e3ca-b453-48f9-a918-d9f2c973827e
-# ╟─56f293f1-538a-47b7-9742-135a308cd134
-# ╠═d59fdb44-f2d5-49db-b03b-9bc3b3d1a374
-# ╠═85588d28-b44c-493e-b302-a00dde4ea875
-# ╠═c7ffd589-814d-450b-b400-e79070d5690a
-# ╠═74ccd301-c5f8-4f33-a729-06862f71d179
-# ╠═f2d114b3-98bb-4a55-ae95-20fa15466e27
-# ╠═7c6ca66f-b221-439b-ace1-be9243e0c4db
-# ╠═9f70f41f-de9b-4d2b-9a2a-900a7043fe21
+# ╠═56f293f1-538a-47b7-9742-135a308cd134
+# ╟─d59fdb44-f2d5-49db-b03b-9bc3b3d1a374
+# ╟─85588d28-b44c-493e-b302-a00dde4ea875
+# ╟─9fdcbd44-b6f8-4931-ba8b-b537db0fba70
+# ╟─178edb27-e37f-437d-9b5c-da3a79bf6bbe
+# ╟─1a697883-9d2b-4a9d-b325-eb1715379c41
+# ╠═bc59440c-96d4-4b8a-9d2a-7ca3a6dc28a2
+# ╠═d3ad424c-6962-43e4-8652-0de9c5a363db
+# ╟─c7ffd589-814d-450b-b400-e79070d5690a
+# ╟─537be827-1872-4ef7-9548-7e9adf122539
+# ╟─74ccd301-c5f8-4f33-a729-06862f71d179
+# ╟─f2d114b3-98bb-4a55-ae95-20fa15466e27
+# ╟─7c6ca66f-b221-439b-ace1-be9243e0c4db
+# ╟─9f70f41f-de9b-4d2b-9a2a-900a7043fe21
 # ╟─1481d751-6c65-44bb-8346-cc094d18c13d
 # ╟─d5759bd3-a013-41a4-a0c7-06ca010abec2
 # ╠═3a7925e3-fc75-4fa8-959d-5995290fb5d7
-# ╠═b09059a6-7b83-4014-b7ee-f946f62d6476
+# ╟─b09059a6-7b83-4014-b7ee-f946f62d6476
 # ╟─67339b24-26d6-4e68-a4ec-037d34b0c313
 # ╠═0d9ff402-e63f-4212-8dc0-ad3c89494818
-# ╠═67cb17e3-5329-4bdd-bc66-7f47b9f6da22
+# ╟─67cb17e3-5329-4bdd-bc66-7f47b9f6da22
 # ╠═d1d8049c-b187-4c0d-8f60-6871fb028b47
 # ╠═74402f7b-7c4c-4a11-b538-e698c379aae8
 # ╠═f5ca5142-0e92-405d-8c04-74b704fe9ab0
-# ╠═7d5c990c-5c5a-4071-bba5-5d9fd488733f
-# ╠═d3412d9d-1734-4832-a0e7-15b5a32c01ef
+# ╟─7d5c990c-5c5a-4071-bba5-5d9fd488733f
+# ╟─d3412d9d-1734-4832-a0e7-15b5a32c01ef
 # ╠═771add05-1ef5-4a5b-9ac1-4a8eaca81141
-# ╠═4a1145a3-854f-41c6-954a-4feda93d330d
-# ╠═5266c1b6-ff24-4344-b351-452c8c6e2b73
+# ╟─4a1145a3-854f-41c6-954a-4feda93d330d
+# ╟─5266c1b6-ff24-4344-b351-452c8c6e2b73
 # ╠═bcf7a471-1507-4bd9-9aaa-1fe5627aa8cc
-# ╠═70e35114-582f-4d52-ac68-ea2b5eb97fca
+# ╟─70e35114-582f-4d52-ac68-ea2b5eb97fca
 # ╠═13c50daf-22dd-4e80-810e-76ff1c69f556
 # ╠═1b325ba8-c02d-47ef-a7df-352b4b56405f
 # ╠═4b163710-09f4-4d63-86cd-600a91df3e6f
-# ╠═c04ab6ab-f4cc-47cc-bfbc-216d0cd66f0e
+# ╟─c04ab6ab-f4cc-47cc-bfbc-216d0cd66f0e
 # ╟─4457c0a1-3e2f-4b9d-9190-a650a0422106
-# ╠═25c3e4e3-6f27-4570-9f85-7c9bfc49fb1b
-# ╠═b9889048-03cb-46de-b195-c57fb766ea62
-# ╠═2abcb547-2362-43b3-9e69-2764b4ce834c
-# ╠═52957617-45ac-472c-901c-9fdc87e90303
-# ╠═6b7c8941-d55f-415d-b56a-4e2a4cf5b316
+# ╟─25c3e4e3-6f27-4570-9f85-7c9bfc49fb1b
+# ╟─b9889048-03cb-46de-b195-c57fb766ea62
+# ╟─2abcb547-2362-43b3-9e69-2764b4ce834c
+# ╟─52957617-45ac-472c-901c-9fdc87e90303
+# ╟─6b7c8941-d55f-415d-b56a-4e2a4cf5b316
 # ╠═09eae286-efd4-414b-9958-2ec5815bad79
 # ╠═884cfe12-124e-41c5-a908-13aad58151e1
-# ╠═b322fbc8-c065-481f-b1ce-d03c11097b1e
-# ╠═b2421d3a-fed4-4a1d-a8c7-eca522bdc7bc
-# ╠═edbd8a1a-ce40-4dd2-bbde-c858d7a542b6
-# ╠═a9f19212-3fd1-4036-ae73-62d2327bb08d
-# ╠═4eb507b8-6b95-45ef-b105-08f8ae92a14d
-# ╠═c55a9be0-8a67-467a-a20d-81312418f399
-# ╠═abd87a03-07f3-4712-9d3d-f7b600639b9f
+# ╟─b322fbc8-c065-481f-b1ce-d03c11097b1e
+# ╟─b2421d3a-fed4-4a1d-a8c7-eca522bdc7bc
+# ╟─edbd8a1a-ce40-4dd2-bbde-c858d7a542b6
+# ╟─a9f19212-3fd1-4036-ae73-62d2327bb08d
+# ╟─4eb507b8-6b95-45ef-b105-08f8ae92a14d
+# ╟─c55a9be0-8a67-467a-a20d-81312418f399
+# ╟─abd87a03-07f3-4712-9d3d-f7b600639b9f
 # ╠═2ddf5403-b507-4448-8c4b-c6457995a441
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
