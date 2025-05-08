@@ -296,54 +296,50 @@ Differential equation gives a formula for the further direction of the solution 
 """
 
 # ╔═╡ 56f293f1-538a-47b7-9742-135a308cd134
-begin
-	
-	"""
-	    growth_special_case(N0, r, Δt, Nt; show_exact=true)
-	
-	Solve `dN/dt = r*N` with Forward Euler over `0:Δt:Nt*Δt`,
-	starting from `N(0)=N0`, and plot the numerical solution.
-	If `show_exact=true`, overlay the exact `N(t)=N0*exp(r*t)`.
-	
-	# Arguments
-	- `N0::Float64` : initial population
-	- `r::Float64`  : net growth rate
-	- `Δt::Float64` : time‐step size
-	- `Nt::Int`     : number of steps
-	- `show_exact`  : whether to plot the analytic solution
-	
-	# Returns
-	- The `Plots.Plot` object
-	"""
-	function growth_special_case(N0::Float64, r::Float64, Δt::Float64, Nt::Int; show_exact::Bool=true)
-	    # time vector
-	    t = range(0, stop=Nt*Δt, length=Nt+1)
-	    N = zeros(length(t))
-	    N[1] = N0
-	
-	    # Forward‐Euler loop
-	    for n in 1:Nt
-	        N[n+1] = N[n] + r*Δt * N[n]
-	    end
-	
-	    # Pick plot style
-	    plt = Nt < 70 ? scatter(t, N; marker=:circle, label="numerical") :
-	                   plot(t, N; label="numerical")
-	
-	    # Optionally overlay exact solution
-	    if show_exact
-	        plot!(plt, t, N0 .* exp.(r .* t); color=:red, label="exact")
-	    end
-	
-	    xlabel!(plt, "t")
-	    ylabel!(plt, "N(t)")
-	    return plt
+"""
+	growth_special_case(N0, r, Δt, Nt; show_exact=true)
+
+Solve `dN/dt = r*N` with Forward Euler over `0:Δt:Nt*Δt`,
+starting from `N(0)=N0`, and plot the numerical solution.
+If `show_exact=true`, overlay the exact `N(t)=N0*exp(r*t)`.
+
+# Arguments
+- `N0::Float64` : initial population
+- `r::Float64`  : net growth rate
+- `Δt::Float64` : time‐step size
+- `Nt::Int`     : number of steps
+- `show_exact`  : whether to plot the analytic solution
+
+# Returns
+- The `Plots.Plot` object
+"""
+function growth_special_case(N0::Float64, r::Float64, Δt::Float64, Nt::Int; show_exact::Bool=true)
+	# time vector
+	t = range(0, stop=Nt*Δt, length=Nt+1)
+	N = zeros(length(t))
+	N[1] = N0
+
+	# Forward‐Euler loop
+	for n in 1:Nt
+		N[n+1] = N[n] + r*Δt * N[n]
 	end
-	
-	# — Example usage —
-	growth_special_case(100.0, 0.1, 0.5, 50)
-	# savefig(plt, "growth.png")
+
+	# Pick plot style
+	plt = Nt < 70 ? scatter(t, N; marker=:circle, label="numerical") :
+				   plot(t, N; label="numerical")
+
+	# Optionally overlay exact solution
+	if show_exact
+		plot!(plt, t, N0 .* exp.(r .* t); color=:red, label="exact")
+	end
+
+	xlabel!(plt, "t")
+	ylabel!(plt, "N(t)")
+	return plt
 end
+
+# ╔═╡ 7798c94a-b82f-490d-bf6f-d654e1321d01
+growth_special_case(100.0, 0.1, 0.5, 50)
 
 # ╔═╡ d59fdb44-f2d5-49db-b03b-9bc3b3d1a374
 md"""
@@ -1268,13 +1264,17 @@ begin
 	
 	# 3) solve with Tsit5
 	prob2 = ODEProblem(osc!, [X0, 0.0], (0.0, 10.0), params)
-	sol2  = solve(prob2, Tsit5(); reltol=1e-8, abstol=1e-8)
+	sol2  = solve(prob2, Tsit5(); reltol=1e-5, abstol=1e-2)
 	
 	# 4) overlay exact solution
 	exact(t) = X0*cos(ω0*t)
-	plot(sol2; label="numeric", xlabel="t", ylabel="x(t)")
+	#plot(sol2; label="numeric", xlabel="t", ylabel="x(t)")
+	plot(sol2.t, map(x -> x[1], sol2.u); label="numeric", xlabel="t", ylabel="x(t)")
 	plot!(sol2.t, exact.(sol2.t); linestyle=:dash, color=:red, label="exact")
 end
+
+# ╔═╡ 48821c14-9f96-4ab8-aae1-03f9e2ffc2f1
+sol2.u[:, 1]
 
 # ╔═╡ b322fbc8-c065-481f-b1ce-d03c11097b1e
 md"""
@@ -4159,15 +4159,16 @@ version = "1.8.1+0"
 # ╟─65fe909f-ee6d-442d-b4ca-9c8d13983dbd
 # ╟─8512e3ca-b453-48f9-a918-d9f2c973827e
 # ╠═56f293f1-538a-47b7-9742-135a308cd134
+# ╠═7798c94a-b82f-490d-bf6f-d654e1321d01
 # ╟─d59fdb44-f2d5-49db-b03b-9bc3b3d1a374
 # ╟─85588d28-b44c-493e-b302-a00dde4ea875
-# ╟─9fdcbd44-b6f8-4931-ba8b-b537db0fba70
+# ╠═9fdcbd44-b6f8-4931-ba8b-b537db0fba70
 # ╟─178edb27-e37f-437d-9b5c-da3a79bf6bbe
 # ╟─1a697883-9d2b-4a9d-b325-eb1715379c41
 # ╠═bc59440c-96d4-4b8a-9d2a-7ca3a6dc28a2
 # ╠═d3ad424c-6962-43e4-8652-0de9c5a363db
 # ╟─c7ffd589-814d-450b-b400-e79070d5690a
-# ╟─537be827-1872-4ef7-9548-7e9adf122539
+# ╠═537be827-1872-4ef7-9548-7e9adf122539
 # ╟─74ccd301-c5f8-4f33-a729-06862f71d179
 # ╟─f2d114b3-98bb-4a55-ae95-20fa15466e27
 # ╟─7c6ca66f-b221-439b-ace1-be9243e0c4db
@@ -4201,6 +4202,7 @@ version = "1.8.1+0"
 # ╟─6b7c8941-d55f-415d-b56a-4e2a4cf5b316
 # ╠═09eae286-efd4-414b-9958-2ec5815bad79
 # ╠═884cfe12-124e-41c5-a908-13aad58151e1
+# ╠═48821c14-9f96-4ab8-aae1-03f9e2ffc2f1
 # ╟─b322fbc8-c065-481f-b1ce-d03c11097b1e
 # ╟─b2421d3a-fed4-4a1d-a8c7-eca522bdc7bc
 # ╟─edbd8a1a-ce40-4dd2-bbde-c858d7a542b6

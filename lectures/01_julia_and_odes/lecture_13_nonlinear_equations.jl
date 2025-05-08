@@ -4,6 +4,18 @@
 using Markdown
 using InteractiveUtils
 
+# This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
+macro bind(def, element)
+    #! format: off
+    return quote
+        local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
+        local el = $(esc(element))
+        global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
+        el
+    end
+    #! format: on
+end
+
 # ╔═╡ f502e4d1-233b-44d7-bdac-3af54ee110f0
 begin
 	using DifferentialEquations
@@ -12,7 +24,24 @@ begin
 	using PlutoUI
 	using LinearAlgebra
 	using Printf
+	using Base64
+	function embed_image(path_to_image::AbstractString; height::Integer=240, type::String="png")
+	    img_bytes = read(path_to_image)
+	    # Build a data URL: "data:image/{type};base64,{...}"
+	    data_url = "data:image/$(type);base64," * base64encode(img_bytes)
+    	attrs = (:height => height,)
+	    PlutoUI.Resource(data_url, MIME("image/$(type)"), attrs)
+	end
 end
+
+# ╔═╡ 22dc552e-7d0f-420b-b13f-a013769695be
+using ForwardDiff
+
+# ╔═╡ c1bf1c44-e8c4-47c0-b3c5-1799b43c5925
+using Test
+
+# ╔═╡ 81ed7c2e-7898-41c4-9b8a-267dcc7f807d
+using StaticArrays
 
 # ╔═╡ c1852f92-3982-49bb-a2ec-3ffffce605f7
 md"""
@@ -301,54 +330,337 @@ begin
 	println(xr)
 end
 
-# ╔═╡ 05574013-0aa9-469d-839a-5b5d9ed8ef81
+# ╔═╡ d4672afb-4d42-46d1-a5ed-612f92178d16
 md"""
-## Newton-Raphson’s Method
-
-
+## Newton-Raphson’s Method Visualized
 """
+
+# ╔═╡ 0a1e1c20-d628-4f3f-a38a-8cb619d701ce
+"""
+    plot_newton_method(f, df, x0, N_steps; x_min=-3.0, x_max=3.0)
+
+Generic Newton‐method visualizer:
+- f: function
+- df: its derivative
+- x0: initial guess
+- N_steps: number of Newton iterations to perform/display
+- x_min, x_max: domain for plotting f
+"""
+function plot_newton_method(f::Function, df::Function, x0::Float64, N_steps::Int;
+                            x_min::Float64 = -3.0, x_max::Float64 = 3.0)
+
+    # Generate iterates
+    xs = [x0]
+    for i in 1:N_steps
+        push!(xs, xs[end] - f(xs[end]) / df(xs[end]))
+    end
+
+    # Plot domain
+    t_vals = range(x_min, x_max; length=400)
+
+    # Base plot of f(x)
+    plt = plot(
+        t_vals, f.(t_vals);
+        color      = :black,
+        linewidth  = 2,
+        label      = L"f(x)",
+        xlabel     = L"x",
+        ylabel     = L"f(x)",
+        legend     = :topleft,
+        framestyle = :box
+    )
+    # Zero line
+    hline!(plt, [0]; linestyle=:dash, color=:gray, label="y=0")
+
+    # Tangent lines at each iterate (except the last)
+    for (i, xn) in enumerate(xs[1:end-1])
+        slope     = df(xn)
+        intercept = f(xn) - slope*xn
+        xline     = range(xn-1, xn+1; length=60)
+        yline     = slope .* xline .+ intercept
+        plot!(
+            plt,
+            xline, yline;
+            color     = :red,
+            linestyle = :dash,
+            alpha     = 0.6,
+            label     = i == 1 ? "Tangent at xn" : ""
+        )
+    end
+
+    # Iterates on the curve
+    scatter!(
+        plt,
+        xs, f.(xs);
+        color      = :blue,
+        marker     = :circle,
+        markersize = 6,
+        label      = "Iterates"
+    )
+    # Approximations on x-axis
+    if N_steps > 0
+        scatter!(
+            plt,
+            xs[2:end], zeros(N_steps);
+            color      = :green,
+            marker     = :star,
+            markersize = 8,
+            label      = "Approximations"
+        )
+    end
+
+    return plt
+end
+
+# ╔═╡ 59312e92-4b79-4ec1-bd26-e237edc368b4
+md"""
+Newton iterations
+"""
+
+# ╔═╡ bd56bb43-980e-4564-be73-7958c207a9a3
+@bind N_steps_para Slider(0:10, default=0, show_value=true)
+
+# ╔═╡ deb5c111-def4-4bda-8dd6-3c729eb4adc4
+md"""
+Initial value
+"""
+
+# ╔═╡ 4e03fdea-2229-4354-a83f-eaeb75f87a14
+@bind x0_para Slider(0.0:5:100, default=60, show_value=true)
+
+# ╔═╡ 9355abf3-2789-4d90-b00d-f7776452543a
+plot_newton_method(x -> f(x), x -> dfdx(x), x0_para, N_steps_para;
+                   x_min=-1.0, x_max=110.0)
 
 # ╔═╡ 4c10d2c9-8b50-43ca-ad59-cf12839a86cd
 md"""
 ## Test NR With Hyperbolic Tangent
 
-Use $f(x) = \tanh x$ function (with derivative $f'(x) = 1 - \tanh^2 x$). Use initial conditions $x_0 = 1.08$ and $x_0 = 1.09$.
+- Use $f(x) = \tanh x$ function (with derivative $f'(x) = 1 - \tanh^2 x$). 
+- Use initial conditions $x_0 = 1.08$ and $x_0 = 1.09$.
 """
+
+# ╔═╡ 9068de6c-66cf-4602-9986-238ba3657dc4
+plot(tanh, -3, 3; xlabel="x", ylabel="tanh(x)", legend=false)
+
+# ╔═╡ 7f9ac983-54ef-400c-b3d7-7d036d097364
+begin
+	f_th(x)    = tanh(x)
+	dfdx_th(x) = 1 - tanh(x)^2
+	
+	xr_th = naive_newton(f_th, dfdx_th, 1.08, 1e-6)
+	println(xr_th)
+end
 
 # ╔═╡ dbd44a94-de01-49e9-b08c-602753b1a6c7
 md"""
-## Hands-on – Why Newton’s Method Fails?
+## Hands-on – Why does Newton’s Method Fail?
 
-Solve $\tanh x = 0$ by Newton’s method and study the intermediate details of the algorithm. Start with $x_0 = 1.08$. Plot the tangent in each iteration of Newton’s method. Then repeat the calculations and the plotting when $x_0 = 1.09$. Explain what you observe.
-
-`plot_Newton_tanh.m` (in debug mode).
+- Solve $\tanh x = 0$ by Newton’s method and study the intermediate details of the algorithm. 
+- Start with $x_0 = 1.08$. 
+- Plot the tangent in each iteration of Newton’s method. 
+- Then repeat the calculations and the plotting when $x_0 = 1.09$. 
+- Explain what you observe.
 """
+
+# ╔═╡ e8417fec-ea8c-43e0-9ed8-89f1dadbf97d
+md"""
+Initial value
+"""
+
+# ╔═╡ e2797cbe-77ff-4a2a-88f7-0b2c56215050
+@bind x0 Slider(1.0:0.01:1.1, default=1.08, show_value=true)
+
+# ╔═╡ d9bbee08-5efc-44e1-b939-a5ebb6351fe7
+md"""
+Newton iterations.
+"""
+
+# ╔═╡ abaa5daf-9d05-4a2c-8e74-ff63714030b7
+@bind N_steps Slider(0:8, default=0, show_value=true)
+
+# ╔═╡ 23e08013-56a8-40fa-8c5b-c0c3c1bc97ad
+plot_newton_method(x -> f_th(x), x -> dfdx_th(x), x0, N_steps;
+                   x_min=-3.0, x_max=3.0)
 
 # ╔═╡ a8e9887c-3190-41d4-83c3-cd1ee295bc09
 md"""
 ## Robust Newton-Raphson
 
-Newton-Raphson’s method can diverge. In such a case, our naïve implementation may run forever. Thus, we should limit the number of evaluations. Check if numerical values are numbers and are finite. Call function $f(x)$ only once at each call. Once again, let’s check the implementation. Newton’s method works better if $x_0$ is close to a real solution.
-
-* `Newton.m`
-* `demo_Newtons_method.m`
+- Newton-Raphson’s method can diverge. In such a case, our naïve implementation may run forever. 
+- Thus, we should limit the number of evaluations. 
+- Check if numerical values are numbers and are finite. 
+- Call function $f(x)$ only once at each call. 
+- Once again, let’s check the implementation. 
+- Newton’s method works the best if $x_0$ is close to a real solution.
 """
+
+# ╔═╡ 61f2b03f-c7dd-4d9f-b79a-b888f47a8699
+"""
+    newton(f, dfdx, x0, tol; maxiter=100) → (root, n_iters)
+
+Newton–Raphson solver that throws on bad iterates or no convergence:
+
+# Arguments
+- `f(x)`       : function
+- `dfdx(x)`    : its derivative
+- `x0`         : initial guess
+- `tol`        : |f(x)| tolerance for convergence
+- `maxiter`    : maximum allowed iterations (keyword)
+
+# Returns
+- `(root, n_iters)`
+
+# Throws
+- `ErrorException` if `x` becomes NaN/Inf or if it fails to converge within `maxiter`.
+"""
+function newton(f::Function, dfdx::Function, x0::Float64, tol::Float64; maxiter::Int=100)
+    x    = x0
+    fval = f(x)
+    iter = 0
+
+    while abs(fval) > tol && iter < maxiter
+        x_new = x - fval / dfdx(x)
+        if isnan(x_new) || isinf(x_new)
+            throw(ErrorException("Newton diverged: x became $x_new at iteration $iter"))
+        end
+        x    = x_new
+        fval = f(x)
+        iter += 1
+    end
+
+    if abs(fval) > tol
+        throw(ErrorException("Newton did not converge in $maxiter iterations (|f(x)| = $fval > $tol)"))
+    end
+
+    return x, iter
+end
+
+# ╔═╡ 2fc6245b-6142-4367-93cb-fe2458ec0698
+newton(f, dfdx, 1000.0, 1e-6)
+
+# ╔═╡ 831e25d8-8d81-4ea4-b60a-82721b1ecd96
+newton(f_th, dfdx_th, 1.08, 1e-6)
+
+# ╔═╡ a33d7d5c-3950-4967-9b04-ff25e30fa626
+newton(f_th, dfdx_th, 1.08, 1e-6)
 
 # ╔═╡ 80ee2155-30b7-433b-ab17-de7dc2f73be8
 md"""
-## Symbolic Computations for Derivative
+## Automatic Differentiation (AD) and Jacobians
 
-Newton-Raphson requires function derivative $f'(x)$. In some cases, this may be troublesome. But often, we can use symbolic computations to compute it. File: `symbolic_differentiation.m`
+- **What is AD?**
+    
+    - A way to compute exact derivatives (no finite‐difference error) by mechanically applying the chain rule to your code.
+        
+    - Two main flavors:
+        
+        - **Forward‐mode** (one directional sweep, good for functions $\mathbb{R}^n\to\mathbb{R}$ with small $n$)
+            
+        - **Reverse‐mode** (backward sweep, ideal for functions $\mathbb{R}^n\to\mathbb{R}^m$ with small $m$; e.g. neural nets)
+            
+        
+    
+- **Key Julia packages:**
+    
+    - [ForwardDiff.jl](https://github.com/JuliaDiff/ForwardDiff.jl) – forward‐mode AD for gradients, Hessians, Jacobians
+        
+    - [Zygote.jl](https://github.com/FluxML/Zygote.jl) – reverse‐mode “source‐to‐source” AD for arbitrary Julia code
+        
+    
+- **Why use AD?**
+    
+    - No step‐size tuning or truncation error like finite differences
+        
+    - Exact up to machine precision
+        
+    - Works on loops, branches, user‐defined types
+        
+### Example: gradient and Jacobian with ForwardDiff.jl
 
-```matlab
-syms x;               % define x as a mathematical symbol
-f_expr = x^2 - 9;     % symbolic expression for f(x)
-dfdx_expr = diff(f_expr);    % compute f’(x) symbolically
-% Turn f_expr and dfdx_expr into plain Matlab functions
-f = matlabFunction(f_expr);
-dfdx = matlabFunction(dfdx_expr);
-dfdx(5); % will print 10
-```
+"""
+
+# ╔═╡ 7dccfee3-76a7-4ccb-90d8-2443f660f3cd
+# Scalar‐valued f: R² → R
+f_diff(x) = sin(x[1]) * exp(x[2])
+
+# ╔═╡ e1baf2a3-46b8-44b3-92c2-8e4803d945b4
+# Compute ∇f at [1.0, 2.0]
+grad_f = ForwardDiff.gradient(f_diff, [1.0, 2.0])
+# grad_f ≈ [cos(1.0)*exp(2.0), sin(1.0)*exp(2.0)]
+
+# ╔═╡ 4995bae0-9cdd-415f-9d89-a3e7b8e12d5a
+# Vector‐valued F: R² → R²
+F_diff(x) = [x[1]^2 + x[2],  x[1] - sin(x[2])]
+
+# ╔═╡ 93353fa3-6c74-482b-a56a-05488d172e05
+# Compute Jacobian J = dF/dx at [1.0, 2.0]
+jac_F = ForwardDiff.jacobian(F_diff, [1.0, 2.0])
+# jac_F ≈ [ 2*x₁    1
+#           1     -cos(x₂) ] at x=[1,2]
+
+# ╔═╡ a9f20f7e-03cf-45b9-baca-c249524ba383
+# Example of using ForwardDiff with newton method
+newton(f, x -> ForwardDiff.derivative(f, x), 1000.0, 1e-6)
+
+# ╔═╡ 1d07960c-e17f-4f6f-94b0-899825617bf0
+md"""
+**When to AD‐ify:**
+
+- During development of optimization routines (Newton’s method, least‐squares)
+    
+- In sensitivity analysis, parameter estimation, or when your ODE/DAE solver needs Jacobians
+    
+- Whenever finite‐difference is too slow or inaccurate
+    
+
+  
+
+**Pro tip:** wrap your model code in pure functions and choose the AD backend that best matches your problem size and sparsity.
+"""
+
+# ╔═╡ aefc0be4-c22e-482d-bdb4-7636a9ee9fb5
+md"""
+## Efficiency: AD vs Hand-Derived Derivatives
+
+- **Runtime overhead**
+    
+    - **Forward-mode AD** incurs an O(n) factor (ndual-number operations for each input dimension) above the original function call. Typical constant-factor overhead is **2–5×** for small n.
+        
+    - **Reverse-mode AD** has an O(1) “forward” pass plus an O(1) “backward” pass per output—often **3–10×** slower than the raw function evaluation.
+        
+    
+- **Hand-coded (analytical) derivatives**
+    
+    - Minimal additional cost beyond the original function: you pay only for the arithmetic in your formula.
+        
+    - For simple, low-dimensional problems, a hand-derived derivative can be **10–100×** faster than AD.
+        
+    
+- **Development & maintenance trade-off**
+    
+    - **AD:** zero manual derivation, automatic consistency when you change your model, fewer bugs from dropped terms.
+        
+    - **Analytical:** error-prone to derive by hand, more tedious to update when your model evolves.
+        
+    
+- **When to hand-derive**
+    
+    - Critical inner loops (e.g. very large systems, real-time constraints).
+        
+    - Highly structured or sparse Jacobians where you can exploit problem-specific speedups.
+        
+    
+- **When to rely on AD**
+    
+    - Rapid prototyping of new models, optimization routines, or sensitivity analyses.
+        
+    - Complex functions where hand derivation is impractical or error-prone.
+        
+    
+- **Practical tip**
+    
+    - **Benchmark** both approaches using **BenchmarkTools.jl** (@btime). Often a hybrid approach works best: use AD during development and hand-optimize “hot” routines later.
 """
 
 # ╔═╡ 3690c1e7-493a-4d4f-bcef-89db29a369c1
@@ -379,11 +691,14 @@ md"""
 md"""
 ## Solving Multiple Nonlinear Algebraic Equations
 
-We can write $f(x) = 0$. Having specific example as: 
+We can write $\mathbf{f}(\mathbf{x}) = \mathbf{0}$. Having specific example as: 
 
 $$\begin{align*} x^2 &= y - x \cos(\pi x) \\ yx + e^{-y} &= x^{-1} \end{align*}$$ 
 
-With vector notation we can write $\mathbf{x} = \begin{bmatrix} x \\ y \end{bmatrix}$, $f(x) = \begin{bmatrix} x^2 - y + x \cos(\pi x) \\ yx + e^{-y} - x^{-1} \end{bmatrix} = \begin{bmatrix} 0 \\ 0 \end{bmatrix}$.
+With vector notation we can write 
+
+ $\mathbf{x} = \begin{bmatrix} x \\ y \end{bmatrix}$, 
+ $\mathbf{f}(\mathbf{x}) = \begin{bmatrix} x^2 - y + x \cos(\pi x) \\ yx + e^{-y} - x^{-1} \end{bmatrix} = \begin{bmatrix} 0 \\ 0 \end{bmatrix}$.
 """
 
 # ╔═╡ fcaf9506-93e0-49bf-9b01-04a09f930671
@@ -391,25 +706,26 @@ md"""
 ## Taylor Expansion
 
 - We want to follow an idea from one variable function: linearize it and find a root of that linearized function. 
-- For vector function $\mathbf{f}(x)$ we can use first two terms of a Taylor series expansion. 
-- Having $f$ and its derivative at point $x_i$ we can approximate it at some point $x_{i+1}$ by the two terms of a Taylor series around $x_i$: 
+- For vector function $\mathbf{f}(\mathbf{x})$ we can use first two terms of a Taylor series expansion. 
+- Having $\mathbf{f}$ and its derivative at point $\mathbf{x}_i$ we can approximate it at some point $\mathbf{x}_{i+1}$ by the two terms of a Taylor series around $\mathbf{x}_i$: 
 
-$$f(x_{i+1}) \approx f(x_i) + \mathbf{f(x_i)}(x_{i+1} - x_i)$$ 
+$$\mathbf{f}(\mathbf{x}_{i+1}) \approx \mathbf{f}(\mathbf{x}_i) +  
+\nabla\mathbf{f}(\mathbf{x}_i)(\mathbf{x}_{i+1} - \mathbf{x}_i)$$ 
 
-- Good, but what is $\mathbf{\nabla f(x_i)}$?
+- Good, but what is $\nabla\mathbf{f}(\mathbf{x}_i)$?
 """
 
 # ╔═╡ f883bc04-8e42-4077-9518-e5de695a41b2
 md"""
 ## Jacobian Matrix
 
-$\mathbf{\nabla f} = \frac{\partial f}{\partial x}$ is the matrix of all partial derivatives of $f$. 
+-  $\nabla \mathbf{f} = \frac{\partial \mathbf{f}}{\partial \mathbf{x}}$ is the matrix of all partial derivatives of $\mathbf{f}$. 
 
-$\mathbf{\nabla f}$ is often denoted by $\mathbf{J}$ and called Jacobian matrix: 
+-  $\nabla \mathbf{f}$ is often denoted by $\mathbf{J}$ and called Jacobian matrix: 
 
-$$\mathbf{J} = \mathbf{\nabla f} = \frac{\partial f}{\partial x} = \begin{bmatrix} \frac{\partial f_1}{\partial x_1} & \frac{\partial f_1}{\partial x_2} & \ldots & \frac{\partial f_1}{\partial x_n} \\ \frac{\partial f_2}{\partial x_1} & \frac{\partial f_2}{\partial x_2} & \ldots & \frac{\partial f_2}{\partial x_n} \\ \vdots & \vdots & \ddots & \vdots \\ \frac{\partial f_n}{\partial x_1} & \frac{\partial f_n}{\partial x_2} & \ldots & \frac{\partial f_n}{\partial x_n} \end{bmatrix}$$ 
+$$\mathbf{J} = \nabla \mathbf{f} = \frac{\partial \mathbf{f}}{\partial \mathbf{x}} = \begin{bmatrix} \frac{\partial f_1}{\partial x_1} & \frac{\partial f_1}{\partial x_2} & \ldots & \frac{\partial f_1}{\partial x_n} \\ \frac{\partial f_2}{\partial x_1} & \frac{\partial f_2}{\partial x_2} & \ldots & \frac{\partial f_2}{\partial x_n} \\ \vdots & \vdots & \ddots & \vdots \\ \frac{\partial f_n}{\partial x_1} & \frac{\partial f_n}{\partial x_2} & \ldots & \frac{\partial f_n}{\partial x_n} \end{bmatrix}$$ 
 
-In general Jacobian matrix does not have to be square.
+- In general, the Jacobian matrix does not have to be square.
 """
 
 # ╔═╡ da8211e3-578d-485c-bbd0-bafc9c80602f
@@ -418,68 +734,166 @@ md"""
 
 - For our example 
 
- $\mathbf{x} = \begin{bmatrix} x \\ y \end{bmatrix}$, $f(x) = \begin{bmatrix} x^2 - y + x \cos(\pi x) \\ yx + e^{-y} - x^{-1} \end{bmatrix}$. 
+$\mathbf{x} = \begin{bmatrix} x \\ y \end{bmatrix}, \quad \mathbf{f}(\mathbf{x}) = \begin{bmatrix} x^2 - y + x \cos(\pi x) \\ yx + e^{-y} - x^{-1} \end{bmatrix}$
 
 - Jacobian matrix is as follows: 
 
-$$\mathbf{J} = \mathbf{\nabla f} = \begin{bmatrix} \frac{\partial f_1}{\partial x} & \frac{\partial f_1}{\partial y} \\ \frac{\partial f_2}{\partial x} & \frac{\partial f_2}{\partial y} \end{bmatrix} = \begin{bmatrix} 2x + \cos(\pi x) - \pi x \sin(\pi x) & -1 \\ y + x^{-2} & x - e^{-y} \end{bmatrix}$$
+$$\mathbf{J} = \nabla \mathbf{f} = \begin{bmatrix} \frac{\partial f_1}{\partial x} & \frac{\partial f_1}{\partial y} \\ \frac{\partial f_2}{\partial x} & \frac{\partial f_2}{\partial y} \end{bmatrix} = \begin{bmatrix} 2x + \cos(\pi x) - \pi x \sin(\pi x) & -1 \\ y + x^{-2} & x - e^{-y} \end{bmatrix}$$
+"""
+
+# ╔═╡ 37cf8e43-ca5b-4e75-941d-f786062d01b1
+md"""
+## Newton-Raphson’s Method
+
+- With approximation $\mathbf{x}_i$ to the root we seek a new (hopefully better) one $\mathbf{x}_{i+1}$ by approximating problem $\mathbf{f}(\mathbf{x}_{i+1}) = \mathbf{0}$ by a linear function: 
+
+$$\mathbf{f}(\mathbf{x}_i) + \mathbf{J}(\mathbf{x}_i)(\mathbf{x}_{i+1} - \mathbf{x}_i) = 0$$ 
+
+- This equation is linear system with coefficient matrix $\mathbf{J}$. After rewriting: 
+
+$$\mathbf{J}(\mathbf{x}_i)\boldsymbol{\delta} = -\mathbf{f}(\mathbf{x}_i)$$ 
+
+- Here we introduce new vector $\boldsymbol{\delta} = \mathbf{x}_{i+1} - \mathbf{x}_i$. 
 """
 
 # ╔═╡ ba859435-b135-4b60-b78b-5295ba7b5bf7
 md"""
-## Newton-Raphson’s Method
 
-The $i$-th step of Newton-Raphson iteration consists of two steps:
+- The $i$-th step of Newton-Raphson iteration consists of two steps:
 
-1. Solve the linear system $\mathbf{J(x_i)}\delta = -f(x_i)$ with respect to $\delta$.
-2. Set $x_{i+1} = x_i + \delta$.
+1. Solve the linear system $\mathbf{J}(\mathbf{x}_i)\boldsymbol{\delta} = -\mathbf{f}(\mathbf{x}_i)$ with respect to $\boldsymbol{\delta}$.
+2. Set $\mathbf{x}_{i+1} = \mathbf{x}_i + \boldsymbol{\delta}$.
 
-Linear systems are usually solved using a variant of Gaussian elimination. Matlab uses the well-known LAPACK package for this purpose. In Matlab, use the backslash operator (mldivide) to solve $Ax = b$ by $x = A \backslash b$. Never-ever use the inverse – it is slower and less accurate. The Jacobian is often a sparse matrix (i.e., contains mostly zero elements). In such cases, special methods may be more efficient (often iterative).
+- Linear systems are usually solved using a variant of Gaussian elimination. 
+- Julia uses the well-known LAPACK package for this purpose (for dense matrices). 
+- In Julia, use the backslash operator (`ldiv!`) to solve $\mathbf{A}\mathbf{x} = \mathbf{b}$ by `x = A\b`. Never-ever use the inverse – it is slower and less accurate. 
+- The Jacobian is often a sparse matrix (i.e., contains mostly zero elements). In such cases, special methods may be more efficient (often iterative).
 """
+
+# ╔═╡ fdf1143e-7991-4fd4-bd63-a2755cefa64c
+"""
+    newton_system(F, J, x0; tol=1e-8, maxiter=100)
+
+Solve the nonlinear system F(x) = 0 via Newton–Raphson:
+
+- `F(x)` returns a vector of length m.
+- `J(x)` returns the m×m Jacobian matrix.
+- `x0` is your initial guess (length-m vector).
+- `tol` is the convergence tolerance on ‖F(x)‖₂.
+- `maxiter` is the maximum number of iterations.
+
+Returns `(root, n_iter)`.  
+Throws an `ErrorException` if the method fails to converge within `maxiter` iterations,
+or if the Jacobian becomes singular.
+"""
+function newton_system(F::Function,
+                       J::Function,
+                       x0::AbstractVector{T};
+                       tol::Real = 1e-8,
+                       maxiter::Int = 100) where {T<:Real}
+
+    # work on a copy so we don't mutate the input
+    x = copy(x0)
+    for iter in 1:maxiter
+        Fx = F(x)
+        Fnorm = norm(Fx)
+        if Fnorm ≤ tol
+            return x, iter-1
+        end
+        # solve J(x)*Δ = -F(x)
+        Δ = -J(x) \ Fx
+        x += Δ
+    end
+
+    # if we get here, we exceeded maxiter without convergence
+    final_norm = norm(F(x))
+    throw(ErrorException(
+        "Newton–Raphson failed to converge after $maxiter iterations; " *
+        "‖F(x)‖ = $final_norm > $tol"
+    ))
+end
+
+# ╔═╡ 178e91a4-f96e-43a9-8690-70c78cee815c
+@testset "Newton–Raphson system solver" begin
+    # Define the nonlinear system F(x) = 0
+    F(x) = @SVector [
+        x[1]^2 - x[2] + x[1]*cos(pi*x[1]),
+        x[1]*x[2] + exp(-x[2]) - x[1]^(-1)
+    ]
+
+    # Define the Jacobian J(x)
+    J(x) = @SMatrix [
+        2*x[1] + cos(pi*x[1]) - pi*x[1]*sin(pi*x[1])   -1;
+        x[2] + x[1]^(-2)                              x[1] - exp(-x[2])
+    ]
+
+    # Known solution and tolerance
+    expected = @SVector [1.0, 0.0]
+    tol      = 1e-4
+
+	x0 = @SVector [2.0, -1.0]
+    x_approx, n_iters = newton_system(F, J, x0; tol=tol, maxiter=100)
+
+    # Check convergence and accuracy
+    @test n_iters ≥ 0                         # converged (didn't throw)
+    @test norm(x_approx - expected) < tol    # within tolerance
+end
 
 # ╔═╡ 70524fd5-c20d-420b-9fac-13a96a45c321
 md"""
 ## Hands-on – Simple Mechanism
 
-Use the Newton-Raphson method to find $\phi_2$ and $d$ when $\phi_1 = 30^\circ$.
-Constraints are as follows: $$\Phi(u) = \begin{bmatrix} b \cos \phi_1 + a \cos \phi_2 - d \ b \sin \phi_1 + a \sin \phi_2 - r \end{bmatrix} = 0$$
-Jacobian matrix is: $$\Phi_u = \begin{bmatrix} -a \sin \phi_2 & -1 \ a \cos \phi_2 & 0 \end{bmatrix} = 0$$
-Source: P. E. Nikravesh, Computer-aided analysis.
+- Use the Newton-Raphson method to find $\phi_2$ and $d$ when $\phi_1 = 30^\circ$.
+- Constraints are as follows: 
+$$\boldsymbol{\Phi}(\boldsymbol{u}) = \begin{bmatrix} b \cos \phi_1 + a \cos \phi_2 - d \\ b \sin \phi_1 + a \sin \phi_2 - r \end{bmatrix} = \boldsymbol{0}$$
+
+- Jacobian matrix is: 
+$$\boldsymbol{\Phi}_\boldsymbol{u} = \begin{bmatrix} -a \sin \phi_2 & -1 \\ a \cos \phi_2 & 0 \end{bmatrix}$$
+
+$(embed_image("../../assets/figures/lecture_13_simple_mechanism.png", type="png", height=300))
 """
 
 # ╔═╡ 41ccdb5e-34b2-429f-95db-4c863e6060b5
 md"""
-## Assignment 2 of 2
+## Hands-on 2 -- Slider-crank mechanism
 
-Having $a = OA$, $b = AB$, and $d = OB$: $$\mathbf{x} = \begin{bmatrix} \theta \ d \end{bmatrix} $$ $$ f(x) = \begin{bmatrix} a \cos \phi + b \cos \theta - d \ a \sin \phi - b \sin \theta \end{bmatrix}$$
+- Having $a = OA$, $b = AB$, and $d = OB$: 
+$$\mathbf{x} = \begin{bmatrix} \theta \\ d \end{bmatrix} $$ 
 
-Solve $f(x) = 0$ for $x$ for given $\phi$. Write a program that solves $f(x,t) = 0$ for $x$ using Newton-Raphson’s method. Use $\dot{f}(x,t) = 0$ to solve for $\dot{x}$. Loop for $t = \text{linspace}(0,1,101)$.
+$$ \mathbf{f}(\mathbf{x}) = \begin{bmatrix} a \cos \phi + b \cos \theta - d \\ a \sin \phi - b \sin \theta \end{bmatrix}$$
 
-Source: P. E. Nikravesh, Computer-aided analysis.
-"""
+Solve $\mathbf{f}(\mathbf{x}) = \mathbf{0}$ for $\mathbf{x}$ for given $\phi$. 
+- Write a program that solves $\mathbf{f}(\mathbf{x},t) = \mathbf{0}$ for $\mathbf{x}$ using Newton-Raphson’s method. 
+- Use $\dot{\mathbf{f}}(\mathbf{x},t) = \mathbf{0}$ to solve for $\dot{\mathbf{x}}$. 
+- Loop for `t = range(0, stop=1, length=101)`
+- Solve the problem using $\phi = \frac{\pi}{6} + \omega t$. 
+- Create plots of $t$ versus angle $\theta$, displacement $d$, and their time derivatives. 
+- Remember to use proper code indent, comments, and meaningful variable and file names.
 
-# ╔═╡ 542529ea-75f1-4dcc-b408-8d0c71c73ed0
-md"""
-## Assignment 2 of 2
-
-Solve the problem from the previous slide using $\phi = \frac{\pi}{6} + \omega t$. Create plots of $t$ versus angle $\theta$, displacement $d$, and their time derivatives. Write a brief report (up to 2 A4 pages with 12 pt font) about your solution. Submit the report in PDF. Attach sources as a zip archive. Remember about proper code indent, comments, and meaningful variable and file names.
+$(embed_image("../../assets/figures/lecture_13_slider_crank_example.png", type="png", height=300))
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
+Base64 = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
 DifferentialEquations = "~7.16.1"
+ForwardDiff = "~0.10.38"
 LaTeXStrings = "~1.4.0"
 Plots = "~1.40.13"
 PlutoUI = "~0.7.23"
+StaticArrays = "~1.9.13"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -488,7 +902,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "3e3ec52bab722fe8e8f7423e54d761f2796efec9"
+project_hash = "fdba10c56cf29d7a16f24f16c9ca622ade1201a2"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e2478490447631aedba0823d4d7a80b2cc8cdb32"
@@ -3149,20 +3563,49 @@ version = "1.8.1+0"
 # ╟─24edbd93-df12-456a-9ca2-e02fded15963
 # ╠═c5ab7767-0dcd-4c8a-b37b-4d89c7f0b207
 # ╠═a344bee0-9ece-4962-9219-0317ae3e32a2
-# ╠═05574013-0aa9-469d-839a-5b5d9ed8ef81
-# ╠═4c10d2c9-8b50-43ca-ad59-cf12839a86cd
-# ╠═dbd44a94-de01-49e9-b08c-602753b1a6c7
-# ╠═a8e9887c-3190-41d4-83c3-cd1ee295bc09
-# ╠═80ee2155-30b7-433b-ab17-de7dc2f73be8
-# ╠═3690c1e7-493a-4d4f-bcef-89db29a369c1
-# ╠═ac009506-61fe-4dfd-94b5-d0e6d53e8b7e
-# ╠═bda51d4d-4e02-456f-988b-3d067702ea3f
-# ╠═fcaf9506-93e0-49bf-9b01-04a09f930671
-# ╠═f883bc04-8e42-4077-9518-e5de695a41b2
-# ╠═da8211e3-578d-485c-bbd0-bafc9c80602f
-# ╠═ba859435-b135-4b60-b78b-5295ba7b5bf7
-# ╠═70524fd5-c20d-420b-9fac-13a96a45c321
-# ╠═41ccdb5e-34b2-429f-95db-4c863e6060b5
-# ╠═542529ea-75f1-4dcc-b408-8d0c71c73ed0
+# ╟─d4672afb-4d42-46d1-a5ed-612f92178d16
+# ╟─0a1e1c20-d628-4f3f-a38a-8cb619d701ce
+# ╟─59312e92-4b79-4ec1-bd26-e237edc368b4
+# ╟─bd56bb43-980e-4564-be73-7958c207a9a3
+# ╟─deb5c111-def4-4bda-8dd6-3c729eb4adc4
+# ╠═4e03fdea-2229-4354-a83f-eaeb75f87a14
+# ╠═9355abf3-2789-4d90-b00d-f7776452543a
+# ╟─4c10d2c9-8b50-43ca-ad59-cf12839a86cd
+# ╠═9068de6c-66cf-4602-9986-238ba3657dc4
+# ╠═7f9ac983-54ef-400c-b3d7-7d036d097364
+# ╟─dbd44a94-de01-49e9-b08c-602753b1a6c7
+# ╟─e8417fec-ea8c-43e0-9ed8-89f1dadbf97d
+# ╟─e2797cbe-77ff-4a2a-88f7-0b2c56215050
+# ╟─d9bbee08-5efc-44e1-b939-a5ebb6351fe7
+# ╟─abaa5daf-9d05-4a2c-8e74-ff63714030b7
+# ╠═23e08013-56a8-40fa-8c5b-c0c3c1bc97ad
+# ╟─a8e9887c-3190-41d4-83c3-cd1ee295bc09
+# ╠═61f2b03f-c7dd-4d9f-b79a-b888f47a8699
+# ╠═2fc6245b-6142-4367-93cb-fe2458ec0698
+# ╠═831e25d8-8d81-4ea4-b60a-82721b1ecd96
+# ╠═a33d7d5c-3950-4967-9b04-ff25e30fa626
+# ╟─80ee2155-30b7-433b-ab17-de7dc2f73be8
+# ╠═22dc552e-7d0f-420b-b13f-a013769695be
+# ╠═7dccfee3-76a7-4ccb-90d8-2443f660f3cd
+# ╠═e1baf2a3-46b8-44b3-92c2-8e4803d945b4
+# ╠═4995bae0-9cdd-415f-9d89-a3e7b8e12d5a
+# ╠═93353fa3-6c74-482b-a56a-05488d172e05
+# ╠═a9f20f7e-03cf-45b9-baca-c249524ba383
+# ╟─1d07960c-e17f-4f6f-94b0-899825617bf0
+# ╟─aefc0be4-c22e-482d-bdb4-7636a9ee9fb5
+# ╟─3690c1e7-493a-4d4f-bcef-89db29a369c1
+# ╟─ac009506-61fe-4dfd-94b5-d0e6d53e8b7e
+# ╟─bda51d4d-4e02-456f-988b-3d067702ea3f
+# ╟─fcaf9506-93e0-49bf-9b01-04a09f930671
+# ╟─f883bc04-8e42-4077-9518-e5de695a41b2
+# ╟─da8211e3-578d-485c-bbd0-bafc9c80602f
+# ╟─37cf8e43-ca5b-4e75-941d-f786062d01b1
+# ╟─ba859435-b135-4b60-b78b-5295ba7b5bf7
+# ╠═fdf1143e-7991-4fd4-bd63-a2755cefa64c
+# ╠═c1bf1c44-e8c4-47c0-b3c5-1799b43c5925
+# ╠═81ed7c2e-7898-41c4-9b8a-267dcc7f807d
+# ╠═178e91a4-f96e-43a9-8690-70c78cee815c
+# ╟─70524fd5-c20d-420b-9fac-13a96a45c321
+# ╟─41ccdb5e-34b2-429f-95db-4c863e6060b5
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
