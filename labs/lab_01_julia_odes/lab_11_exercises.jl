@@ -42,6 +42,43 @@ md"""
 Grzegorz Orzechowski
 """
 
+# ╔═╡ 20ac7c1f-d3d4-48d7-94a4-ae057ab6f7a3
+md"""
+## Pluto Lab Workflow – Teams‑Integrated (1 slide)
+
+**Flow**
+
+1. **Kick‑off mini‑demo (~5 min)**  
+  - Download today's Pluto notebook from GitHub repository.
+  - [Optional] Post today’s Pluto notebook in **Teams › Files**  
+  - Run first cell, outline goals & any new widgets  
+
+2. **Self‑paced Blocks**  
+  - Students tackle tasks from current block in Pluto  
+  - Questions via **Teams Chat** / raise‑hand  
+  - Each ticks status columns in the shared **Excel “Progress Board”**  
+
+3. **Pit‑stop recap (~5 min)**  
+  - When ~70 % of sheet cells are green, screen‑share model answer  
+  - One student explains their approach; address FAQs  
+
+4. **Repeat 2-3 for all blocks**
+
+5. **Wrap‑up (5 min)**  
+  - Students add short reflection at the end of this notebook
+  - **Export HTML/PDF → upload to Teams › Assignments › Lab 11 - Julia Programming**
+
+---
+
+### Teams Assets
+
+- **GitHub** – today’s notebook
+- **Excel Progress Board** – columns for task, colour‑coded  
+- **Chat / Meeting** – live Q&A, screen‑shares at pit‑stops  
+- **Assignments** – collects exported notebooks for evidence  
+
+"""
+
 # ╔═╡ 889f0410-625c-46b4-899d-0ea8bf470456
 md"""
 ## Tips for Using Pluto.jl Effectively
@@ -294,6 +331,21 @@ md"""
 - [Wikipedia](https://en.wikipedia.org/wiki/Insertion_sort), [GeeksforGeeks](https://www.geeksforgeeks.org/insertion-sort/)  
 - We can use Wiki’s pseudocode
 
+"""
+
+# ╔═╡ e259e3d5-8e55-4421-a66d-6c0765cbd663
+md"""
+## My Reflection After Todays Classes
+
+Please include a short written reflection (max ~200 words) on:
+ - What went well
+ - What you found challenging
+ - What you’d do differently next time
+"""
+
+# ╔═╡ 10227e5c-b367-40ee-b261-b6636c3a4d70
+md"""
+Your reflection goes here... 
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -1459,6 +1511,7 @@ version = "1.8.1+0"
 # ╔═╡ Cell order:
 # ╟─a9775808-2742-11f0-0831-8ff037918d61
 # ╠═1785fd69-b9fe-4e67-986c-3d4b75974edf
+# ╟─20ac7c1f-d3d4-48d7-94a4-ae057ab6f7a3
 # ╟─889f0410-625c-46b4-899d-0ea8bf470456
 # ╟─ca4be4a5-8d18-43b6-b6f7-4dec7f35090f
 # ╟─675863d7-9deb-452e-845c-63edf399885a
@@ -1473,5 +1526,7 @@ version = "1.8.1+0"
 # ╟─2aeadfcf-e616-4a3c-a0d0-231ec084360c
 # ╟─abf821e9-2034-48b8-a05f-32f0bc18337d
 # ╟─29a772de-097d-4d21-9da2-b1e65351764a
+# ╟─e259e3d5-8e55-4421-a66d-6c0765cbd663
+# ╠═10227e5c-b367-40ee-b261-b6636c3a4d70
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
