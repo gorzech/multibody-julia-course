@@ -46,13 +46,81 @@ The figure presents the system of three masses connected by springs.  Exemplary 
 -  $k_3 = 10000\text{ N/m}$.
 """
 
-# ╔═╡ 6dec3b41-46ca-47c0-8bda-242f78b8fce9
+# ╔═╡ f159f570-7533-446f-a2fc-6b37e7e5d4e8
+m1, m2, m3 = 2, 1.5, 1
+
+# ╔═╡ d755121e-ce80-44e7-af8e-b64ce4ff75c7
+k1, k2, k3 = 20_000, 15_000, 10_000
+
+# ╔═╡ 81c410e4-10fd-4d50-8025-b223a748de42
+md"""
+1. Write the equation of motion of the system.
+"""
+
+# ╔═╡ 8225dc14-bba0-4128-a613-5c5a3014a03c
+md"""
+It's important to recognize our generalized coordinates.
+
+$\boldsymbol{x} = \begin{bmatrix} x_1 \\ x_2 \\ x_3 \end{bmatrix}$
+"""
+
+# ╔═╡ 6f0bcb4d-21a9-487f-8ad3-cee76753fd71
+M = Diagonal([m1, m2, m3])
+
+# ╔═╡ 34b06f35-b1b0-4622-aca3-d096eef98f28
+# Stiffness matrix
+K = [k1 + k2 -k2 0;
+	-k2 k2 + k3 -k3;
+	0 -k3 k3]
+
+# ╔═╡ ef84de31-a2a4-4495-b6a0-81ddf2b3eb82
+md"""
+Equations of motion
+
+$\boldsymbol{M} \ddot{\boldsymbol{x}} + \boldsymbol{K} \boldsymbol{x} = \boldsymbol{0}$
+"""
+
+# ╔═╡ 641ca041-81f8-4a7b-bd81-999679602a2d
 md"""
 
-1. Write the equation of motion of the system.
 2. Calculate numerically the natural frequencies of the system.
+"""
+
+# ╔═╡ a103ee68-a077-4e0c-9815-c067d0083732
+F = eigen(K, M)
+
+# ╔═╡ 00cfed9d-80c8-448c-ad5f-e016469b1b4c
+vals = F.values
+
+# ╔═╡ 3b8cda02-99b8-4e1f-9526-ee6b9fac8f7b
+vecs = F.vectors
+
+# ╔═╡ 82244a0e-600f-4bad-821e-67fe50fa51cd
+natural_frequencies = .√vals / 2π
+
+# ╔═╡ 4aa5f458-95c4-44d2-9935-42fac085c2a1
+md"""
 3. How, and why, does the natural frequency change if we remove spring 1?
+"""
+
+# ╔═╡ ad0cb143-7022-4f09-a36a-055dcd6dda55
+K3 = [k2 -k2 0;
+	-k2 k2 + k3 -k3;
+	0 -k3 k3]
+
+# ╔═╡ 2f769897-1fc5-4969-95db-50c068025555
+F3 = eigen(K3, M)
+
+# ╔═╡ 6fc7ce57-7acb-440c-a285-b598433ae44a
+natural_frequencies3 = .√F3.values / 2π
+
+# ╔═╡ 64a976f4-aee6-4422-a869-d4f9d2a1788e
+md"""
 4. **Solve the system** with three masses and springs with nonzero initial conditions using `RK4`, `ode_EC` (codes are in lecture notebooks), `Tsit5`, and `Rodas5`.  Compare accuracy and efficiency for the different methods.  
+"""
+
+# ╔═╡ 03b66937-474a-404a-9750-dbf3c9235972
+md"""
 5. **Repeat the computations using modal coordinates** $\boldsymbol{p}$.  If $\boldsymbol{\Lambda}$ is the diagonal matrix of eigenvalues and $\boldsymbol{\Psi}$ the matrix of corresponding eigenvectors of the dynamical system
    
 $$\boldsymbol{M}\,\ddot{\boldsymbol{x}} \;+\;\boldsymbol{K}\,\boldsymbol{x} \;=\; \boldsymbol{F},$$
@@ -2748,6 +2816,23 @@ version = "1.8.1+0"
 # ╠═9936d0eb-6e74-462a-ac0c-8c6c3a805f34
 # ╟─4e259bdf-2fee-413b-ac47-64c23fb1231b
 # ╟─92662875-eb2d-43c1-ae3a-a6cb98d65cfe
-# ╟─6dec3b41-46ca-47c0-8bda-242f78b8fce9
+# ╠═f159f570-7533-446f-a2fc-6b37e7e5d4e8
+# ╠═d755121e-ce80-44e7-af8e-b64ce4ff75c7
+# ╟─81c410e4-10fd-4d50-8025-b223a748de42
+# ╟─8225dc14-bba0-4128-a613-5c5a3014a03c
+# ╠═6f0bcb4d-21a9-487f-8ad3-cee76753fd71
+# ╠═34b06f35-b1b0-4622-aca3-d096eef98f28
+# ╟─ef84de31-a2a4-4495-b6a0-81ddf2b3eb82
+# ╟─641ca041-81f8-4a7b-bd81-999679602a2d
+# ╠═a103ee68-a077-4e0c-9815-c067d0083732
+# ╠═00cfed9d-80c8-448c-ad5f-e016469b1b4c
+# ╠═3b8cda02-99b8-4e1f-9526-ee6b9fac8f7b
+# ╠═82244a0e-600f-4bad-821e-67fe50fa51cd
+# ╟─4aa5f458-95c4-44d2-9935-42fac085c2a1
+# ╠═ad0cb143-7022-4f09-a36a-055dcd6dda55
+# ╠═2f769897-1fc5-4969-95db-50c068025555
+# ╠═6fc7ce57-7acb-440c-a285-b598433ae44a
+# ╟─64a976f4-aee6-4422-a869-d4f9d2a1788e
+# ╟─03b66937-474a-404a-9750-dbf3c9235972
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

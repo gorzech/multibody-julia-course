@@ -332,10 +332,10 @@ Write function `trapezoidal(f, a, b, n)`. Return the approximation of the integ
 function trapezoidal(f, a, b, n)
 	h = (b - a) / n
 	integral = 0.5(f(a) + f(b))
-	#for i = 1:n-1
-#		integral += f(a + i * h)
-#	end
-	integral += sum(f.(a .+ (1:n-1) .* h))
+	for i = 1:n-1
+		integral += f(a + i * h)
+	end
+	# integral += sum(f.(a .+ (1:n-1) .* h))
 	return integral * h
 end
 
@@ -635,6 +635,58 @@ c) Make a plot of $n$ versus $\epsilon \in [10^{-1}, 10^{-10}]$ for $\int_0^2 \s
 _Remarks_: The type of method explored in this exercise is called adaptive because it tries to adapt the value of $n$ to meet a given error criterion. The true error can very seldom be computed (since we do not know the exact answer to the computational problem), so one has to find other indicators of error such as when here where changes in integral value as number of intervals doubled taken reflect error.
 
 """
+
+# ╔═╡ d1334a48-646d-46f1-9055-fbad2821c699
+function adaptive_integration(f, a, b, tol, method="midpoint")
+	g = method == "midpoint" ? midpoint : trapezoidal
+
+	n = 1
+	value_n = g(f, a, b, n)
+	n *= 2
+	value_2n = g(f, a, b, n)
+	while abs(value_2n - value_n) > tol
+		value_n = value_2n
+		n *= 2
+		value_2n = g(f, a, b, n)
+	end
+	return value_2n, n
+end
+
+# ╔═╡ 3c873718-5942-4a38-94b5-e810e01ec965
+v1(x) = x^2
+
+# ╔═╡ 54e90d28-a8b5-4751-9db3-b02fa9c1b622
+V1(x) = (1/3) * x^3
+
+# ╔═╡ 3cbef440-daa4-4b30-a3b2-47ea7b438ba4
+value1, n1 = adaptive_integration(v1, 0, 2, 1e-1, "midpoint")
+
+# ╔═╡ 4f423781-62f0-48cf-96eb-c3fa2b9e7b8b
+actual_value1 = V1(2) - V1(0)
+
+# ╔═╡ e4907b58-d295-4434-91e7-3499784657e2
+value1a, n1a = adaptive_integration(v1, 0, 2, 1e-10, "midpoint")
+
+# ╔═╡ 435075b9-d18d-4879-ade7-4b4d0cfbc9f7
+error1a = abs(actual_value1 - value1a)
+
+# ╔═╡ 9578a1d6-4d4b-410b-aaeb-12ad621eff9e
+tol_values = 10.0.^(-1:-0.5:-10)
+
+# ╔═╡ 953fe954-1164-4d28-99dc-b2dde07be796
+n_values = zeros(Int, length(tol_values))
+
+# ╔═╡ dfc23663-ab5a-4dce-b2ce-5d775b3f73a7
+v2(x) = √x
+
+# ╔═╡ ea7e8b8a-1cbb-4d38-859d-47d404ad74c6
+for (i, tv) in enumerate(tol_values)
+	_, ni = adaptive_integration(v2, 0, 2, tv, "midpoint")
+	n_values[i] = ni
+end
+
+# ╔═╡ 6f02ffe6-fc9f-4bff-9e70-8e2834e91cff
+plot(tol_values, n_values, xscale=:log10, yscale=:log10)
 
 # ╔═╡ 839e5694-7cf3-45b9-ac1a-860c1b2ab555
 md"""
@@ -1889,6 +1941,18 @@ version = "1.8.1+0"
 # ╟─1675513d-e387-4a5b-b08f-b4df538047a6
 # ╟─20979253-7451-495b-8629-0b2443d79375
 # ╟─f67f2677-c22a-476c-bd6c-adcdd198df10
+# ╠═d1334a48-646d-46f1-9055-fbad2821c699
+# ╠═3c873718-5942-4a38-94b5-e810e01ec965
+# ╠═54e90d28-a8b5-4751-9db3-b02fa9c1b622
+# ╠═3cbef440-daa4-4b30-a3b2-47ea7b438ba4
+# ╠═4f423781-62f0-48cf-96eb-c3fa2b9e7b8b
+# ╠═e4907b58-d295-4434-91e7-3499784657e2
+# ╠═435075b9-d18d-4879-ade7-4b4d0cfbc9f7
+# ╠═9578a1d6-4d4b-410b-aaeb-12ad621eff9e
+# ╠═953fe954-1164-4d28-99dc-b2dde07be796
+# ╠═dfc23663-ab5a-4dce-b2ce-5d775b3f73a7
+# ╠═ea7e8b8a-1cbb-4d38-859d-47d404ad74c6
+# ╠═6f02ffe6-fc9f-4bff-9e70-8e2834e91cff
 # ╟─839e5694-7cf3-45b9-ac1a-860c1b2ab555
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
