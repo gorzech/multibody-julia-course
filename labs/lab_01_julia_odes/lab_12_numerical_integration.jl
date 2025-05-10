@@ -43,6 +43,52 @@ md"""
 Grzegorz Orzechowski
 """
 
+# ╔═╡ 42485ba0-09cb-4a84-bf4f-35c24df8fbce
+md"""
+## Pluto Lab Workflow – Teams‑Integrated
+
+**Flow**
+
+1. **Kick‑off mini‑demo (~5 min)**  
+  - Download today's Pluto notebook from GitHub repository.
+    - `lab_12_numerical_integration.jl`
+    - `lab_12_bonus_ode.jl`
+  - Run first cell, outline goals & any new widgets  
+
+2. **Self‑paced Blocks**  
+  - Students tackle tasks from current block in Pluto  
+  - Questions via **Teams Chat** / raise‑hand  
+  - Each ticks status columns in the shared **Excel “Progress Board”**  
+
+3. **Pit‑stop recap (~5 min)**  
+  - When ~70 % of sheet cells are green, screen‑share model answer  
+  - One student explains their approach; address FAQs  
+
+4. **Repeat 2-3 for all blocks**
+
+5. **Wrap‑up (5 min)**  
+  - Students add short reflection at the end of this notebook
+  - **Export HTML/PDF → upload to Teams › Assignments › Lab 12 - Integration**
+
+---
+
+### Teams Assets
+
+- **GitHub** – today’s notebook
+- **Excel Progress Board** – columns for task, colour‑coded  
+- **Chat / Meeting** – live Q&A, screen‑shares at pit‑stops  
+- **Assignments** – collects exported notebooks for evidence  
+
+"""
+
+# ╔═╡ 92f106b4-3183-4948-b306-6edb67dade4f
+md"""
+## Note for next week classes
+
+Install [Visual Studi Code](https://code.visualstudio.com/) and related Julia extensions.
+
+"""
+
 # ╔═╡ 73c5828c-1287-45fb-a065-bdfcfafbef40
 md"""
 ## Demo: Writing Tests
@@ -519,11 +565,11 @@ d) A remarkable property of the trapezoidal rule is that it is exact for integra
 
 e) Implement the choice $f(t)= \frac{1}{\pi} t$ as a Matlab function $f(t)$ and call `integrate_coeffs(f, 3, 100)` to see what optimal choice of $b_1, b_2, b_3$.
 
-f) Make a function `plot_approx(f, N, M, filename)` where you plot $f(t)$ together with best approximation $S_N$ computed above using $M$ intervals for numerical integration. Save plot file with name `filename`.
+f) Make a function `plot_approx(f, N, M, filename)` where you plot $f(t)$ together with best approximation $S_N$ computed above using $M$ intervals for numerical integration.
 
 g) Run `plot_approx(f, N, M, filename)` for $f(t)=\frac{1}{\pi} t$ for $N=3, 6, 12, 24$. Observe how approximation improves.
 
-h) Run `plot_approx` for $f(t)= e^{-(t-\pi)}$ and $N=100$. Observe a fundamental problem: regardless of $N$, $S_N(-\pi)=0, not $e^{2\pi}\approx 535$.
+h) Run `plot_approx` for $f(t)= e^{-(t-\pi)}$ and $N=100$. Observe a fundamental problem: regardless of $N$, $S_N(-\pi)=0$, not $e^{2\pi}\approx 535$.
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -1690,6 +1736,8 @@ version = "1.8.1+0"
 # ╔═╡ Cell order:
 # ╟─7ba54843-ed1b-4233-8586-8dabe56b8c88
 # ╠═a871cd04-2cbb-11f0-0511-456e02603a5c
+# ╟─42485ba0-09cb-4a84-bf4f-35c24df8fbce
+# ╟─92f106b4-3183-4948-b306-6edb67dade4f
 # ╟─73c5828c-1287-45fb-a065-bdfcfafbef40
 # ╠═ad8c62ba-8ada-4e43-9c4d-9b1c7457a696
 # ╟─b7366a38-2ba6-4c59-9fbb-b736baf5edb7
@@ -1723,6 +1771,6 @@ version = "1.8.1+0"
 # ╟─1675513d-e387-4a5b-b08f-b4df538047a6
 # ╟─20979253-7451-495b-8629-0b2443d79375
 # ╟─f67f2677-c22a-476c-bd6c-adcdd198df10
-# ╠═839e5694-7cf3-45b9-ac1a-860c1b2ab555
+# ╟─839e5694-7cf3-45b9-ac1a-860c1b2ab555
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
