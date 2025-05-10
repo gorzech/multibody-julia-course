@@ -34,6 +34,9 @@ begin
 	end
 end;
 
+# ╔═╡ 40679803-a7b6-49a7-9a75-5d4d141420b2
+using Printf
+
 # ╔═╡ 7ba54843-ed1b-4233-8586-8dabe56b8c88
 md"""
 # Programming Multibody Systems in Julia
@@ -105,6 +108,25 @@ md"""
 - Write two tests for 1+1=2 and 0.1+0.2=0.3 in single `@testset`
 """
 
+# ╔═╡ 4bd134bf-013f-48da-85aa-eda3b963e705
+@testset "Test add function on simple examples" begin
+	@test add(1, 1) == 2
+	@test add(0.1, 0.2) ≈ 0.3 atol = 1e-14
+	@test isapprox(add(0.1, 0.2), 0.3, atol = 1e-14)
+end
+
+# ╔═╡ aaf17a1e-caad-41d1-b992-20600c0f87b4
+@printf("%.17f\n", 0.1)
+
+# ╔═╡ fde8b52a-ad59-4458-ab30-61012ae17050
+@printf("%.17f\n", 0.2)
+
+# ╔═╡ 9fcc30e7-fb7e-4975-9bc5-bdf596545759
+@printf("%.17f\n", 0.1 + 0.2)
+
+# ╔═╡ b4cc1bc0-34f7-4e1d-bf75-c89e4daee3b5
+@printf("%.17f\n", 0.3)
+
 # ╔═╡ fcab19f8-0703-42ea-a771-6aded71efef2
 md"""
 ## Computing Integrals
@@ -121,7 +143,7 @@ md"""
 md"""
 ## Integration
 
-$$\int_{a}^{b} f(x) , dx = F(b) - F(a), \text{ where } f(x) = \frac{dF}{dx}$$
+$$\int_{a}^{b} f(x) dx = F(b) - F(a), \text{ where } f(x) = \frac{dF}{dx}$$
 
 - How to find anti-derivative $F(x)$?
 - Above provide exact solution, but can be challenging or even impossible
@@ -306,6 +328,40 @@ $$\int_a^b f(x) , dx \approx h \left[ \frac{f(x_0)}{2} + \sum_{i=1}^{n-1} f(x_i)
 Write function `trapezoidal(f, a, b, n)`. Return the approximation of the integral. Test your implementation on the function $v(t) = 3t^2 e^{t^3}$ with anti-derivative $V(t) = e^{t^3} - 1$
 """
 
+# ╔═╡ 30ed1925-12f8-4c0e-aa94-38b18142a875
+function trapezoidal(f, a, b, n)
+	h = (b - a) / n
+	integral = 0.5(f(a) + f(b))
+	#for i = 1:n-1
+#		integral += f(a + i * h)
+#	end
+	integral += sum(f.(a .+ (1:n-1) .* h))
+	return integral * h
+end
+
+# ╔═╡ bbecb121-f67f-4b79-a644-2549c4ebd427
+v(t) = 3t^2 * exp(t^3)
+
+# ╔═╡ 8ba1a37c-ecd7-4866-bd7a-c4eea406de1c
+V(t) = exp(t^3) - 1
+
+# ╔═╡ bcb543e7-46b6-4bec-b8c2-d98af9ea03ed
+trapezoidal(v, 0, 2, 10_000)
+
+# ╔═╡ 7d1afb22-7df0-4188-a8ee-02225d54fcf2
+V(2) - V(0)
+
+# ╔═╡ 01dc37bd-2111-4d5a-b5f9-93aafa073ebf
+@testset "Compare trapezoidal with exact calculations" begin
+	v(t) = 3t^2 * exp(t^3)
+	V(t) = exp(t^3) - 1
+	a = -1
+	b = 3
+	result = trapezoidal(v, a, b, 10_000)
+	expected = V(b) - V(a)
+	@test result ≈ expected rtol = 1e-4
+end
+
 # ╔═╡ fb137bca-4905-427a-9330-7e983a89ef9c
 md"""
 ## Composite Midpoint Method
@@ -411,6 +467,24 @@ md"""
 $$\int_a^b f(x) , dx \approx h \sum_{i=0}^{n-1} f(x_i), \quad x_i = \left(a + \frac{h}{2}\right) + ih$$ Write function `midpoint(f, a, b, n)`. Return the approximation of the integral. Check your implementation on the function $v(t) = 3t^2 e^{t^3}$ with anti-derivative $V(t) = e^{t^3} - 1$
 """
 
+# ╔═╡ 307d5cc7-56cf-4e67-97ac-9af4e674dfac
+function midpoint(f, a, b, n)
+	h = (b - a) / n
+	x_i = [a + 0.5h + i*h for i in 0:n-1]
+	h * sum(f.(x_i))
+end
+
+# ╔═╡ 8e2ffd33-aad6-4693-b967-f681fcbdfea9
+@testset "Compare midpoint with exact calculations" begin
+	v(t) = 3t^2 * exp(t^3)
+	V(t) = exp(t^3) - 1
+	a = -1
+	b = 3
+	result = midpoint(v, a, b, 10_000)
+	expected = V(b) - V(a)
+	@test result ≈ expected rtol = 1e-4
+end
+
 # ╔═╡ c5a3a9b4-565e-4633-a096-6b72744e255f
 md"""
 ## D.3 Compare Methods
@@ -466,6 +540,14 @@ $$\frac{1}{2} h[v(0)+v(0.5)]+\frac{1}{2} h[v(0.5)+v(1)]=2.463642041244344$$
 when $h=0.5$. Use above equation to write first test in that file. Verify if your test works.
 """
 
+# ╔═╡ ab083dd7-d805-4174-8460-1fd296d8e41f
+@testset "Hand-computed results for 2 trapezoids" begin
+	expected = 2.463642041244344
+	v(t) = 3t^2*ℯ^(t^3)
+	result = trapezoidal(v, 0, 1, 2)
+	@test expected ≈ result atol = 1e-14
+end
+
 # ╔═╡ d7fa4c50-5781-4ad9-9aee-dd5d0461ed77
 md"""
 ## E.2 Problem Without Numerical Errors
@@ -475,10 +557,29 @@ Usually, numerical results contain unknown approximation errors. Approximation e
 
 # ╔═╡ bdf30f39-2665-49fd-b1a0-67c5679ccc76
 md"""
-## E.3 No Numerical Errors Test
-
 Use $\int_{1.2}^{4.4} (6x-4) , dx$ to write second test. Perform computation using three different values of $n$. Function anti-derivative is $F(x)=3x^2-4x$. Verify if your test works.
 """
+
+# ╔═╡ 81a01d9e-e71b-4482-bf24-7d7fb6b40904
+@testset "Trapezoidal - problem with no numerical errors" begin
+	a = 1.2
+	b = 4.4
+	f(x) = 6x - 4
+	F(x) = 3x^2 - 4x
+	expected = F(b) - F(a)
+
+	n = 2
+	result = trapezoidal(f, a, b, n)
+	@test expected ≈ result atol = 1e-14
+
+	n = 7
+	result = trapezoidal(f, a, b, n)
+	@test expected ≈ result atol = 1e-14
+
+	n = 385
+	result = trapezoidal(f, a, b, n)
+	@test expected ≈ result atol = 1e-14
+end
 
 # ╔═╡ d8c2e883-4ed1-4fe9-a148-0b969ed24a51
 md"""
@@ -521,7 +622,7 @@ Compute integral with $n_i$ intervals. Compute the error $E_i$. Estimate $r_i=\f
 md"""
 ##  F.1 Adaptive integration
 
-Suppose we want to use the trapezoidal or midpoint method to compute an integral $\int_a^b f(x)dx$ with an error less than a prescribed tolerance $\epsilon$. What is the appropriate size of $n$? To answer this question, we may enter an iterative procedure where we compare the results produced by $n$ and $2n$ intervals, and if the difference is smaller than $\epsilon$, the value corresponding to $2n$ is returned. Otherwise, we halve $n$ and repeat the procedure.
+Suppose we want to use the trapezoidal or midpoint method to compute an integral $\int_a^b f(x)dx$ with an error less than a prescribed tolerance $\epsilon$. What is the appropriate size of $n$? To answer this question, we may enter an iterative procedure where we compare the results produced by $n$ and $2n$ intervals, and if the difference is smaller than $\epsilon$, the value corresponding to $2n$ is returned. Otherwise, we double $n$ and repeat the procedure.
 
 _Hint_: It may be a good idea to organize your code so that the function `adaptive_integration` can be used easily in future programs you write.
 
@@ -580,6 +681,7 @@ LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
@@ -595,7 +697,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "232a30373508b20d6af8792629d2a9c40048f5ab"
+project_hash = "c99d3ffc4fd019629e3b3aef6096c47bc1899e28"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
@@ -1741,6 +1843,12 @@ version = "1.8.1+0"
 # ╟─73c5828c-1287-45fb-a065-bdfcfafbef40
 # ╠═ad8c62ba-8ada-4e43-9c4d-9b1c7457a696
 # ╟─b7366a38-2ba6-4c59-9fbb-b736baf5edb7
+# ╠═4bd134bf-013f-48da-85aa-eda3b963e705
+# ╠═40679803-a7b6-49a7-9a75-5d4d141420b2
+# ╠═aaf17a1e-caad-41d1-b992-20600c0f87b4
+# ╠═fde8b52a-ad59-4458-ab30-61012ae17050
+# ╠═9fcc30e7-fb7e-4975-9bc5-bdf596545759
+# ╠═b4cc1bc0-34f7-4e1d-bf75-c89e4daee3b5
 # ╟─fcab19f8-0703-42ea-a771-6aded71efef2
 # ╟─b77aeac2-8a9a-46e2-9251-62342018354a
 # ╟─d8a987dd-a332-4c55-b4b9-eca4f2b1491c
@@ -1754,19 +1862,29 @@ version = "1.8.1+0"
 # ╟─92760dd1-60d0-41a5-836f-967c2c188b26
 # ╟─377084d5-ea28-4d6a-bb84-d948d7481335
 # ╟─02f9ece7-d540-4c4e-9510-b3063533ec3e
+# ╠═30ed1925-12f8-4c0e-aa94-38b18142a875
+# ╠═bbecb121-f67f-4b79-a644-2549c4ebd427
+# ╠═8ba1a37c-ecd7-4866-bd7a-c4eea406de1c
+# ╠═bcb543e7-46b6-4bec-b8c2-d98af9ea03ed
+# ╠═7d1afb22-7df0-4188-a8ee-02225d54fcf2
+# ╠═01dc37bd-2111-4d5a-b5f9-93aafa073ebf
 # ╟─fb137bca-4905-427a-9330-7e983a89ef9c
 # ╟─74276d46-bcd3-4cbf-befb-06675fe47d0e
 # ╠═73ebd107-39d5-4963-a866-20e341d5e481
 # ╠═535c6122-3abc-4092-9886-f5d7c1a517a1
 # ╟─42ce2dda-f4a9-4d07-be60-4674d732ffa3
 # ╟─e9175143-62ad-4071-8811-2518cbd91a0b
+# ╠═307d5cc7-56cf-4e67-97ac-9af4e674dfac
+# ╠═8e2ffd33-aad6-4693-b967-f681fcbdfea9
 # ╟─c5a3a9b4-565e-4633-a096-6b72744e255f
 # ╟─fad9614a-30b3-447b-adb5-e0190ba12add
 # ╟─27ea89c8-a090-4f57-aa92-da59d175eb3c
 # ╟─7dba23c3-a80c-40b4-94ff-a90bf9ebc7ca
 # ╟─d12adf01-c32b-4f91-8b27-8072a6dc2eb1
+# ╠═ab083dd7-d805-4174-8460-1fd296d8e41f
 # ╟─d7fa4c50-5781-4ad9-9aee-dd5d0461ed77
 # ╟─bdf30f39-2665-49fd-b1a0-67c5679ccc76
+# ╠═81a01d9e-e71b-4482-bf24-7d7fb6b40904
 # ╟─d8c2e883-4ed1-4fe9-a148-0b969ed24a51
 # ╟─1675513d-e387-4a5b-b08f-b4df538047a6
 # ╟─20979253-7451-495b-8629-0b2443d79375
