@@ -16,15 +16,15 @@ macro bind(def, element)
     #! format: on
 end
 
-# ╔═╡ 1785fd69-b9fe-4e67-986c-3d4b75974edf
+# ╔═╡ a871cd04-2cbb-11f0-0511-456e02603a5c
 begin
 	using Plots
 	using LinearAlgebra
+	using LaTeXStrings
 	using PlutoUI
 	using Test
 	using Random
 	using Base64
-	using LaTeXStrings
 	function embed_image(path_to_image::AbstractString; height::Integer=240, type::String="png")
 	    img_bytes = read(path_to_image)
 	    # Build a data URL: "data:image/{type};base64,{...}"
@@ -34,373 +34,498 @@ begin
 	end
 end;
 
-# ╔═╡ a9775808-2742-11f0-0831-8ff037918d61
+# ╔═╡ 7ba54843-ed1b-4233-8586-8dabe56b8c88
 md"""
 # Programming Multibody Systems in Julia
 
-### Lab 1: Julia Basics
+### Lab 2: Numerical Integration, ODEs
 
 Grzegorz Orzechowski
 """
 
-# ╔═╡ 20ac7c1f-d3d4-48d7-94a4-ae057ab6f7a3
+# ╔═╡ 73c5828c-1287-45fb-a065-bdfcfafbef40
 md"""
-## Pluto Lab Workflow – Teams‑Integrated (1 slide)
+## Demo: Writing Tests
 
-**Flow**
-
-1. **Kick‑off mini‑demo (~5 min)**  
-  - Download today's Pluto notebook from GitHub repository.
-  - [Optional] Post today’s Pluto notebook in **Teams › Files**  
-  - Run first cell, outline goals & any new widgets  
-
-2. **Self‑paced Blocks**  
-  - Students tackle tasks from current block in Pluto  
-  - Questions via **Teams Chat** / raise‑hand  
-  - Each ticks status columns in the shared **Excel “Progress Board”**  
-
-3. **Pit‑stop recap (~5 min)**  
-  - When ~70 % of sheet cells are green, screen‑share model answer  
-  - One student explains their approach; address FAQs  
-
-4. **Repeat 2-3 for all blocks**
-
-5. **Wrap‑up (5 min)**  
-  - Students add short reflection at the end of this notebook
-  - **Export HTML/PDF → upload to Teams › Assignments › Lab 11 - Julia Programming**
-
----
-
-### Teams Assets
-
-- **GitHub** – today’s notebook
-- **Excel Progress Board** – columns for task, colour‑coded  
-- **Chat / Meeting** – live Q&A, screen‑shares at pit‑stops  
-- **Assignments** – collects exported notebooks for evidence  
+- Write simple test script to test the function add
 
 """
 
-# ╔═╡ 889f0410-625c-46b4-899d-0ea8bf470456
+# ╔═╡ ad8c62ba-8ada-4e43-9c4d-9b1c7457a696
+add(a, b) = a + b
+
+# ╔═╡ b7366a38-2ba6-4c59-9fbb-b736baf5edb7
 md"""
-## Tips for Using Pluto.jl Effectively
-
-1. **Embrace Reactivity**
-    
-    - Each cell is a _reactive_ function: changing an input automatically updates downstream cells.
-        
-    - Think in terms of _declarative_ notebooks—define variables once, then build plots or computations from them.
-        
-    
-2. **Keep Cells Small and Focused**
-    
-    - One “idea” or one block of functionality per cell makes it easy to debug and reason about dependencies.
-        
-    - Cells re‐run automatically only when their _inputs_ change.
-        
-    
-3. **Leverage PlutoUI for Interactivity**
-    
-    - Quickly add interactive widgets (sliders, dropdowns, toggles) with @bind, turning parameters into UI controls.
-        
-
-```julia
-using PlutoUI
-
-@bind n Slider(1:20, default=5, show_value=true)
-@bind α Slider(0.0:0.05:1.0, default=0.5, show_value=true)
-
-plot(sin, 0, 2π; linewidth=n, alpha=α)
-```
-  - Use Toggle, Select, DatePicker, and more to explore parameter spaces without leaving the notebook.
-
+- Write two tests for 1+1=2 and 0.1+0.2=0.3 in single `@testset`
 """
 
-# ╔═╡ ca4be4a5-8d18-43b6-b6f7-4dec7f35090f
+# ╔═╡ fcab19f8-0703-42ea-a771-6aded71efef2
 md"""
-## Example: Volume of a Cube
+## Computing Integrals
 
-- Write a program that computes the volume $V$ of a cube with sides of length $L=4$ cm and prints the result to the screen.
-- Both $𝑉$ and $𝐿$ should be defined as separate variables in the program.
-- Save the notebook and confirm that the correct result is printed.
-- Demonstrate use of PlutoUI [Interactivity](https://featured.plutojl.org/basic/plutoui.jl).
+- Good introduction to numerical methods
+- You cannot solve most integrals analytically
+- Well-known concept
+- Exact mathematics vs numerical mathematics
+  - For integration we do not have to bother too much with rounding errors
+- Focus on how to write error-free code
 """
 
-# ╔═╡ b76bdc95-e535-4dd8-86fe-fb95887577a2
-@bind L Slider(1:20, default=4, show_value=true)
-
-# ╔═╡ 675863d7-9deb-452e-845c-63edf399885a
-begin
-	V = L * L
-	"Volume of the cube with side L = $L cm is V = $V cm²."
-end
-
-# ╔═╡ 1d0b6de8-da11-4784-8172-a45957753e9f
+# ╔═╡ b77aeac2-8a9a-46e2-9251-62342018354a
 md"""
-## Demo: Volumes of Three Cubes
+## Integration
 
-We are interested in the volume $𝑉$ of a cube with length $𝐿$: $𝑉=𝐿^3$, computed for three different values of $𝐿$.
+$$\int_{a}^{b} f(x) , dx = F(b) - F(a), \text{ where } f(x) = \frac{dF}{dx}$$
 
-1. Use the `range` function to compute three values of $𝐿$, equally spaced on the interval $[1, 3]$.
-2. Compute $V$ of `V = L.^3`. 
-3. Make a plot of V versus L.
+- How to find anti-derivative $F(x)$?
+- Above provide exact solution, but can be challenging or even impossible
+- Numerical methods provide approximation only, but solution is straightforward
+- Should we care, that solution might not be exact?
 """
 
-# ╔═╡ 56be3f55-ade1-4f32-8dec-d512b8b0d56c
-L_2 = 1:3
-
-# ╔═╡ a7c8cd2e-0b6b-4cc2-996d-1105abee9676
-V_2 = L_2 .^ 3
-
-# ╔═╡ 6da71262-37b5-44dc-b674-1d29d1756af3
-plot(L_2, V_2)
-
-# ╔═╡ cdcfa5fc-de9d-48a2-baf4-f29f0c865b25
+# ╔═╡ d8a987dd-a332-4c55-b4b9-eca4f2b1491c
 md"""
+## Basic Ideas
 
-## A.1 Find the crossing points of two graphs
+$$\int_{a}^{b} f(x) dx$$
 
-Consider two functions $f(x) = x$ and $g(x) = x^2$ on the interval $[-4, 4]$.
+- Most methods split interval $[a,b]$ into smaller ones
+- Usually, points are evenly distributed
+- Thus, the integration points are 
 
-Write a program that, by trial and error, finds approximately for which values of $x$ the two graphs cross, i.e., $f(x) = g(x)$. Do this by considering $N$ equally distributed points on the interval, at each point checking whether $\left| f(x) - g(x) \right| < \epsilon$, where $\epsilon$ is some small number. Let $N$ and $\epsilon$ be user input to the program and let the result be printed to screen. Run your program with $N = 400$ and $\epsilon = 0.01$. Explain the output from the program. Finally, try also other values of $N$, keeping the value of $\epsilon$ fixed. Explain your observations.
+$$x_i = a + ih, , i = 0, 1, \ldots, n, , h = \frac{b - a}{n}$$
+
+- and 
+
+$$\int_{a}^{b} f(x) , dx = \sum_{i=0}^{n-1} \int_{x_{i-1}}^{x_i} f(x) , dx$$
 """
 
-# ╔═╡ 13e4a7df-f686-4032-9321-7e7ca048d0fc
+# ╔═╡ 5e5885ab-93eb-48cf-94d1-4c744356ef60
 md"""
-## A.2 Linear interpolation
-
-Some measurements $y_i$, $i = 0, 1, \ldots, N$ (given below), of a quantity $y$ have been collected regularly, once every minute, at times $t_i = i$, $i = 0, 1, \ldots, N$. We want to find the value $y$ in between the measurements, e.g., at $t = 3.2$ min. Computing such $y$ values is called interpolation.
-
-Let your program use linear interpolation to compute $y$ between two consecutive measurements:
-
-1. Find $i$ such that $t_i \leq t \leq t_{i+1}$.
-2. Find a mathematical expression for the straight line that goes through the points $(i, y_i)$ and $(i + 1, y_{i+1})$.
-3. Compute the $y$ value by inserting the user’s time value in the expression for the straight line.
-
-a. Implement the linear interpolation technique in a function that takes an array with the $y_i$ measurements as input, together with some time $t$, and returns the interpolated $y$ value at time $t$.
-
-b. Write another function with a loop where the user is asked for a time on the interval $[0, N]$ and the corresponding (interpolated) $y$ value is written to the screen. The loop is terminated when the user gives a negative time.
-
-c. Use the following measurements: 4.4, 2.0, 11.0, 21.5, 7.5, corresponding to times 0, 1, ..., 4 (min), and compute interpolated values at $t = 2.5$ and $t = 3.1$ min. Perform separate hand calculations to check that output from program is correct.
+- We end up with number of small intervals $[x_i, x_{i+1}]$
+- Over small interval f can be approximated with simple function
+    - Constant
+    - Linear
+    - Parabola
+- Varying interval length (and approximation function) we can adjust accuracy
 """
 
-# ╔═╡ ccb234af-b5f1-4ce7-94e1-f31172c312e5
+# ╔═╡ d9ba5f01-dedd-4543-9594-1e135732de90
 md"""
-## B.1 Compute π example
+## Computational Example
 
-- Consider two computational schemes for the number 𝜋:
-  - by Leibniz (1646–1716): $𝜋=8∑_{𝑘=0}^∞\frac{1}{(4𝑘+1)(4𝑘+3)}$
-  - and by Euler (1707–1783): $𝜋=\sqrt{6∑_{𝑘=1}^∞\frac{1}{𝑘^2} }$
-- Write a program that takes $𝑁$ as input from the user and plots the error development with both schemes as the number of iterations approaches $𝑁$. 
-- Your program should also print out the final error achieved with both schemes, i.e., when the number of terms is $𝑁$. 
-- Run the program with $𝑁=100$ and explain briefly what the graphs show.
+- It is advantageous to use as test example integral with known solution
+- Car velocity is given as $v(t) = 3t^2 e^{t^3}$
+- What is the distance after one second?
+
+$$\int_{0}^{1} v(t) , dt = V(1) - V(0) \approx 1.718$$
+
+- where anti-derivative is given as $V(t) = e^{t^3} - 1$
 """
 
-# ╔═╡ d93da685-6848-4a17-9a2f-22506a74970a
-function pi_by_leibniz(N::Int)
-	p = 0.0
-	for k = 0 : N-1
-		p += 1.0 / (4k + 1) / (4k + 3)
-	end
-	return 8p
-end
+# ╔═╡ cfa76d39-7114-422f-8098-81e8c6379cf4
+"""
+plot_3t2exp_t3(; t_min=0.0, t_max=1.0, n=200, nmarkers=6) → Plot
 
-# ╔═╡ 88cb5d6e-28e1-453a-a568-d0fc34c44806
-pi_by_leibniz(1000)
+Plot y=3 t^2 exp(t^3) over [t_min,t_max] with
+• solid white line
+• yellow fill down to y=0
+• red‐edged, white‐filled markers at nmarkers evenly‐spaced t’s
+"""
+function plot_3t2exp_t3(; t_min=0.0, t_max=1.0, n::Int=200, nmarkers::Int=6)
+	# high‐res curve
+	t = range(t_min, t_max, length=n)
+	y = 3 .* t.^2 .* exp.(t.^3)
 
-# ╔═╡ 1890b4ed-6ac2-4901-a2b2-794582ed44dd
-function pi_by_euler(N::Int)
-	p = 0.0
-	for k = 1 : N
-		p += 1 / k^2
-	end
-	return √(6p)
-end
+	# base plot: white curve on black
+	plt = plot(
+	  t, y;
+	  linewidth            = 2,
+	  xlabel               = L"t",
+	  ylabel               = L"y(t) = 3t^2e^{t^3}",
+	  legend               = false,
+	)
 
-# ╔═╡ d5b20bf1-33f6-4fba-a4a0-c02adf5158f5
-pi_by_euler(1000)
+	# yellow fill down to y=0
+	plot!(plt, t, y; fillrange=0, fillcolor=:yellow, alpha=1.0)
 
-# ╔═╡ 1ef0ce82-499d-4760-a865-0c5ecd065b15
-function plot_pi_approximations()
-	N_pi = 1:100
+	return plt
+end;
 
-	pi_leibniz = pi_by_leibniz.(N_pi)
-	pi_euler = pi_by_euler.(N_pi)
+# ╔═╡ f47504cf-2a32-4484-ac67-29d5d07797e9
+plot_3t2exp_t3()
 
-	plot(N_pi, abs.(π .- pi_leibniz), label="π error by Leibniz", yscale=:log10)
-	plot!(N_pi, abs.(π .- pi_euler), label="π error by Euler")
-	xlabel!("N")
-	ylabel!("π absolute error")
-end
-
-# ╔═╡ a4f73d17-662b-4fec-b76b-90e0cd9600d6
-plot_pi_approximations()
-
-# ╔═╡ 47babd05-bd9b-416b-980c-c0e10516acbb
+# ╔═╡ 8c101a8a-15f7-4ce1-b2ec-0118426e4494
 md"""
-## B.2 Polygon Area
+## Composite Trapezoidal Rule
 
-The vertices of the polygon have coordinates numbered either in a clockwise or counterclockwise fashion $(x_1,y_1)$, $(x_2,y_2)$, ..., $(x_n,y_n)$. The area $A$ of the polygon is:
+ - In this example we have intervals of length $h=0.25$ s. We can approximate integral as 
 
-$$A = \frac{1}{2} \left| (x_1 y_2 + x_2 y_3 + ... + x_{n-1} y_n + x_n y_1) - (y_1 x_2 + y_2 x_3 + ... + y_{n-1} x_n + y_n x_1) \right|$$
+$$\int_0^1 v(t) dt \approx h \frac{(v(0)+v(0.25))}{2} + h \frac{(v(0.25)+v(0.5))}{2}$$
+$$+ h \frac{(v(0.5)+v(0.75))}{2} + h \frac{(v(0.75)+v(1))}{2} = 1.9227$$ 
 
-Write a function `polyarea(x, y)` that takes two coordinate arrays with the vertices as arguments and returns the area. Test the function on a triangle, a quadrilateral, and a pentagon. Verify results by alternative methods.
+Compared with 1.718, it differs by about 12%. 
+
+Let use more trapezoids!
 
 """
 
-# ╔═╡ 49adad7b-6219-4a86-852a-fb7510055614
+# ╔═╡ 64bbb77a-8f89-4ca8-b284-0523c7f201e9
 """
-    polygon_area_plot(; x_pts, y_pts)
+    plot_trapz_3t2exp_t3(n_traps; t_min=0.0, t_max=1.0, n_fine=200)
 
-Plot a polygon through the points (x_pts[i], y_pts[i]) with markers
-and shade the area underneath down to y=0.
-
-# Keyword Arguments
-- `x_pts::AbstractVector{<:Real}`: x-coordinates (default [0,0.25,0.5,0.75,1])
-- `y_pts::AbstractVector{<:Real}`: y-coordinates (default [0,1,3,1,0])
-
-# Returns
-- `plt::Plots.Plot`
+Plot y=3 t² e^{t³} over [t_min,t_max], shade the composite trapezoids
+in yellow, and draw black edges around each trapezoid.
 """
-function polygon_area_plot(; x_pts = [0.0, 0.25, 0.5, 0.75, 1.0, 0.0],
-                             y_pts = [0.0, 1.0, 3.0, 1.0, 0.0, 0.0])
+function plot_trapz_3t2exp_t3(n_traps::Int; t_min::Float64=0.0,
+                                       t_max::Float64=1.0,
+                                       n_fine::Int=200)
 
-    # 1) Draw the polygon line + markers
+    # 1) smooth curve
+    t_fine = range(t_min, t_max; length=n_fine)
+    y_fine = 3 .* t_fine.^2 .* exp.(t_fine.^3)
+
+    # 2) nodes for trapezoids
+    xs = range(t_min, t_max; length=n_traps+1)
+    ys = 3 .* xs.^2 .* exp.(xs.^3)
+
+    # 3) Base plot: white curve on black
     plt = plot(
-        x_pts, y_pts;
-        linecolor   = :blue,
-        linewidth   = 1.5,
-        marker      = :circle,
-        markercolor = :blue,
-        markersize  = 6,
-        legend      = false,
-        xlabel      = "x",
-        ylabel      = "y",
-        framestyle  = :box
+        t_fine, y_fine;
+        linewidth  = 2,
+        xlabel     = L"t",
+        ylabel     = L"y(t)=3t^2e^{t^3}",
+        legend     = false,
+        framestyle = :box,
     )
 
-    # 2) Shade the area down to y=0
-    plot!(
+    # 4) Draw and outline each trapezoid
+    for i in 1:n_traps
+        x0, x1 = xs[i],   xs[i+1]
+        y0, y1 = ys[i],   ys[i+1]
+        # polygon coords for the trapezoid
+        xpoly = [x0, x0, x1, x1]
+        ypoly = [0.0, y0,  y1,  0.0]
+        # filled yellow with black border
+        plot!(
+            plt,
+            xpoly, ypoly;
+            seriestype = :shape,
+            fillcolor  = :yellow,
+            alpha      = 0.8,
+            linecolor  = :black,
+            linewidth  = 1.5,
+            label      = ""
+        )
+    end
+
+    # 5) Overlay the true curve and markers
+    plot!(plt, t_fine, y_fine; color=:blue, linewidth=2)
+    scatter!(
         plt,
-        x_pts, y_pts;
-        fillrange  = 0.0,
-        fillalpha  = 0.2,
-        linecolor  = :blue,
-        label      = ""
+        xs, ys;
+        marker            = :circle,
+        markersize        = 6,
+        markerstrokecolor = :red,
+        markercolor       = :white,
+        label             = ""
     )
 
     return plt
+end; 
+
+# ╔═╡ 7cff897b-b18d-406c-98e2-427d84638e44
+@bind n_trapezoids_bind Slider(2:15, default=4, show_value=true)
+
+# ╔═╡ 92760dd1-60d0-41a5-836f-967c2c188b26
+plot_trapz_3t2exp_t3(n_trapezoids_bind)
+
+# ╔═╡ 377084d5-ea28-4d6a-bb84-d948d7481335
+md"""
+## General Algorithm
+
+$$\int_a^b f(x) dx = \int_{x_0}^{x_1} f(x) dx + \int_{x_1}^{x_2} f(x) dx + \ldots + \int_{x_{n-1}}^{x_n} f(x) dx$$ 
+$$\approx h \frac{f(x_0) + f(x_1)}{2} + h \frac{f(x_1) + f(x_2)}{2} + \ldots + h \frac{f(x_{n-1}) + f(x_n)}{2}$$ 
+$$= h/2 [f(x_0) + 2f(x_1) + 2f(x_2) + \ldots + 2f(x_{n-1}) + f(x_n)]$$ 
+$$= h \left[ \frac{f(x_0)}{2} + \sum_{i=1}^{n-1} f(x_i) + \frac{f(x_n)}{2} \right]$$
+
+"""
+
+# ╔═╡ 02f9ece7-d540-4c4e-9510-b3063533ec3e
+md"""
+## D.1 Trapezoidal Integration
+
+$$\int_a^b f(x) , dx \approx h \left[ \frac{f(x_0)}{2} + \sum_{i=1}^{n-1} f(x_i) + \frac{f(x_n)}{2} \right]$$ 
+
+Write function `trapezoidal(f, a, b, n)`. Return the approximation of the integral. Test your implementation on the function $v(t) = 3t^2 e^{t^3}$ with anti-derivative $V(t) = e^{t^3} - 1$
+"""
+
+# ╔═╡ fb137bca-4905-427a-9330-7e983a89ef9c
+md"""
+## Composite Midpoint Method
+
+Approximate area with rectangles. This method is even more accurate than the trapezoid. Rectangle height is measured in the middle of the interval (therefore its name). 
+
+$$\int_0^1 v(t) dt \approx h v\left(\frac{0+0.25}{2}\right) + h v\left(\frac{0.25+0.5}{2}\right) $$
+$$+ h v\left(\frac{0.5+0.75}{2}\right) + h v\left(\frac{0.75+1}{2}\right) = 1.6190$$ 
+Compared with 1.718, it differs by about 6%
+"""
+
+# ╔═╡ 74276d46-bcd3-4cbf-befb-06675fe47d0e
+"""
+composite_midpoint_plot(n; t_min=0.0, t_max=1.0, n_fine=200)
+
+Plot y(t)=3 t² e^{t³} on [t_min,t_max] (white curve) and overlay the
+composite midpoint‐rule rectangles (yellow fill, black border),
+with markers at each midpoint.
+"""
+function composite_midpoint_plot(n::Int;
+								  t_min::Float64=0.0,
+								  t_max::Float64=1.0,
+								  n_fine::Int=200)
+
+	# Base function
+	f(t) = 3*t^2 * exp(t^3)
+
+	# 1) smooth curve for plotting
+	t_fine = range(t_min, t_max; length=n_fine)
+	y_fine = f.(t_fine)
+
+	# 2) partition nodes and midpoints
+	xs = range(t_min, t_max; length=n+1)
+	ms = (xs[1:end-1] .+ xs[2:end]) ./ 2    # midpoints
+	hs = f.(ms)                             # heights at midpoints
+
+	# 3) plot the smooth curve
+	plt = plot(
+		t_fine, y_fine;
+		linewidth  = 2,
+		xlabel     = L"t",
+		ylabel     = L"y(t)=3t^2e^{t^3}",
+		legend     = false
+	)
+
+	# 4) draw each midpoint‐rule rectangle
+	for i in 1:n
+		x0, x1 = xs[i], xs[i+1]
+		h       = hs[i]
+		xpoly   = [x0, x0, x1, x1]
+		ypoly   = [0.0, h,   h,   0.0]
+		plot!(
+			plt,
+			xpoly, ypoly;
+			seriestype = :shape,
+			fillcolor  = :yellow,
+			linecolor  = :black,
+			alpha      = 0.8,
+			label      = ""
+		)
+	end
+
+	# 5) re‐overlay the white curve on top of rectangles
+	plot!(plt, t_fine, y_fine; color=:blue, linewidth=2)
+
+	# 6) mark the midpoints
+	scatter!(
+		plt,
+		ms, hs;
+		marker            = :circle,
+		markersize        = 6,
+		markercolor       = :white,
+		markerstrokecolor = :red,
+		label             = ""
+	)
+
+	return plt
 end;
 
-# ╔═╡ 338c1205-68ab-476e-963e-fc98e12af4b3
-polygon_area_plot()
+# ╔═╡ 73ebd107-39d5-4963-a866-20e341d5e481
+@bind n_rectangles_bind Slider(2:15, default=4, show_value=true)
 
-# ╔═╡ 35c5a834-2046-4086-a2b4-75ee0b5c0c88
+# ╔═╡ 535c6122-3abc-4092-9886-f5d7c1a517a1
+composite_midpoint_plot(n_rectangles_bind)
+
+# ╔═╡ 42ce2dda-f4a9-4d07-be60-4674d732ffa3
 md"""
-# B.3 Random Walker
+## General Algorithm for the Midpoint Rule
 
-- Write function `random_walker(x0, y0, n, d)`  
-- Use this function to generate a path. 
-- Create a plot. 
-- Can you vectorize the code below (using broadcasted operations and `cumsum`)?
+$$\int_a^b f(x) dx = \int_{x_0}^{x_1} f(x) dx + \int_{x_1}^{x_2} f(x) dx + \ldots + \int_{x_{n-1}}^{x_n} f(x) dx$$ 
 
-```julia
-r = rand()  # ∈ [0,1)
-if     0.0 <= r < 0.25      # north
-	xs[i+1], ys[i+1] = xs[i],     ys[i] + d
-elseif 0.25 <= r < 0.50     # east
-	xs[i+1], ys[i+1] = xs[i] + d, ys[i]
-elseif 0.50 <= r < 0.75     # south
-	xs[i+1], ys[i+1] = xs[i],     ys[i] - d
-else                        # west
-	xs[i+1], ys[i+1] = xs[i] - d, ys[i]
-end
-```
+$$\approx h f\left(\frac{x_0 + x_1}{2}\right) + h f\left(\frac{x_1 + x_2}{2}\right) + \ldots + h f\left(\frac{x_{n-1} + x_n}{2}\right)$$ 
 
-$(embed_image("../../assets/figures/lab_11_random_walker.png"; height=300, type="png"))
+$$= h \left[ f\left(\frac{x_0 + x_1}{2}\right) + f\left(\frac{x_1 + x_2}{2}\right) + \ldots + f\left(\frac{x_{n-1} + x_n}{2}\right) \right]$$ 
+
+$$= h \sum_{i=0}^{n-1} f(x_i), \quad x_i = \left(a + \frac{h}{2}\right) + ih$$
+"""
+
+# ╔═╡ e9175143-62ad-4071-8811-2518cbd91a0b
+md"""
+## D.2 Midpoint Integration
+
+$$\int_a^b f(x) , dx \approx h \sum_{i=0}^{n-1} f(x_i), \quad x_i = \left(a + \frac{h}{2}\right) + ih$$ Write function `midpoint(f, a, b, n)`. Return the approximation of the integral. Check your implementation on the function $v(t) = 3t^2 e^{t^3}$ with anti-derivative $V(t) = e^{t^3} - 1$
+"""
+
+# ╔═╡ c5a3a9b4-565e-4633-a096-6b72744e255f
+md"""
+## D.3 Compare Methods
+
+Write a program to compare trapezoidal and midpoint methods. Use as example $e^{-y^2}$ on the interval from 0 to 2. Print results for $n=2, 2^2,\ldots,2^{20}$. Remember about nice formatting.
+"""
+
+# ╔═╡ fad9614a-30b3-447b-adb5-e0190ba12add
+md"""
+## Remark About Integration
+
+There are many numerical integration methods:
+
+- Simpson’s rule
+- Gauss quadrature
+
+$$\int_a^b f(x) , dx \approx \sum_{i=0}^{n-1} w_i f(x_i)$$
+
+They differ in the way weights $w_i$ and points $x_i$ are chosen. Higher accuracy can be achieved by optimizing the location of $x_i$ 2.
+"""
+
+# ╔═╡ 27ea89c8-a090-4f57-aa92-da59d175eb3c
+md"""
+## Testing
+
+We have done two types of tests:
+
+- Comparison with exact solution (error decreases as $n$ increases)
+- Check if the integral value stabilizes as $n$ grows
+
+Unfortunately, those are very weak tests for software checking. There are still types of errors that those tests might not catch. Usually, the longer we use the procedure, the more we can trust it 3.
+"""
+
+# ╔═╡ 7dba23c3-a80c-40b4-94ff-a90bf9ebc7ca
+md"""
+## Proper Test Procedure
+
+There are three serious ways to test the implementation of numerical methods via unit tests:
+
+- Comparing with hand-computed results usually using problem with few operations – small $n$
+- Solving a problem without numerical errors. E.g., trapezoidal rule must be exact for linear functions. Produced error should be zero (to machine precision)
+- Demonstrate correct convergence rates. A strong test when we can compute exact errors, is to see how fast the error goes to zero as $n$ grows. In the trapezoidal and midpoint rules it is known that the error depends on $n$ as $n^{-2}$ as $n \to \infty$ 4.
+"""
+
+# ╔═╡ d12adf01-c32b-4f91-8b27-8072a6dc2eb1
+md"""
+## E.1 Hand-computed Results Test
+
+We have already done this (and test the result looks the same). We can even simplify this for two trapezoids for $\int_0^1 v(t) , dt$, $v(t)=3t^2 e^{t^3}$
+
+$$\frac{1}{2} h[v(0)+v(0.5)]+\frac{1}{2} h[v(0.5)+v(1)]=2.463642041244344$$
+
+when $h=0.5$. Use above equation to write first test in that file. Verify if your test works.
+"""
+
+# ╔═╡ d7fa4c50-5781-4ad9-9aee-dd5d0461ed77
+md"""
+## E.2 Problem Without Numerical Errors
+
+Usually, numerical results contain unknown approximation errors. Approximation error vanishes – may be present in simple mathematical problems. E.g., the trapezoidal rule is exact for integration of linear functions. Specific test can be $\int_{1.2}^{4.4} (6x-4) , dx$. We try to avoid special numbers like 0 and 1.
+"""
+
+# ╔═╡ bdf30f39-2665-49fd-b1a0-67c5679ccc76
+md"""
+## E.3 No Numerical Errors Test
+
+Use $\int_{1.2}^{4.4} (6x-4) , dx$ to write second test. Perform computation using three different values of $n$. Function anti-derivative is $F(x)=3x^2-4x$. Verify if your test works.
+"""
+
+# ╔═╡ d8c2e883-4ed1-4fe9-a148-0b969ed24a51
+md"""
+## Correct Convergence Rates
+
+- Approximation errors are usually unknown, but we often may assume a certain asymptotic behavior of the error. 
+- E.g., for trapezoidal rule when we double $n$ error is reduced by factor of about 4 – error convergence to zero as $n^{-2}$ – the convergence rate is 2. 
+- Error of numerical integration methods usually converge to zero as $n^{-p}$. 
+- Assume the error depends on $n$ as $E=Cn^r$ where $C$ is unknown constant and $r$ is the convergence rate.
+"""
+
+# ╔═╡ 1675513d-e387-4a5b-b08f-b4df538047a6
+md"""
+
+Consider $q$ experiments (numerical) with $n:n_1,n_2,\ldots,n_q$ and corresponding errors $E_1,E_2,\ldots,E_q$. 
+
+For two consecutive experiments, $i$ and $i-1$, we have the error model:
+
+$$E_i=Cn_i^r$$ 
+
+$$E_{i-1}=Cn_{i-1}^r$$
+
+$$\Rightarrow r_i=\frac{\ln(E_i/E_{i-1})}{\ln(n_i/n_{i-1})}$$
+
+ $i$ index for $r$ was added as value of $r$ varies with $i$. Hopefully, $r_i$ approaches correct convergence rate as $n$ increases and $i \to q$.
+"""
+
+# ╔═╡ 20979253-7451-495b-8629-0b2443d79375
+md"""
+## E.4 Convergence Rate Test
+
+The approximation errors in the trapezoidal rule are proportional to $n^{-2}$ for $i=1,2,\ldots,q$
+
+$$n_i=2^i$$
+
+Compute integral with $n_i$ intervals. Compute the error $E_i$. Estimate $r_i=\frac{\ln(E_i/E_{i-1})}{\ln(n_i/n_{i-1})}$ if $i>1$.
+"""
+
+# ╔═╡ f67f2677-c22a-476c-bd6c-adcdd198df10
+md"""
+##  F.1 Adaptive integration
+
+Suppose we want to use the trapezoidal or midpoint method to compute an integral $\int_a^b f(x)dx$ with an error less than a prescribed tolerance $\epsilon$. What is the appropriate size of $n$? To answer this question, we may enter an iterative procedure where we compare the results produced by $n$ and $2n$ intervals, and if the difference is smaller than $\epsilon$, the value corresponding to $2n$ is returned. Otherwise, we halve $n$ and repeat the procedure.
+
+_Hint_: It may be a good idea to organize your code so that the function _adaptive_integration_ can be used easily in future programs you write.
+
+a) Write a function _adaptive_integration(f, a, b, eps, method=midpoint)_ that implements the idea above (_eps_ corresponds to the tolerance $\epsilon$, and _method_ can be midpoint or trapezoidal).
+
+b) Test the method on $\int_0^2 x^2 dx$ and $\int_0^2 \sqrt{x} dx$ for $\epsilon = 10^{-1}, 10^{-10}$ and write out the exact error.
+
+c) Make a plot of $n$ versus $\epsilon \in [10^{-1}, 10^{-10}]$ for $\int_0^2 \sqrt{x} dx$. Use logarithmic scale for $\epsilon$.
+
+_Filename_: `adaptive_integration.m`
+
+_Remarks_: The type of method explored in this exercise is called adaptive because it tries to adapt the value of $n$ to meet a given error criterion. The true error can very seldom be computed (since we do not know the exact answer to the computational problem), so one has to find other indicators of error such as when here where changes in integral value as number of intervals doubled taken reflect error.
 
 """
 
-# ╔═╡ c9af6e4e-f001-475b-84a7-d46a092a2683
-rand(10)
-
-# ╔═╡ 2aeadfcf-e616-4a3c-a0d0-231ec084360c
+# ╔═╡ 839e5694-7cf3-45b9-ac1a-860c1b2ab555
 md"""
-## C.1 Fit straight line to data
+##  F.2 Revisit fit of sines to a function
 
-Assume some measurements $y_i, i = 1, 2, \ldots, 5$ have been collected, once every second. Your task is to write a program that fits a straight line to those data.
+This is a continuation of Exercise 2.18. The task is to approximate a given function $f(t)$ on $[-\pi, \pi]$ by a sum of sines,
 
-1. Make a function that computes the error between the straight line $f(x) = ax + b$ and the measurements: 
+$$S_N(t) = \sum_{n=1}^{N} b_n \sin(nt).$$
 
-$$e = \sum_{i=1}^{5} (ax_i + b - y_i)^2$$
+We are now interested in computing the unknown coefficients $b_n$ such that $S_N(t)$ is in some sense the best approximation to $f(t)$. One common way of doing this is to first set up a general expression for the approximation error, measured by "summing up" the squared deviation of $S_N$ from $f$:
 
-2. Make a function with a loop where you give $a$ and $b$, the corresponding value of $e$ is written to the screen, and a plot of the straight line $f(x) = ax + b$ together with the discrete measurements is shown.
+$$E = \int_{-\pi}^{\pi} (S_N(t)-f(t))^2 dt.$$
 
-3. Given the measurements 0.5, 2.0, 1.0, 1.5, 7.5, at times 0, 1, 2, 3, 4, use the function in 2. to interactively search for $a$ and $b$ such that $e$ is minimized.
+We may view $E$ as a function of $b_1, \ldots, b_N$. Minimizing $E$ with respect to $b_1, \ldots, b_N$ will give us a best approximation, in the sense that we adjust $b_1, \ldots, b_N$ such that $S_N$ deviates as little as possible from $f$.
 
-_Remarks_: Fitting a straight line to measured data points is a very common task. The manual search procedure in 3. can be automated by using a mathematical method called the method of least squares.
-"""
+Minimization of a function of $N$ variables, $E(b_1, \ldots, b_N)$ is mathematically performed by requiring all the partial derivatives to be zero:
 
-# ╔═╡ abf821e9-2034-48b8-a05f-32f0bc18337d
-md"""
-## C.2 Fit sines to straight line
+$$\frac{\partial E}{\partial b_1} = 0, \frac{\partial E}{\partial b_2} = 0, \ldots, \frac{\partial E}{\partial b_N} = 0.$$
 
-A lot of technology, especially most types of digital audio devices for processing sound, is based on representing a signal of time as a sum of sine functions. Say the signal is some function $f(t)$ on the interval $[-\pi, \pi]$ (a more general interval $[a, b]$ can easily be treated, but leads to slightly more complicated formulas). Instead of working with $f(t)$ directly, we approximate $f$ by the sum
+a) Compute the partial derivative $\frac{\partial E}{\partial b_1}$ and generalize to the arbitrary case $\frac{\partial E}{\partial b_N}$, $1 \leq n \leq N$.
 
-$$S_N(t) = \sum_{n=1}^N b_n \sin(nt),$$
+b) Show that 
 
-where the coefficients $b_n$ must be adjusted such that $S_N(t)$ is a good approximation to $f(t)$. We shall in this exercise adjust $b_n$ by a trial-and-error process.
+$$b_n = \frac{1}{\pi} \int_{-\pi}^{\pi} f(t) \sin(nt) dt.$$
 
-1. Make a function `sinesum(t, b)` that returns $S_N(t)$, given the coefficients $b_n$ in an array $b$ and time coordinates in an array $t$. Note that if $t$ is an array, the return value is also an array.
+c) Write a function _integrate_coeffs(f, N, M)_ that computes $b_1, \ldots, b_N$ by numerical integration using $M$ intervals in the trapezoidal rule.
 
-2. Write a function `test_sinesum(...)` that calls `sinesum(t, b)` in 1. and determines if the function computes a test case correctly. As test case, let $t$ be an array with values $-\pi/2$ and $\pi/4$, choose $N = 2$, and $b_1 = 4$ and $b_2 = -3$. Compute $S_N(t)$ by hand to get reference values.
+d) A remarkable property of the trapezoidal rule is that it is exact for integrals $\int_{-\pi}^{\pi} \sin(nt) dt$ (when subintervals are of equal size). Use this property to create a function _test_integrate_coeff_ to verify the implementation of _integrate_coeffs_.
 
-3. Make a function `plot_compare(...)` that plots the original function $f(t)$ together with the sum of sines $S_N(t)$, so that the quality of the approximation $S_N(t)$ can be examined visually. The argument $f$ is a Julia function implementing $f(t)$, $N$ is the number of terms in the sum $S_N$, and $M$ is the number of uniformly distributed $t$ coordinates used to plot $f$ and $S_N$.
+e) Implement the choice $f(t)= \frac{1}{\pi} t$ as a Matlab function $f(t)$ and call _integrate_coeffs(f, 3, 100)_ to see what optimal choice of $b_1, b_2, b_3$.
 
-4. Write a function `error(...)` that returns a the mean absolute error in $S_N(t)$ as an approximation to $f(t)$: 
+f) Make a function _plot_approx(f, N, M, filename)_ where you plot $f(t)$ together with best approximation $S_N$ computed above using $M$ intervals for numerical integration. Save plot file with name _filename_.
 
-$$E = \frac{1}{M} \sum_i^M |f(t_i) - S_N(t_i)|,$$
+g) Run _plot_approx(f, N, M, filename)_ for $f(t)=\frac{1}{\pi} t$ for $N=3, 6, 12, 24$. Observe how approximation improves.
 
-where the $t_i$ values are $M$ uniformly distributed coordinates on $[-\pi, \pi]$. The array $b$ holds the coefficients in $S_N$ and $f$ is a Julia function implementing the mathematical function $f(t)$.
-
-5. Make a function `trial(f, N)` for interactively adjusting the coefficients $b_n$ to minimize the error $E$. The `trial` function can run a loop where the user is asked for the $b_n$ values in each pass of the loop and the corresponding plot is shown. You must find a way to terminate the loop when the experiments are over. Use $M=500$ in the calls to `plot_compare` and `error`.
-
-6. Choose $f(t)$ to be a straight line $f(t) = \frac{1}{\pi} t$ on $[-\pi, \pi]$. Call trial(f, 3) and try to find through experimentation some values $b_1, b_2, \text{and } b_3$ such that the sum of sines $S_N(t)$ is a good approximation to the straight line.
-
-7. Now we shall try to automate the procedure in 6. Write a function that has three nested loops over values of $b_1, b_2,\text{ and }b_3$. Let each loop cover the interval $[-1, 1]$ in steps of 0.1. For each combination of $b_1, b_2,\text{ and }b_3$, the error in the approximation $S_N$ should be computed. Use this to find, and print, the smallest error and corresponding values of $b_1, b_2,\text{and }b_3$. Let the program also plot $f$ and approximation $S_N$, corresponding to smallest error.
-"""
-
-# ╔═╡ 29a772de-097d-4d21-9da2-b1e65351764a
-md"""
-## Bonus: Sort Array with Numbers
-
-- Write a function to sort the array so that numbers appear in increasing order.  
-- Use insertion sort  
-- Let the program make a print of the array to the file, both before and after sorting  
-- Confirm that the array has been sorted correctly
-
-### Insertion Sort
-
-- One of the simplest sorting algorithms  
-- Efficient for small data sets  
-- In-place (only fixed extra memory is required)  
-- [Wikipedia](https://en.wikipedia.org/wiki/Insertion_sort), [GeeksforGeeks](https://www.geeksforgeeks.org/insertion-sort/)  
-- We can use Wiki’s pseudocode
-
-"""
-
-# ╔═╡ e259e3d5-8e55-4421-a66d-6c0765cbd663
-md"""
-## My Reflection After Todays Classes
-
-Please include a short written reflection (max ~200 words) on:
- - What went well
- - What you found challenging
- - What you’d do differently next time
-"""
-
-# ╔═╡ 10227e5c-b367-40ee-b261-b6636c3a4d70
-md"""
-Your reflection goes here... 
+h) Run _plot_approx_ for $f(t)= e^{-(t-\pi)}$ and $N=100$. Observe fundamental problem: regardless of $N$, $S_N$.
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -417,7 +542,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 [compat]
 LaTeXStrings = "~1.4.0"
 Plots = "~1.40.13"
-PlutoUI = "~0.7.62"
+PlutoUI = "~0.7.23"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -426,7 +551,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "f11873f5d90bda9b034e5ef04223fb63fa0d9059"
+project_hash = "232a30373508b20d6af8792629d2a9c40048f5ab"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
@@ -483,15 +608,19 @@ version = "3.29.0"
 
 [[deps.ColorTypes]]
 deps = ["FixedPointNumbers", "Random"]
-git-tree-sha1 = "b10d0b65641d57b8b4d5e234446582de5047050d"
+git-tree-sha1 = "67e11ee83a43eb71ddc950302c53bf33f0690dfe"
 uuid = "3da002f7-5984-5a60-b8a6-cbb66c0b333f"
-version = "0.11.5"
+version = "0.12.1"
+weakdeps = ["StyledStrings"]
+
+    [deps.ColorTypes.extensions]
+    StyledStringsExt = "StyledStrings"
 
 [[deps.ColorVectorSpace]]
 deps = ["ColorTypes", "FixedPointNumbers", "LinearAlgebra", "Requires", "Statistics", "TensorCore"]
-git-tree-sha1 = "a1f44953f2382ebb937d60dafbe2deea4bd23249"
+git-tree-sha1 = "8b3b6f87ce8f65a2b4f857528fd8d70086cd72b1"
 uuid = "c3611d14-8923-5661-9e6a-0046d554d3a4"
-version = "0.10.0"
+version = "0.11.0"
 
     [deps.ColorVectorSpace.extensions]
     SpecialFunctionsExt = "SpecialFunctions"
@@ -687,9 +816,9 @@ version = "8.5.0+0"
 
 [[deps.Hyperscript]]
 deps = ["Test"]
-git-tree-sha1 = "179267cfa5e712760cd43dcae385d7ea90cc25a4"
+git-tree-sha1 = "8d511d5b81240fc8e6802386302675bdf47737b9"
 uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
-version = "0.0.5"
+version = "0.0.4"
 
 [[deps.HypertextLiteral]]
 deps = ["Tricks"]
@@ -878,11 +1007,6 @@ git-tree-sha1 = "f02b56007b064fbfddb4c9cd60161b6dd0f40df3"
 uuid = "e6f89c97-d47a-5376-807f-9c37f3926c36"
 version = "1.1.0"
 
-[[deps.MIMEs]]
-git-tree-sha1 = "c64d943587f7187e751162b3b84445bbbd79f691"
-uuid = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
-version = "1.1.0"
-
 [[deps.MacroTools]]
 git-tree-sha1 = "1e0228a030642014fe5cfe68c2c0a818f9e3f522"
 uuid = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
@@ -1037,10 +1161,10 @@ version = "1.40.13"
     Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [[deps.PlutoUI]]
-deps = ["AbstractPlutoDingetjes", "Base64", "ColorTypes", "Dates", "FixedPointNumbers", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "MIMEs", "Markdown", "Random", "Reexport", "URIs", "UUIDs"]
-git-tree-sha1 = "d3de2694b52a01ce61a036f18ea9c0f61c4a9230"
+deps = ["AbstractPlutoDingetjes", "Base64", "Dates", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "Markdown", "Random", "Reexport", "UUIDs"]
+git-tree-sha1 = "5152abbdab6488d5eec6a01029ca6697dff4ec8f"
 uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
-version = "0.7.62"
+version = "0.7.23"
 
 [[deps.PrecompileTools]]
 deps = ["Preferences"]
@@ -1566,35 +1690,41 @@ version = "1.8.1+0"
 """
 
 # ╔═╡ Cell order:
-# ╟─a9775808-2742-11f0-0831-8ff037918d61
-# ╠═1785fd69-b9fe-4e67-986c-3d4b75974edf
-# ╟─20ac7c1f-d3d4-48d7-94a4-ae057ab6f7a3
-# ╟─889f0410-625c-46b4-899d-0ea8bf470456
-# ╟─ca4be4a5-8d18-43b6-b6f7-4dec7f35090f
-# ╠═b76bdc95-e535-4dd8-86fe-fb95887577a2
-# ╠═675863d7-9deb-452e-845c-63edf399885a
-# ╟─1d0b6de8-da11-4784-8172-a45957753e9f
-# ╠═56be3f55-ade1-4f32-8dec-d512b8b0d56c
-# ╠═a7c8cd2e-0b6b-4cc2-996d-1105abee9676
-# ╠═6da71262-37b5-44dc-b674-1d29d1756af3
-# ╟─cdcfa5fc-de9d-48a2-baf4-f29f0c865b25
-# ╟─13e4a7df-f686-4032-9321-7e7ca048d0fc
-# ╟─ccb234af-b5f1-4ce7-94e1-f31172c312e5
-# ╠═d93da685-6848-4a17-9a2f-22506a74970a
-# ╠═88cb5d6e-28e1-453a-a568-d0fc34c44806
-# ╠═1890b4ed-6ac2-4901-a2b2-794582ed44dd
-# ╠═d5b20bf1-33f6-4fba-a4a0-c02adf5158f5
-# ╠═1ef0ce82-499d-4760-a865-0c5ecd065b15
-# ╠═a4f73d17-662b-4fec-b76b-90e0cd9600d6
-# ╟─47babd05-bd9b-416b-980c-c0e10516acbb
-# ╟─49adad7b-6219-4a86-852a-fb7510055614
-# ╟─338c1205-68ab-476e-963e-fc98e12af4b3
-# ╟─35c5a834-2046-4086-a2b4-75ee0b5c0c88
-# ╠═c9af6e4e-f001-475b-84a7-d46a092a2683
-# ╟─2aeadfcf-e616-4a3c-a0d0-231ec084360c
-# ╟─abf821e9-2034-48b8-a05f-32f0bc18337d
-# ╟─29a772de-097d-4d21-9da2-b1e65351764a
-# ╟─e259e3d5-8e55-4421-a66d-6c0765cbd663
-# ╠═10227e5c-b367-40ee-b261-b6636c3a4d70
+# ╠═7ba54843-ed1b-4233-8586-8dabe56b8c88
+# ╠═a871cd04-2cbb-11f0-0511-456e02603a5c
+# ╟─73c5828c-1287-45fb-a065-bdfcfafbef40
+# ╠═ad8c62ba-8ada-4e43-9c4d-9b1c7457a696
+# ╟─b7366a38-2ba6-4c59-9fbb-b736baf5edb7
+# ╟─fcab19f8-0703-42ea-a771-6aded71efef2
+# ╟─b77aeac2-8a9a-46e2-9251-62342018354a
+# ╟─d8a987dd-a332-4c55-b4b9-eca4f2b1491c
+# ╟─5e5885ab-93eb-48cf-94d1-4c744356ef60
+# ╟─d9ba5f01-dedd-4543-9594-1e135732de90
+# ╟─cfa76d39-7114-422f-8098-81e8c6379cf4
+# ╟─f47504cf-2a32-4484-ac67-29d5d07797e9
+# ╟─8c101a8a-15f7-4ce1-b2ec-0118426e4494
+# ╟─64bbb77a-8f89-4ca8-b284-0523c7f201e9
+# ╠═7cff897b-b18d-406c-98e2-427d84638e44
+# ╟─92760dd1-60d0-41a5-836f-967c2c188b26
+# ╟─377084d5-ea28-4d6a-bb84-d948d7481335
+# ╟─02f9ece7-d540-4c4e-9510-b3063533ec3e
+# ╟─fb137bca-4905-427a-9330-7e983a89ef9c
+# ╟─74276d46-bcd3-4cbf-befb-06675fe47d0e
+# ╠═73ebd107-39d5-4963-a866-20e341d5e481
+# ╠═535c6122-3abc-4092-9886-f5d7c1a517a1
+# ╟─42ce2dda-f4a9-4d07-be60-4674d732ffa3
+# ╟─e9175143-62ad-4071-8811-2518cbd91a0b
+# ╟─c5a3a9b4-565e-4633-a096-6b72744e255f
+# ╟─fad9614a-30b3-447b-adb5-e0190ba12add
+# ╟─27ea89c8-a090-4f57-aa92-da59d175eb3c
+# ╟─7dba23c3-a80c-40b4-94ff-a90bf9ebc7ca
+# ╟─d12adf01-c32b-4f91-8b27-8072a6dc2eb1
+# ╟─d7fa4c50-5781-4ad9-9aee-dd5d0461ed77
+# ╟─bdf30f39-2665-49fd-b1a0-67c5679ccc76
+# ╟─d8c2e883-4ed1-4fe9-a148-0b969ed24a51
+# ╟─1675513d-e387-4a5b-b08f-b4df538047a6
+# ╟─20979253-7451-495b-8629-0b2443d79375
+# ╟─f67f2677-c22a-476c-bd6c-adcdd198df10
+# ╟─839e5694-7cf3-45b9-ac1a-860c1b2ab555
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
