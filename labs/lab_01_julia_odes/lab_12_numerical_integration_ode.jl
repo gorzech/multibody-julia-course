@@ -38,7 +38,7 @@ end;
 md"""
 # Programming Multibody Systems in Julia
 
-### Lab 2: Numerical Integration, ODEs
+### Lab 2: Numerical Integration
 
 Grzegorz Orzechowski
 """
@@ -477,15 +477,13 @@ md"""
 
 Suppose we want to use the trapezoidal or midpoint method to compute an integral $\int_a^b f(x)dx$ with an error less than a prescribed tolerance $\epsilon$. What is the appropriate size of $n$? To answer this question, we may enter an iterative procedure where we compare the results produced by $n$ and $2n$ intervals, and if the difference is smaller than $\epsilon$, the value corresponding to $2n$ is returned. Otherwise, we halve $n$ and repeat the procedure.
 
-_Hint_: It may be a good idea to organize your code so that the function _adaptive_integration_ can be used easily in future programs you write.
+_Hint_: It may be a good idea to organize your code so that the function `adaptive_integration` can be used easily in future programs you write.
 
-a) Write a function _adaptive_integration(f, a, b, eps, method=midpoint)_ that implements the idea above (_eps_ corresponds to the tolerance $\epsilon$, and _method_ can be midpoint or trapezoidal).
+a) Write a function `adaptive_integration(f, a, b, tol, method="midpoint")` that implements the idea above (`tol` corresponds to the tolerance $\epsilon$, and `method` can be midpoint or trapezoidal).
 
 b) Test the method on $\int_0^2 x^2 dx$ and $\int_0^2 \sqrt{x} dx$ for $\epsilon = 10^{-1}, 10^{-10}$ and write out the exact error.
 
 c) Make a plot of $n$ versus $\epsilon \in [10^{-1}, 10^{-10}]$ for $\int_0^2 \sqrt{x} dx$. Use logarithmic scale for $\epsilon$.
-
-_Filename_: `adaptive_integration.m`
 
 _Remarks_: The type of method explored in this exercise is called adaptive because it tries to adapt the value of $n$ to meet a given error criterion. The true error can very seldom be computed (since we do not know the exact answer to the computational problem), so one has to find other indicators of error such as when here where changes in integral value as number of intervals doubled taken reflect error.
 
@@ -493,7 +491,7 @@ _Remarks_: The type of method explored in this exercise is called adaptive becau
 
 # ╔═╡ 839e5694-7cf3-45b9-ac1a-860c1b2ab555
 md"""
-##  F.2 Revisit fit of sines to a function
+##  F.2 Revisit the fit of sines to a function
 
 This is a continuation of Exercise 2.18. The task is to approximate a given function $f(t)$ on $[-\pi, \pi]$ by a sum of sines,
 
@@ -515,17 +513,17 @@ b) Show that
 
 $$b_n = \frac{1}{\pi} \int_{-\pi}^{\pi} f(t) \sin(nt) dt.$$
 
-c) Write a function _integrate_coeffs(f, N, M)_ that computes $b_1, \ldots, b_N$ by numerical integration using $M$ intervals in the trapezoidal rule.
+c) Write a function `integrate_coeffs(f, N, M)` that computes $b_1, \ldots, b_N$ by numerical integration using $M$ intervals in the trapezoidal rule.
 
-d) A remarkable property of the trapezoidal rule is that it is exact for integrals $\int_{-\pi}^{\pi} \sin(nt) dt$ (when subintervals are of equal size). Use this property to create a function _test_integrate_coeff_ to verify the implementation of _integrate_coeffs_.
+d) A remarkable property of the trapezoidal rule is that it is exact for integrals $\int_{-\pi}^{\pi} \sin(nt) dt$ (when subintervals are of equal size). Use this property to create a cell `test_integrate_coeff` to verify the implementation of `integrate_coeffs`.
 
-e) Implement the choice $f(t)= \frac{1}{\pi} t$ as a Matlab function $f(t)$ and call _integrate_coeffs(f, 3, 100)_ to see what optimal choice of $b_1, b_2, b_3$.
+e) Implement the choice $f(t)= \frac{1}{\pi} t$ as a Matlab function $f(t)$ and call `integrate_coeffs(f, 3, 100)` to see what optimal choice of $b_1, b_2, b_3$.
 
-f) Make a function _plot_approx(f, N, M, filename)_ where you plot $f(t)$ together with best approximation $S_N$ computed above using $M$ intervals for numerical integration. Save plot file with name _filename_.
+f) Make a function `plot_approx(f, N, M, filename)` where you plot $f(t)$ together with best approximation $S_N$ computed above using $M$ intervals for numerical integration. Save plot file with name `filename`.
 
-g) Run _plot_approx(f, N, M, filename)_ for $f(t)=\frac{1}{\pi} t$ for $N=3, 6, 12, 24$. Observe how approximation improves.
+g) Run `plot_approx(f, N, M, filename)` for $f(t)=\frac{1}{\pi} t$ for $N=3, 6, 12, 24$. Observe how approximation improves.
 
-h) Run _plot_approx_ for $f(t)= e^{-(t-\pi)}$ and $N=100$. Observe fundamental problem: regardless of $N$, $S_N$.
+h) Run `plot_approx` for $f(t)= e^{-(t-\pi)}$ and $N=100$. Observe a fundamental problem: regardless of $N$, $S_N(-\pi)=0, not $e^{2\pi}\approx 535$.
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -1690,7 +1688,7 @@ version = "1.8.1+0"
 """
 
 # ╔═╡ Cell order:
-# ╠═7ba54843-ed1b-4233-8586-8dabe56b8c88
+# ╟─7ba54843-ed1b-4233-8586-8dabe56b8c88
 # ╠═a871cd04-2cbb-11f0-0511-456e02603a5c
 # ╟─73c5828c-1287-45fb-a065-bdfcfafbef40
 # ╠═ad8c62ba-8ada-4e43-9c4d-9b1c7457a696
@@ -1725,6 +1723,6 @@ version = "1.8.1+0"
 # ╟─1675513d-e387-4a5b-b08f-b4df538047a6
 # ╟─20979253-7451-495b-8629-0b2443d79375
 # ╟─f67f2677-c22a-476c-bd6c-adcdd198df10
-# ╟─839e5694-7cf3-45b9-ac1a-860c1b2ab555
+# ╠═839e5694-7cf3-45b9-ac1a-860c1b2ab555
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
