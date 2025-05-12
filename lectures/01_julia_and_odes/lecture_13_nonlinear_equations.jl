@@ -184,7 +184,7 @@ md"""
 	demo_brute_force_root_finder()
 
 Demonstrate `brute_force_root_finder` on 
-\(f(x) = e^{-x^2}\cos(20x)\) over \([0,4]\) with 1001 samples.
+$f(x) = e^{-x^2}\cos(20x)$ over $[0,4]$ with 1001 samples.
 Prints the number of roots found and plots the function
 with red circles at the estimated roots.
 """
@@ -456,7 +456,7 @@ begin
 	f_th(x)    = tanh(x)
 	dfdx_th(x) = 1 - tanh(x)^2
 	
-	xr_th = naive_newton(f_th, dfdx_th, 1.08, 1e-6)
+	xr_th = naive_newton(f_th, dfdx_th, 1.09, 1e-6)
 	println(xr_th)
 end
 
@@ -551,7 +551,7 @@ newton(f, dfdx, 1000.0, 1e-6)
 newton(f_th, dfdx_th, 1.08, 1e-6)
 
 # ╔═╡ a33d7d5c-3950-4967-9b04-ff25e30fa626
-newton(f_th, dfdx_th, 1.08, 1e-6)
+newton(f_th, dfdx_th, 1.09, 1e-6)
 
 # ╔═╡ 80ee2155-30b7-433b-ab17-de7dc2f73be8
 md"""
@@ -860,6 +860,39 @@ $$\boldsymbol{\Phi}_\boldsymbol{u} = \begin{bmatrix} -a \sin \phi_2 & -1 \\ a \c
 
 $(embed_image("../../assets/figures/lecture_13_simple_mechanism.png", type="png", height=300))
 """
+
+# ╔═╡ ea5e2c0b-c081-4899-917c-3f22ca137768
+md"""
+$\boldsymbol{u} = [\phi_2, d]^\top$
+"""
+
+# ╔═╡ 03d0fddb-d694-49f4-9688-4fa227c2188d
+function Φ(u; ϕ₁ = 30 * pi / 180)
+	ϕ₂, d = u
+	a = 2
+	r = 4
+	b = 10
+	Φ₁ = b * cos(ϕ₁) + a * cos(ϕ₂) - d
+	Φ₂ = b * sin(ϕ₁) + a * sin(ϕ₂) - r
+	return [Φ₁, Φ₂]
+end
+
+# ╔═╡ 97390d4c-2861-4372-af29-f6a5b655fc76
+function Φᵤ(u; ϕ₁ = 30 * pi / 180)
+	ϕ₂, d = u
+	a = 2
+	return [-a * sin(ϕ₂) -1;
+		   a * cos(ϕ₂) 0]
+end
+
+# ╔═╡ bbbcbaba-a085-4d60-b196-885a8e3072cd
+u0 = [325 * pi / 180, 12]
+
+# ╔═╡ db2de694-25fe-4131-9ffd-b57d3e4189b8
+u_approx_fd, n_iters_fd = newton_system(Φ, u -> ForwardDiff.jacobian(Φ, u), u0; tol=1e-6, maxiter=100)
+
+# ╔═╡ 31386107-098a-42ad-a49e-729693dbbc9c
+u_approx, n_iters = newton_system(Φ, Φᵤ, u0; tol=1e-6, maxiter=100)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -3545,7 +3578,7 @@ version = "1.8.1+0"
 # ╟─40f4936b-5ec4-4c98-9f48-cc41054cfd80
 # ╟─a838157d-d5d6-4bbd-8ca4-7173699de41b
 # ╟─ce5a4e83-1a4b-4955-a6f3-67806b29b6cc
-# ╟─5354a952-28f3-4ce0-bc93-ec6df1e25eee
+# ╠═5354a952-28f3-4ce0-bc93-ec6df1e25eee
 # ╠═f0f25ef2-a6e5-47f0-80d7-116f7c3f01c3
 # ╠═571be586-ec78-4f6d-99ea-73ce47e257f0
 # ╠═c82c36a5-bd2e-402f-a699-5ddf65774045
@@ -3559,7 +3592,7 @@ version = "1.8.1+0"
 # ╟─59312e92-4b79-4ec1-bd26-e237edc368b4
 # ╟─bd56bb43-980e-4564-be73-7958c207a9a3
 # ╟─deb5c111-def4-4bda-8dd6-3c729eb4adc4
-# ╠═4e03fdea-2229-4354-a83f-eaeb75f87a14
+# ╟─4e03fdea-2229-4354-a83f-eaeb75f87a14
 # ╠═9355abf3-2789-4d90-b00d-f7776452543a
 # ╟─4c10d2c9-8b50-43ca-ad59-cf12839a86cd
 # ╠═9068de6c-66cf-4602-9986-238ba3657dc4
@@ -3597,5 +3630,11 @@ version = "1.8.1+0"
 # ╠═81ed7c2e-7898-41c4-9b8a-267dcc7f807d
 # ╠═178e91a4-f96e-43a9-8690-70c78cee815c
 # ╟─70524fd5-c20d-420b-9fac-13a96a45c321
+# ╟─ea5e2c0b-c081-4899-917c-3f22ca137768
+# ╠═03d0fddb-d694-49f4-9688-4fa227c2188d
+# ╠═97390d4c-2861-4372-af29-f6a5b655fc76
+# ╠═bbbcbaba-a085-4d60-b196-885a8e3072cd
+# ╠═db2de694-25fe-4131-9ffd-b57d3e4189b8
+# ╠═31386107-098a-42ad-a49e-729693dbbc9c
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

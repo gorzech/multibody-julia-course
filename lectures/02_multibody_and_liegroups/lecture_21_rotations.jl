@@ -248,7 +248,7 @@ This form is particularly advantageous when:
 
 - Deriving analytical expressions (e.g., for Jacobians).
     
-- Coupling with quaternion rate equations: $\dot{q} = \frac{1}{2} \boldsymbol{E}(\boldsymbol{q})^\top \omega$, where $\boldsymbol{E}(\boldsymbol{q}) = \boldsymbol{L}(\boldsymbol{q})$ or $\boldsymbol{R}(\boldsymbol{q})$.
+- Coupling with quaternion rate equations: $\dot{\boldsymbol{q}} = \frac{1}{2} \boldsymbol{E}(\boldsymbol{q})^\top \boldsymbol{\omega}$, where $\boldsymbol{E}(\boldsymbol{q}) = \boldsymbol{L}(\boldsymbol{q})$ or $\boldsymbol{R}(\boldsymbol{q})$.
     
 - Expressing virtual rotations and variations in the principle of virtual work.
 
@@ -284,7 +284,7 @@ end
 function rotation_matrix_LR(q)
     L = L_matrix(q)
     R = R_matrix(q)
-    return transpose(L) * R
+    return R * transpose(L)
 end
 
 # ╔═╡ b79c1516-543e-443d-923e-c552103062c0
@@ -518,13 +518,13 @@ end
 
 # ╔═╡ 99a27d56-dfc4-4816-aa3b-2b1150f11bae
 # Example: diagonal inertia tensor (e.g., uniform box or sphere)
-I = Diagonal([1.0, 2.0, 3.0]) |> Matrix  # must be a full matrix
+I = Diagonal([1.0, 2.0, 3.0]) #|> Matrix  # must be a full matrix
 
 # ╔═╡ 29871224-af35-4283-aa1d-ea76e030d68f
 p = RigidBodyParams(I, t -> torque_vector(t))      # inertia + time-varying torque
 
 # ╔═╡ 112c561a-224c-44e2-9524-7941e1aa305b
-prob_rb = ODEProblem(rigid_body!, u0_rb, (0.0, 10.0), p)
+prob_rb = ODEProblem(rigid_body!, u0_rb, tspan_rb, p)
 
 # ╔═╡ 27680643-bdbb-46d9-970c-3735e44b459d
 sol_rb = solve(prob_rb)
@@ -3373,7 +3373,7 @@ version = "1.4.1+2"
 """
 
 # ╔═╡ Cell order:
-# ╠═ed866e82-2722-11f0-290a-79ad6e0c862c
+# ╟─ed866e82-2722-11f0-290a-79ad6e0c862c
 # ╠═104730c1-d576-4375-b75e-13123e970bdb
 # ╟─76361d5f-fac2-4420-b99b-9a24e7be3984
 # ╟─f67a7a9c-f5e4-411c-891a-db10745e01b3
