@@ -4,6 +4,18 @@
 using Markdown
 using InteractiveUtils
 
+# This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
+macro bind(def, element)
+    #! format: off
+    return quote
+        local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
+        local el = $(esc(element))
+        global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
+        el
+    end
+    #! format: on
+end
+
 # ╔═╡ 8df6395b-bdbb-47ca-bfd8-9486b03b23d1
 begin
 	using LinearAlgebra
@@ -18,6 +30,220 @@ md"""
 ### Lecture 3: Rigid Body Rotations and Quaternions
 
 Grzegorz Orzechowski
+"""
+
+# ╔═╡ 76361d5f-fac2-4420-b99b-9a24e7be3984
+md"""
+# **Euler Parameters: Definition & Geometric Meaning**
+
+  
+
+Euler parameters are a four-parameter description of a 3D rotation (also called **Euler–Rodrigues parameters**). They correspond to an **axis–angle** representation of a rotation. Given a rotation by angle φ about a unit axis **n**, we define:
+
+- **e₀ = cos(φ/2)** (scalar component)
+    
+- **e = (e₁, e₂, e₃) = n · sin(φ/2)** (vector component)  .
+    
+    These parameters thus encode the rotation angle and axis: **e₀** represents the “amount” of rotation (via half-angle), while **e₁, e₂, e₃** point along the rotation axis scaled by sin(φ/2). Geometrically, any 3D rotation can be described by some axis and angle (Euler’s rotation theorem), and Euler parameters are a convenient numerical representation of that rotation . Notably, the four parameters $(e_0, e_1, e_2, e_3)$ can be viewed as the components of a **quaternion** representing the orientation .
+    
+
+"""
+
+# ╔═╡ c8d97023-21f9-4b51-828f-635b71b91dbf
+md"""
+
+# **Euler Parameters and Unit Quaternions**
+
+  
+
+Euler parameters are essentially **unit quaternions** – quaternions of unit length used to represent rotations . A quaternion can be written as $q = e_0 + e_1 \mathbf{i} + e_2 \mathbf{j} + e_3 \mathbf{k}$ (with $e_0$ scalar part, and $(e_1,e_2,e_3)$ as the vector part). For a valid rotation, these parameters satisfy a normalization constraint:
+
+e_0^2 + e_1^2 + e_2^2 + e_3^2 = 1,
+
+ensuring only three degrees of freedom (the rotation axis and angle) . This unit-length condition arises because an arbitrary rotation in 3D has just three independent parameters (the fourth quaternion component is determined by the first three). In practice, Euler parameters provide a **singularity-free** orientation description (unlike Euler angles, they have no gimbal lock) and can smoothly cover all possible orientations on the 3D unit sphere (S³).
+
+"""
+
+# ╔═╡ b9ad21d4-d4a4-4f20-a55c-037a62fd063c
+md"""
+
+# **Orientation Representation in Rigid Body Dynamics**
+
+  
+
+Unit quaternions (Euler parameters) are widely used to represent the orientation (attitude) of rigid bodies in dynamics simulations . They offer several advantages over traditional Euler angles or rotation matrices:
+
+- **No Gimbal Lock:** Quaternions do not suffer from gimbal lock singularities that Euler angles have .
+    
+- **Stable Composition:** Rotations compose by quaternion multiplication, which is computationally faster and more numerically stable than composing rotation matrices .
+    
+- **Easy Axis-Angle Extraction:** One can readily recover the rotation axis and angle from a unit quaternion.
+    
+- **Interpolation:** Quaternions enable smooth interpolation between orientations (e.g. via slerp) , useful for animations or continuous motion.
+    
+    Because of these benefits, almost all modern spacecraft attitude representations, robotics simulations, and game engines use unit quaternions for orientation. In rigid body dynamics code, Euler parameters are treated as part of the state vector to track orientation, with the constraint e_0^2+e_1^2+e_2^2+e_3^2=1 enforced either by choice of coordinates or by normalization.
+    
+
+"""
+
+# ╔═╡ b79c1516-543e-443d-923e-c552103062c0
+md"""
+
+# **Rotation Matrix from Euler Parameters**
+
+  
+
+Any quaternion (Euler parameters) can be converted to a **rotation matrix** (direction cosine matrix) that rotates vectors in space. The rotation matrix $A$ corresponding to quaternion $q=(e_0,e_1,e_2,e_3)$ can be derived by considering how $q$ rotates an arbitrary vector (via $q,p,q^{-1}$). In index form, the matrix elements can be written compactly as:
+
+a_{ij} = \delta_{ij}(e_0^2 - e_k e_k) + 2\,e_i e_j + 2\,\varepsilon_{ijk}\,e_0 e_k,
+
+using the Kronecker delta $\delta_{ij}$ and Levi-Civita symbol $\varepsilon_{ijk}$ . Expanding this yields the explicit 3×3 rotation matrix entries:
+
+- $a_{11} = e_0^2 + e_1^2 - e_2^2 - e_3^2$,
+    
+- $a_{12} = 2(e_1 e_2 + e_0 e_3)$,
+    
+- $a_{13} = 2(e_1 e_3 - e_0 e_2)$,
+    
+- $a_{21} = 2(e_1 e_2 - e_0 e_3)$,
+    
+- $a_{22} = e_0^2 - e_1^2 + e_2^2 - e_3^2$,
+    
+- $a_{23} = 2(e_2 e_3 + e_0 e_1)$,
+    
+- $a_{31} = 2(e_1 e_3 + e_0 e_2)$,
+    
+- $a_{32} = 2(e_2 e_3 - e_0 e_1)$,
+    
+- $a_{33} = e_0^2 - e_1^2 - e_2^2 + e_3^2$ .
+    
+
+  
+
+We can implement this conversion in Julia as a function:
+
+```
+# Compute 3x3 rotation matrix from Euler parameters (unit quaternion)
+function rotation_matrix_from_quat(q)
+    e0, e1, e2, e3 = q  # unpack quaternion components
+    return [
+        e0^2 + e1^2 - e2^2 - e3^2,   2*(e1*e2 + e0*e3),       2*(e1*e3 - e0*e2);
+        2*(e1*e2 - e0*e3),          e0^2 - e1^2 + e2^2 - e3^2, 2*(e2*e3 + e0*e1);
+        2*(e1*e3 + e0*e2),          2*(e2*e3 - e0*e1),        e0^2 - e1^2 - e2^2 + e3^2
+    ]
+end
+```
+
+This returns an orthonormal rotation matrix $A$ that can rotate any vector from the body frame to the world frame (or vice versa, depending on convention). For example, rotation_matrix_from_quat([0.9239, 0.3827, 0, 0]) would give a matrix rotating by 45° about the x-axis.
+
+"""
+
+# ╔═╡ 7a1b92c2-50f0-45b6-8dd9-64099baba396
+md"""
+
+# **Quaternion Kinematics (Euler Parameter ODE)**
+
+  
+
+To update the orientation over time, we integrate the **quaternion kinematic equation**. If the rigid body has an angular velocity **ω** = (ωₓ, ω_y, ω_z) (in body-fixed coordinates), we form a pure quaternion $w = (0, ω_x, ω_y, ω_z)$. The time derivative of the orientation quaternion $q(t)$ is given by:
+
+$\dot{q}(t) = \frac{1}{2}\; q(t)\; w(t),$
+
+assuming ω is expressed in the rotating body frame. This formula means the quaternion’s rate of change is half the quaternion-product of itself with the angular velocity (conceptually analogous to $\dot{\theta} = \omega$ in 2D rotation). Expanding the quaternion product gives a system of first-order ODEs for the Euler parameters:
+
+$\dot e_0 = -\tfrac{1}{2}(e_1 \omega_x + e_2 \omega_y + e_3 \omega_z),$
+
+$\dot e_1 = \;\;\tfrac{1}{2}(e_0 \omega_x + e_2 \omega_z - e_3 \omega_y), \quad \text{(and cyclic perms for }\dot e_2,\dot e_3).$
+
+We implement this in Julia for use with **DifferentialEquations.jl**:
+
+"""
+# ODE function defining quaternion dynamics given angular velocity ω(t)
+
+# ╔═╡ b5d3d04d-5496-4066-a588-08b9b18aca33
+function quaternion_ode!(dq, q, p, t)
+    # q = (e0, e1, e2, e3) is the state (orientation quaternion)
+    e0, e1, e2, e3 = q        # unpack current quaternion
+    ω = p                     # angular velocity (passed as parameter)
+    ωx, ωy, ωz = ω            # components of angular velocity in body frame
+    # Compute dq/dt = 0.5 * q * (0, ω):
+    dq[1] = -0.5 * (e1*ωx + e2*ωy + e3*ωz)                    # dot e0 
+    dq[2] =  0.5 * ( e0*ωx + e2*ωz - e3*ωy )                  # dot e1
+    dq[3] =  0.5 * ( e0*ωy + e3*ωx - e1*ωz )                  # dot e2
+    dq[4] =  0.5 * ( e0*ωz + e1*ωy - e2*ωx )                  # dot e3
+end
+
+# ╔═╡ 40a935d4-c2f0-43e2-a714-103f0380f8c1
+md"""
+
+This function computes $\dot{q}$ for any given quaternion q and angular velocity ω. In essence, it continuously “spins” the quaternion according to ω. (If ω is in world frame instead, one would use $\dot{q} = \frac{1}{2} w, q$ by multiplying on the other side.)
+
+"""
+
+# ╔═╡ 1081a378-e2ec-497f-8382-3ea00b27d860
+md"""
+
+## Numerical Integration Example (Julia + DifferentialEquations.jl)
+
+Using the above ODE, we can simulate the orientation over time. We set up an ODE problem with an initial orientation and a given angular velocity, then solve it with a standard integrator:
+
+"""
+
+# ╔═╡ 628a7564-1dfe-461a-b552-ba49742f8946
+ω_const = [0.0, 0.0, 1.0]    # constant angular velocity about z-axis (1 rad/s)
+
+# ╔═╡ 7f1b2d97-39f3-4cc0-af21-72a5af1c44c5
+q0 = [1.0, 0.0, 0.0, 0.0]             # initial quaternion (no rotation)
+
+# ╔═╡ 5ae3a26c-dc5e-42f3-b4f2-5d9c75bed5b8
+tspan = (0.0, 10.0)                   # simulate 10 seconds
+
+# ╔═╡ c25f1923-8a4e-491f-a4e6-4f3ea267d374
+prob = ODEProblem(quaternion_ode!, q0, tspan, ω_const)
+
+# ╔═╡ 4aeea69d-cd46-47e8-bd70-bca18cd09a88
+sol = solve(prob, Tsit5(), dt=0.01)   # 5th-order solver with 0.01s time step
+
+# ╔═╡ d47bc690-08cb-40b5-8d2f-425ad1ee5a7c
+plot(sol, title="Quaternion components over time", 
+     label=["e₀" "e₁" "e₂" "e₃"], legend=:right)
+
+# ╔═╡ 59bd1be4-9b20-46d2-a68f-287a57edb223
+md"""
+
+This integrates $\dot{q} = \frac{1}{2}q ω$ over 0–10 s. The result `sol(t)` gives the quaternion at time `t`. We can plot each component to verify the behavior. For a constant rotation about the z-axis, $e_0$ will decrease from 1 toward 0 (as the rotation angle increases to 180°), $e_3$ (the component along z-axis) will increase, while $e_1, e_2$ remain zero (since the rotation axis has no x or y component). In all cases, the solution quaternions stay on the unit sphere, as expected.
+
+  
+
+_Example_: Evolution of quaternion components for a rotation about the axis (1,1,1) at 1 rad/s. Here $e_0$ (orange) starts near 1 and decreases as rotation accumulates, while $(e_1,e_2,e_3)$ (other colors) vary sinusoidally. The quaternion remains normalized (all curves satisfy $e_0^2+e_1^2+e_2^2+e_3^2=1$ at any time).
+
+"""
+
+# ╔═╡ 06964bbb-c096-42a5-8c3f-460eee58880a
+md"""
+
+# **Interactive Exploration with PlutoUI**
+
+  
+
+One powerful feature of the Julia + Pluto environment is interactivity. Using **PlutoUI**, we can add sliders and other controls to manipulate parameters (like angular velocity) and instantly see the effect on the orientation. For example, we can let the user adjust the angular velocity components with sliders and re-run the simulation:
+
+```
+using PlutoUI
+
+# Interactive sliders for angular velocity (in rad/s)
+@bind ωx Slider(-6.28, 6.28, step=0.1, default=1.0, label="ω_x")
+@bind ωy Slider(-6.28, 6.28, step=0.1, default=0.0, label="ω_y")
+@bind ωz Slider(-6.28, 6.28, step=0.1, default=0.0, label="ω_z")
+
+ω = [ωx, ωy, ωz]                            # current angular velocity vector from sliders
+prob = ODEProblem(quaternion_ode!, q0, tspan, ω)
+sol = solve(prob, Tsit5(), dt=0.01)
+plot(sol, label=["e₀","e₁","e₂","e₃"])
+```
+
+In a Pluto notebook, moving any slider (ω_x, ω_y, ω_z) will automatically re-run the ODEProblem and solve, updating the plot. This interactive visualization lets students **experiment** with different rotation axes and rates to build intuition. For instance, one can set $(\omega_x,\omega_y,\omega_z)$ to spin about different axes or even simulate precession by giving multiple components, and immediately observe how the quaternion components and orientation evolve. We could further use the quaternion sol(t) to rotate a 3D object or coordinate frame in real-time for a visual demonstration of the rigid body’s orientation. The combination of **DifferentialEquations.jl** for dynamics and PlutoUI for interactivity provides a rich playground for understanding multibody rotation behavior.
+
 """
 
 # ╔═╡ 4307191c-8ccc-4af9-92b6-ca5a1069fa26
@@ -67,9 +293,9 @@ end
 # ╔═╡ 6efcb593-4d04-4dee-891d-880bc342c86a
 # Initial conditions
 begin
-	q0 = [1.0, 0.0, 0.0, 0.0]
-	ω0 = [0.1, 0.2, 0.3]
-	u0_rb = [q0; ω0]
+	q0_ = [1.0, 0.0, 0.0, 0.0]
+	ω0_ = [0.1, 0.2, 0.3]
+	u0_rb = [q0_; ω0_]
 end
 
 # ╔═╡ 5a00b31e-3c07-4529-9812-51c1c76d80f4
@@ -2716,6 +2942,22 @@ version = "1.4.1+2"
 
 # ╔═╡ Cell order:
 # ╠═ed866e82-2722-11f0-290a-79ad6e0c862c
+# ╠═76361d5f-fac2-4420-b99b-9a24e7be3984
+# ╠═c8d97023-21f9-4b51-828f-635b71b91dbf
+# ╠═b9ad21d4-d4a4-4f20-a55c-037a62fd063c
+# ╠═b79c1516-543e-443d-923e-c552103062c0
+# ╟─7a1b92c2-50f0-45b6-8dd9-64099baba396
+# ╠═b5d3d04d-5496-4066-a588-08b9b18aca33
+# ╠═40a935d4-c2f0-43e2-a714-103f0380f8c1
+# ╟─1081a378-e2ec-497f-8382-3ea00b27d860
+# ╠═628a7564-1dfe-461a-b552-ba49742f8946
+# ╠═7f1b2d97-39f3-4cc0-af21-72a5af1c44c5
+# ╠═5ae3a26c-dc5e-42f3-b4f2-5d9c75bed5b8
+# ╠═c25f1923-8a4e-491f-a4e6-4f3ea267d374
+# ╠═4aeea69d-cd46-47e8-bd70-bca18cd09a88
+# ╠═d47bc690-08cb-40b5-8d2f-425ad1ee5a7c
+# ╠═59bd1be4-9b20-46d2-a68f-287a57edb223
+# ╠═06964bbb-c096-42a5-8c3f-460eee58880a
 # ╟─4307191c-8ccc-4af9-92b6-ca5a1069fa26
 # ╠═8df6395b-bdbb-47ca-bfd8-9486b03b23d1
 # ╠═e2b9a3b1-28f4-4556-88c9-15619b611f32
