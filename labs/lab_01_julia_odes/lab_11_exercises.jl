@@ -388,6 +388,40 @@ md"""
 
 """
 
+# ╔═╡ 11736c7f-29b5-4dc7-bf83-ac9e0f514186
+function insertion_sort(vv)
+	v = copy(vv)
+	n = length(v)
+	for i = 2:n
+		w = v[i]
+		for j = i-1:-1:1
+			println(j)
+			if v[j] > w
+				v[j+1] = v[j]
+			else
+				v[j+1] = w
+				break
+			end
+			if j == 1
+				v[1] = w
+			end
+		end
+	end
+	v
+end
+
+# ╔═╡ 9aa1a874-09a7-4c30-990e-a2fc185b7be0
+w = [1, 2, -1, 0]
+
+# ╔═╡ b0d1988f-107d-4acd-a16e-232b22ec0e81
+v = insertion_sort(w)
+
+# ╔═╡ 2b26e443-6d5c-4fc6-a799-ec4f5dbb543e
+v
+
+# ╔═╡ d44fafe8-4f1c-4ba4-9932-7af86285c5de
+
+
 # ╔═╡ e259e3d5-8e55-4421-a66d-6c0765cbd663
 md"""
 ## My Reflection After Todays Classes
@@ -1594,6 +1628,11 @@ version = "1.8.1+0"
 # ╟─2aeadfcf-e616-4a3c-a0d0-231ec084360c
 # ╟─abf821e9-2034-48b8-a05f-32f0bc18337d
 # ╟─29a772de-097d-4d21-9da2-b1e65351764a
+# ╠═11736c7f-29b5-4dc7-bf83-ac9e0f514186
+# ╠═9aa1a874-09a7-4c30-990e-a2fc185b7be0
+# ╠═b0d1988f-107d-4acd-a16e-232b22ec0e81
+# ╠═2b26e443-6d5c-4fc6-a799-ec4f5dbb543e
+# ╠═d44fafe8-4f1c-4ba4-9932-7af86285c5de
 # ╟─e259e3d5-8e55-4421-a66d-6c0765cbd663
 # ╠═10227e5c-b367-40ee-b261-b6636c3a4d70
 # ╟─00000000-0000-0000-0000-000000000001

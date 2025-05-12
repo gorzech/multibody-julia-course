@@ -119,6 +119,122 @@ md"""
 4. **Solve the system** with three masses and springs with nonzero initial conditions using `RK4`, `ode_EC` (codes are in lecture notebooks), `Tsit5`, and `Rodas5`.  Compare accuracy and efficiency for the different methods.  
 """
 
+# ╔═╡ 400f73fa-71ae-402d-9d55-b12dcf0380b1
+begin
+	# 1) define the ODE
+	function f!(du, u, p, t)
+	    du[1] = u[1]
+	end
+	
+	# 2) set up problem and solve
+	prob1 = ODEProblem(f!, [2.0], (0.0, 5.0))
+	sol1  = solve(prob1, Tsit5(); reltol=1e-3, abstol=1e-6)
+	
+	# 3) quick plot
+	plot(sol1; xlabel="t", ylabel="u(t)", label="numeric")
+end
+
+# ╔═╡ 90ab74de-6adc-4577-add2-7ec2da3fc3db
+function odefun!(dy, y, p, t)
+	x = y[1:3]
+	xp = y[4:6]
+	# M * xpp + K * x = 0
+	xpp = -M \ (K * x)
+	dy[1:3] .= xp
+	dy[4:6] .= xpp
+end
+
+# ╔═╡ 34fe5384-f788-4454-a325-56c1c5785527
+mass3_problem = ODEProblem(odefun!, [0.1, 0, 0, 0, 0, 0], (0.0, 1.0))
+
+# ╔═╡ 70f44787-4caf-4d8f-ab21-a8439f842120
+mass3_sol = solve(mass3_problem, Tsit5(); reltol=1e-4, abstol=1e-7)
+
+# ╔═╡ 3f8c8a9c-9e1b-455f-845d-6e5d5765b78b
+plot(mass3_sol, idxs = (0, 1))
+
+# ╔═╡ 7cde9f72-d54b-46ba-97a1-1f1019d7adfc
+mass3_sol[1]
+
+# ╔═╡ 643929e1-a0f8-4318-876a-52d80146dd28
+xp = mass3_sol[3][4:6]
+
+# ╔═╡ 9f1c8eec-d5d5-4ed3-a3a3-9e1d0924260b
+0.5 * xp' * M * xp
+
+# ╔═╡ 86a9cf08-78ed-4335-974f-8ce7c4660e30
+mass3_ke_by_map = map(y -> 0.5 .* (y[4:6]' * M * y[4:6]), mass3_sol.u)
+
+# ╔═╡ b97ff7f3-a8d6-4df7-ae0f-838abaf6f2b6
+function kinetic_energy(sol)
+	map
+	ke = zeros(length(sol.t))
+	for i in 1 : length(sol.t)
+		xp = sol[i][4:6]
+		ke[i] = 0.5 .* (xp' * M * xp)
+	end
+	return ke
+end
+
+# ╔═╡ 520ea8fb-e8c7-44e7-95a0-cbd39f96b68b
+mass3_ke = kinetic_energy(mass3_sol)
+
+# ╔═╡ 7f79b201-2e05-455e-8b2e-bcc4060d81a6
+function potential_energy(sol)
+	pe = zeros(length(sol.t))
+	for i in 1 : length(sol.t)
+		x = sol[i][1:3]
+		pe[i] = 0.5 .* (x' * K * x)
+	end
+	return pe
+end
+
+# ╔═╡ 36ce114e-fd26-467e-b02f-27d2f21b984d
+mass3_pe = potential_energy(mass3_sol)
+
+# ╔═╡ 962b570c-f22b-45c4-9109-39f6e1f8998a
+plot(mass3_sol.t, mass3_ke_by_map .+ mass3_pe)
+
+# ╔═╡ 25c25b54-f46c-4480-825d-15341c593830
+K_stiff = copy(K)
+
+# ╔═╡ 2bc6551d-5acf-4e24-a6f1-cea639a12ab8
+K_stiff[1, 1] += 1e12
+
+# ╔═╡ 9c36eff8-b79e-457e-91c3-1caf263d73cf
+K_stiff
+
+# ╔═╡ e828d92c-0ee8-42a4-b576-300cd1f72b27
+eigen(K_stiff, M)
+
+# ╔═╡ b9e9bb55-6efe-4a42-95c3-26669f952df7
+function odefun_stiff!(dy, y, p, t)
+	x = y[1:3]
+	xp = y[4:6]
+	# M * xpp + K * x = 0
+	xpp = -M \ (K_stiff * x)
+	dy[1:3] .= xp
+	dy[4:6] .= xpp
+end
+
+# ╔═╡ e8c4fc2e-4ec7-49a1-a6e2-747a242e5f7c
+y0 = [1.0, 0, 0, 0, 0, 0]
+
+# ╔═╡ 169831de-f944-494f-a794-b00ec1220462
+problem_stiff = ODEProblem(odefun_stiff!, y0, (0, 1))
+
+# ╔═╡ b92a1d53-6067-4bf8-a11a-d8a3c78dbe93
+sol_r = @time solve(problem_stiff, Rodas5P(), ; reltol=1e-5, abstol=1e-9, maxiters=1e7)
+
+# ╔═╡ 83df6afc-2f2d-4b02-9dbe-b922d95977c3
+sol_t = @time solve(problem_stiff, Tsit5(), ; reltol=1e-5, abstol=1e-9, maxiters=1e7)
+
+# ╔═╡ c3913d82-df27-437e-9207-dd09e584f075
+sol_r.stats
+
+# ╔═╡ 0c779ce5-25f0-4450-8c36-1eeb58326729
+sol_t.stats
+
 # ╔═╡ 03b66937-474a-404a-9750-dbf3c9235972
 md"""
 5. **Repeat the computations using modal coordinates** $\boldsymbol{p}$.  If $\boldsymbol{\Lambda}$ is the diagonal matrix of eigenvalues and $\boldsymbol{\Psi}$ the matrix of corresponding eigenvectors of the dynamical system
@@ -2833,6 +2949,31 @@ version = "1.8.1+0"
 # ╠═2f769897-1fc5-4969-95db-50c068025555
 # ╠═6fc7ce57-7acb-440c-a285-b598433ae44a
 # ╟─64a976f4-aee6-4422-a869-d4f9d2a1788e
+# ╠═400f73fa-71ae-402d-9d55-b12dcf0380b1
+# ╠═90ab74de-6adc-4577-add2-7ec2da3fc3db
+# ╠═34fe5384-f788-4454-a325-56c1c5785527
+# ╠═70f44787-4caf-4d8f-ab21-a8439f842120
+# ╠═3f8c8a9c-9e1b-455f-845d-6e5d5765b78b
+# ╠═7cde9f72-d54b-46ba-97a1-1f1019d7adfc
+# ╠═643929e1-a0f8-4318-876a-52d80146dd28
+# ╠═9f1c8eec-d5d5-4ed3-a3a3-9e1d0924260b
+# ╠═86a9cf08-78ed-4335-974f-8ce7c4660e30
+# ╠═b97ff7f3-a8d6-4df7-ae0f-838abaf6f2b6
+# ╠═520ea8fb-e8c7-44e7-95a0-cbd39f96b68b
+# ╠═7f79b201-2e05-455e-8b2e-bcc4060d81a6
+# ╠═36ce114e-fd26-467e-b02f-27d2f21b984d
+# ╠═962b570c-f22b-45c4-9109-39f6e1f8998a
+# ╠═25c25b54-f46c-4480-825d-15341c593830
+# ╠═2bc6551d-5acf-4e24-a6f1-cea639a12ab8
+# ╠═9c36eff8-b79e-457e-91c3-1caf263d73cf
+# ╠═e828d92c-0ee8-42a4-b576-300cd1f72b27
+# ╠═b9e9bb55-6efe-4a42-95c3-26669f952df7
+# ╠═e8c4fc2e-4ec7-49a1-a6e2-747a242e5f7c
+# ╠═169831de-f944-494f-a794-b00ec1220462
+# ╠═b92a1d53-6067-4bf8-a11a-d8a3c78dbe93
+# ╠═83df6afc-2f2d-4b02-9dbe-b922d95977c3
+# ╠═c3913d82-df27-437e-9207-dd09e584f075
+# ╠═0c779ce5-25f0-4450-8c36-1eeb58326729
 # ╟─03b66937-474a-404a-9750-dbf3c9235972
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
