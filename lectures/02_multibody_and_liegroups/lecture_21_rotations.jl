@@ -16,12 +16,24 @@ macro bind(def, element)
     #! format: on
 end
 
-# ╔═╡ 8df6395b-bdbb-47ca-bfd8-9486b03b23d1
+# ╔═╡ 104730c1-d576-4375-b75e-13123e970bdb
 begin
-	using LinearAlgebra
 	using DifferentialEquations
+	import PlotlyJS
 	using Plots
-end
+	using LaTeXStrings
+	using PlutoUI
+	using LinearAlgebra
+	using Printf
+	using Base64
+	function embed_image(path_to_image::AbstractString; height::Integer=240, type::String="png")
+	    img_bytes = read(path_to_image)
+	    # Build a data URL: "data:image/{type};base64,{...}"
+	    data_url = "data:image/$(type);base64," * base64encode(img_bytes)
+    	attrs = (:height => height,)
+	    PlutoUI.Resource(data_url, MIME("image/$(type)"), attrs)
+	end
+end;
 
 # ╔═╡ ed866e82-2722-11f0-290a-79ad6e0c862c
 md"""
@@ -34,122 +46,288 @@ Grzegorz Orzechowski
 
 # ╔═╡ 76361d5f-fac2-4420-b99b-9a24e7be3984
 md"""
-# **Euler Parameters: Definition & Geometric Meaning**
-
-  
+## Euler Parameters: Definition & Geometric Meaning
 
 Euler parameters are a four-parameter description of a 3D rotation (also called **Euler–Rodrigues parameters**). They correspond to an **axis–angle** representation of a rotation. Given a rotation by angle φ about a unit axis **n**, we define:
 
-- **e₀ = cos(φ/2)** (scalar component)
+-  $e₀ = \cos(φ/2)$ (scalar component)
     
-- **e = (e₁, e₂, e₃) = n · sin(φ/2)** (vector component)  .
+-  $\boldsymbol{e} = [e₁, e₂, e₃]^\top = \boldsymbol{n} · \sin(φ/2)$ (vector component).
     
-    These parameters thus encode the rotation angle and axis: **e₀** represents the “amount” of rotation (via half-angle), while **e₁, e₂, e₃** point along the rotation axis scaled by sin(φ/2). Geometrically, any 3D rotation can be described by some axis and angle (Euler’s rotation theorem), and Euler parameters are a convenient numerical representation of that rotation . Notably, the four parameters $(e_0, e_1, e_2, e_3)$ can be viewed as the components of a **quaternion** representing the orientation .
+    These parameters thus encode the rotation angle and axis: $e₀$ represents the “amount” of rotation (via half-angle), while $e₁, e₂, e₃$ point along the rotation axis scaled by $\sin(φ/2)$. Geometrically, any 3D rotation can be described by some axis and angle (Euler’s rotation theorem), and Euler parameters are a convenient numerical representation of that rotation. Notably, the four parameters $(e_0, e_1, e_2, e_3)$ can be viewed as the components of a **quaternion** representing the orientation.
     
-
 """
+
+# ╔═╡ f67a7a9c-f5e4-411c-891a-db10745e01b3
+md"""
+Rotation axis component $u_x$
+"""
+
+# ╔═╡ 9164f8e8-f4ca-4d84-94b1-a92054f640a2
+@bind ux Slider(-1.0:0.1:1.0, default=0.5, show_value=true)
+
+# ╔═╡ 27a0c2d5-58ee-4de2-bf5e-4f20e4eca98c
+md"""
+Rotation axis component $u_y$
+"""
+
+# ╔═╡ b859f319-d0f4-41f6-86fe-b1dfc0f01806
+@bind uy Slider(-1.0:0.1:1.0, default=0.5, show_value=true)
+
+# ╔═╡ 5dd1c35b-2a8b-4531-aa8e-305b12bafcdb
+md"""
+Rotation axis component $u_z$
+"""
+
+# ╔═╡ 1def9119-468f-4bb2-9857-ea54986b36bc
+@bind uz Slider(-1.0:0.1:1.0, default=0.2, show_value=true)
+
+# ╔═╡ 758b8ba6-6a46-4ae5-831f-b0c1ecc83485
+md"""
+Rotation angle $\theta$ (°)
+"""
+
+# ╔═╡ 6680a825-0ead-41a0-8eef-63d36fd06c43
+@bind θ  Slider(0:5:360,      default=45,  show_value=true)
+
+# ╔═╡ 9b95787c-3858-4c7f-90e5-d7940fad378b
+### Pluto.jl cell ###
+begin
+    # using PlotlyJS          # ] add PlotlyJS
+    plotlyjs()               # 3D rotations feel smoother
+
+    # 2) Normalize axis
+    u = normalize([ux, uy, uz])
+
+    # 3) Build the quaternion (Euler parameters)
+    th = θ * π/180
+    q0 = cos(th/2)
+    qv = sin(th/2) * u              # vector part
+    # for clarity:
+    q1, q2, q3 = qv
+
+    # 4) Convert quaternion to rotation matrix R
+    R = [
+	    q0^2 + q1^2 - q2^2 - q3^2   2*(q1*q2 - q0*q3)       2*(q1*q3 + q0*q2);
+	    2*(q2*q1 + q0*q3)           q0^2 - q1^2 + q2^2 - q3^2 2*(q2*q3 - q0*q1);
+	    2*(q3*q1 - q0*q2)           2*(q3*q2 + q0*q1)       q0^2 - q1^2 - q2^2 + q3^2]
+
+    # 5) Original vector and its rotated image
+    v0 = [1.0, 0.0, 0.0]
+    v1 = R * v0
+
+    # 6) Build a translucent unit‐sphere
+    ϕ = range(0, 2π; length=40)
+    θs = range(0, π; length=20)
+    xs = [sin(t)*cos(p) for t in θs, p in ϕ]
+    ys = [sin(t)*sin(p) for t in θs, p in ϕ]
+    zs = [cos(t)        for t in θs, p in ϕ]
+
+    # 7) Plot!
+    # now use `plot` with seriestype=:surface`
+    plt = plot(
+      xs, ys, zs;
+      seriestype  = :surface,
+      opacity     = 0.2,
+      color       = :gray,
+      showscale   = false,
+      legend      = false,
+      xlabel      = "x",
+      ylabel      = "y",
+      zlabel      = "z"
+    )
+    # original vector in blue
+    plot!(plt, [0,v0[1]], [0,v0[2]], [0,v0[3]]; lw=4, color=:blue)
+    scatter!(plt, [v0[1]], [v0[2]], [v0[3]]; marker=(6,:blue))
+
+    # rotated vector in red
+    plot!(plt, [0,v1[1]], [0,v1[2]], [0,v1[3]]; lw=4, color=:red)
+    scatter!(plt, [v1[1]], [v1[2]], [v1[3]]; marker=(6,:red))
+
+    # nice axes limits & labels
+    xlims!(-1,1); ylims!(-1,1); zlims!(-1,1)
+
+    # 8) Show quaternion components
+    annotate!(
+      plt,
+      (-0.9, 0.9, 0.9,
+       text("q = [$(round(q0,digits=3)), $(round(q1,digits=3)), $(round(q2,digits=3)), $(round(q3,digits=3))]", :green))
+    )
+
+    plt
+end
 
 # ╔═╡ c8d97023-21f9-4b51-828f-635b71b91dbf
 md"""
 
-# **Euler Parameters and Unit Quaternions**
+## Euler Parameters and Unit Quaternions
 
-  
+Euler parameters are essentially **unit quaternions** – quaternions of unit length used to represent rotations. A quaternion can be written as 
 
-Euler parameters are essentially **unit quaternions** – quaternions of unit length used to represent rotations . A quaternion can be written as $q = e_0 + e_1 \mathbf{i} + e_2 \mathbf{j} + e_3 \mathbf{k}$ (with $e_0$ scalar part, and $(e_1,e_2,e_3)$ as the vector part). For a valid rotation, these parameters satisfy a normalization constraint:
+$\boldsymbol{q} = e_0 + e_1 \mathbf{i} + e_2 \mathbf{j} + e_3 \mathbf{k}$
 
-e_0^2 + e_1^2 + e_2^2 + e_3^2 = 1,
+(with $e_0$ scalar part, and $[e_1,e_2,e_3]$ as the vector part). For a valid rotation, these parameters satisfy a normalization constraint:
 
-ensuring only three degrees of freedom (the rotation axis and angle) . This unit-length condition arises because an arbitrary rotation in 3D has just three independent parameters (the fourth quaternion component is determined by the first three). In practice, Euler parameters provide a **singularity-free** orientation description (unlike Euler angles, they have no gimbal lock) and can smoothly cover all possible orientations on the 3D unit sphere (S³).
+$e_0^2 + e_1^2 + e_2^2 + e_3^2 = 1,$
+
+ensuring only three degrees of freedom (the rotation axis and angle). This unit-length condition arises because an arbitrary rotation in 3D has just three independent parameters (the fourth quaternion component is determined by the first three). In practice, Euler parameters provide a **singularity-free** orientation description (unlike Euler angles, they have no gimbal lock) and can smoothly cover all possible orientations on the 3D unit sphere (S³).
 
 """
 
 # ╔═╡ b9ad21d4-d4a4-4f20-a55c-037a62fd063c
 md"""
 
-# **Orientation Representation in Rigid Body Dynamics**
+## Orientation Representation in Rigid Body Dynamics
 
   
 
-Unit quaternions (Euler parameters) are widely used to represent the orientation (attitude) of rigid bodies in dynamics simulations . They offer several advantages over traditional Euler angles or rotation matrices:
+Unit quaternions (Euler parameters) are widely used to represent the orientation (attitude) of rigid bodies in dynamics simulations. They offer several advantages over traditional Euler angles or rotation matrices:
 
-- **No Gimbal Lock:** Quaternions do not suffer from gimbal lock singularities that Euler angles have .
+- **No Gimbal Lock:** Quaternions do not suffer from gimbal lock singularities that Euler angles have.
     
-- **Stable Composition:** Rotations compose by quaternion multiplication, which is computationally faster and more numerically stable than composing rotation matrices .
+- **Stable Composition:** Rotations compose by quaternion multiplication, which is computationally faster and more numerically stable than composing rotation matrices.
     
 - **Easy Axis-Angle Extraction:** One can readily recover the rotation axis and angle from a unit quaternion.
     
-- **Interpolation:** Quaternions enable smooth interpolation between orientations (e.g. via slerp) , useful for animations or continuous motion.
+- **Interpolation:** Quaternions enable smooth interpolation between orientations, useful for animations or continuous motion.
     
-    Because of these benefits, almost all modern spacecraft attitude representations, robotics simulations, and game engines use unit quaternions for orientation. In rigid body dynamics code, Euler parameters are treated as part of the state vector to track orientation, with the constraint e_0^2+e_1^2+e_2^2+e_3^2=1 enforced either by choice of coordinates or by normalization.
+    Because of these benefits, almost all modern spacecraft attitude representations, robotics simulations, and game engines use unit quaternions for orientation. In rigid body dynamics code, Euler parameters are treated as part of the state vector to track orientation, with the constraint $e_0^2+e_1^2+e_2^2+e_3^2=1$ enforced either by choice of coordinates or by normalization.
     
 
 """
 
-# ╔═╡ b79c1516-543e-443d-923e-c552103062c0
+# ╔═╡ 13c58b0a-9434-433a-bb89-d53cbabed974
+md"""
+## What is a Rotation Matrix?
+
+A **rotation matrix** is a $3 \times 3$ orthogonal matrix with determinant $+1$ that represents a proper rotation in 3D space. It transforms coordinates of vectors from one frame (e.g., body frame) to another (e.g., world frame) while preserving vector norms and angles.
+
+Mathematically, a matrix $\boldsymbol{A} \in \mathbb{R}^{3 \times 3}$ is a **rotation matrix** if it satisfies:
+
+- Orthogonality: $\boldsymbol{A}^\top \boldsymbol{A} = \boldsymbol{I}$
+    
+- Unit determinant: $\det(\boldsymbol{A}) = +1$
+
+These conditions imply that $\boldsymbol{A}$ preserves lengths and angles during transformation:
+
+$$\|\boldsymbol{A} \boldsymbol{v}\| = \|\boldsymbol{v}\|, \quad \text{and} \quad (\boldsymbol{A} \boldsymbol{u})^\top (\boldsymbol{A} \boldsymbol{v}) = \boldsymbol{u}^\top \boldsymbol{v}$$
+
+A rotation matrix rotates a vector $\boldsymbol{v}$ expressed in one frame into another:
+
+$$\boldsymbol{v}_{\text{world}} = \boldsymbol{A} \cdot \boldsymbol{v}_{\text{body}}$$
+
+Each column of $\boldsymbol{A}$ corresponds to the unit vectors of the rotated body axes expressed in world coordinates.
+
+For example, a rotation of angle $\theta$ about the $z$-axis is represented by:
+
+$$\boldsymbol{A}_z(\theta) = \begin{bmatrix} \cos\theta & -\sin\theta & 0 \\ \sin\theta & \cos\theta & 0 \\ 0 & 0 & 1 \end{bmatrix}$$
+
+Rotation matrices can be composed by matrix multiplication, and are often derived from axis-angle, Euler angles, or quaternions (Euler parameters).
+
+In multibody dynamics, rotation matrices are used to:
+
+- Transform forces and velocities between coordinate frames
+    
+- Construct constraint equations
+    
+- Visualize orientation of rigid bodies
+    
+"""
+
+# ╔═╡ e84bb5da-f233-439c-9275-f264a9ffb7d1
 md"""
 
-# **Rotation Matrix from Euler Parameters**
+## Rotation Matrix from Euler Parameters
 
-  
+In multibody dynamics, the rotation matrix $\boldsymbol{A}(\boldsymbol{q}) \in \mathbb{R}^{3 \times 3}$ from Euler parameters is often split into two matrices $\boldsymbol{L}(\boldsymbol{q})$ and $\boldsymbol{R}(\boldsymbol{q})$ such that:
 
-Any quaternion (Euler parameters) can be converted to a **rotation matrix** (direction cosine matrix) that rotates vectors in space. The rotation matrix $A$ corresponding to quaternion $q=(e_0,e_1,e_2,e_3)$ can be derived by considering how $q$ rotates an arbitrary vector (via $q,p,q^{-1}$). In index form, the matrix elements can be written compactly as:
+$\boldsymbol{A}(\boldsymbol{q}) = \boldsymbol{L}(\boldsymbol{q})^\top \boldsymbol{R}(\boldsymbol{q})$
 
-a_{ij} = \delta_{ij}(e_0^2 - e_k e_k) + 2\,e_i e_j + 2\,\varepsilon_{ijk}\,e_0 e_k,
+Here, $\boldsymbol{L}(\boldsymbol{q})$ and $\boldsymbol{R}(\boldsymbol{q})$ are **3×4 matrices** that depend linearly on the Euler parameters $\boldsymbol{q} = [e_0, e_1, e_2, e_3]^\top$, and this formulation is very useful in deriving kinematic and dynamic equations, particularly when computing angular velocities or Jacobians.
 
-using the Kronecker delta $\delta_{ij}$ and Levi-Civita symbol $\varepsilon_{ijk}$ . Expanding this yields the explicit 3×3 rotation matrix entries:
+The matrices $\boldsymbol{L}(\boldsymbol{q})$ and $\boldsymbol{R}(\boldsymbol{q})$ are defined as:
 
-- $a_{11} = e_0^2 + e_1^2 - e_2^2 - e_3^2$,
-    
-- $a_{12} = 2(e_1 e_2 + e_0 e_3)$,
-    
-- $a_{13} = 2(e_1 e_3 - e_0 e_2)$,
-    
-- $a_{21} = 2(e_1 e_2 - e_0 e_3)$,
-    
-- $a_{22} = e_0^2 - e_1^2 + e_2^2 - e_3^2$,
-    
-- $a_{23} = 2(e_2 e_3 + e_0 e_1)$,
-    
-- $a_{31} = 2(e_1 e_3 + e_0 e_2)$,
-    
-- $a_{32} = 2(e_2 e_3 - e_0 e_1)$,
-    
-- $a_{33} = e_0^2 - e_1^2 - e_2^2 + e_3^2$ .
-    
+$\boldsymbol{L}(\boldsymbol{q}) = \begin{bmatrix} -e_1 & e_0 & -e_3 & e_2 \\ -e_2 & e_3 & e_0 & -e_1 \\ -e_3 & -e_2 & e_1 & e_0 \end{bmatrix}$
 
-  
+$\boldsymbol{R}(\boldsymbol{q}) = \begin{bmatrix} -e_1 & e_0 & e_3 & -e_2 \\ -e_2 & -e_3 & e_0 & e_1 \\ -e_3 & e_2 & -e_1 & e_0 \end{bmatrix}$
 
-We can implement this conversion in Julia as a function:
+  These are **linear in** $\boldsymbol{q}$ and appear often when computing rotational kinematics (e.g., angular velocity as a linear function of quaternion rates).
 
-```
+This form is particularly advantageous when:
+
+- Deriving analytical expressions (e.g., for Jacobians).
+    
+- Coupling with quaternion rate equations: $\dot{q} = \frac{1}{2} \boldsymbol{E}(\boldsymbol{q})^\top \omega$, where $\boldsymbol{E}(\boldsymbol{q}) = \boldsymbol{L}(\boldsymbol{q})$ or $\boldsymbol{R}(\boldsymbol{q})$.
+    
+- Expressing virtual rotations and variations in the principle of virtual work.
+
+The rotation matrix $\boldsymbol{A}$ corresponding to quaternion $\boldsymbol{q}$ can be written explicitly as:
+
+$\boldsymbol{A}(\boldsymbol{q}) = \begin{bmatrix} e_0^2 + e_1^2 - e_2^2 - e_3^2 & 2(e_1 e_2 + e_0 e_3) & 2(e_1 e_3 - e_0 e_2) \\ 2(e_1 e_2 - e_0 e_3) & e_0^2 - e_1^2 + e_2^2 - e_3^2 & 2(e_2 e_3 + e_0 e_1) \\ 2(e_1 e_3 + e_0 e_2) & 2(e_2 e_3 - e_0 e_1) & e_0^2 - e_1^2 - e_2^2 + e_3^2 \end{bmatrix}$
+
+This matrix satisfies $\boldsymbol{A}^\top \boldsymbol{A} = \boldsymbol{I}$ and $\det(\boldsymbol{A}) = 1$ provided that $\boldsymbol{q}^\top \boldsymbol{q} = 1$ (i.e., $\boldsymbol{q}$ is a unit quaternion).
+
+"""
+
+# ╔═╡ 43dd28c3-28ab-42e6-8723-1222455236f8
+function L_matrix(q)
+    e0, e1, e2, e3 = q
+    return [
+        -e1   e0  -e3   e2;
+        -e2   e3   e0  -e1;
+        -e3  -e2   e1   e0
+    ]
+end
+
+# ╔═╡ de4506b7-f864-41d5-90c9-6ae7025faeac
+function R_matrix(q)
+    e0, e1, e2, e3 = q
+    return [
+        -e1   e0   e3  -e2;
+        -e2  -e3   e0   e1;
+        -e3   e2  -e1   e0
+    ]
+end
+
+# ╔═╡ a13b5a74-11ed-4d70-9812-3ac3c13f2049
+function rotation_matrix_LR(q)
+    L = L_matrix(q)
+    R = R_matrix(q)
+    return transpose(L) * R
+end
+
+# ╔═╡ b79c1516-543e-443d-923e-c552103062c0
 # Compute 3x3 rotation matrix from Euler parameters (unit quaternion)
 function rotation_matrix_from_quat(q)
     e0, e1, e2, e3 = q  # unpack quaternion components
     return [
-        e0^2 + e1^2 - e2^2 - e3^2,   2*(e1*e2 + e0*e3),       2*(e1*e3 - e0*e2);
-        2*(e1*e2 - e0*e3),          e0^2 - e1^2 + e2^2 - e3^2, 2*(e2*e3 + e0*e1);
-        2*(e1*e3 + e0*e2),          2*(e2*e3 - e0*e1),        e0^2 - e1^2 - e2^2 + e3^2
+        e0^2 + e1^2 - e2^2 - e3^2   2*(e1*e2 + e0*e3)       2*(e1*e3 - e0*e2);
+        2*(e1*e2 - e0*e3)          e0^2 - e1^2 + e2^2 - e3^2 2*(e2*e3 + e0*e1);
+        2*(e1*e3 + e0*e2)          2*(e2*e3 - e0*e1)        e0^2 - e1^2 - e2^2 + e3^2
     ]
 end
-```
 
-This returns an orthonormal rotation matrix $A$ that can rotate any vector from the body frame to the world frame (or vice versa, depending on convention). For example, rotation_matrix_from_quat([0.9239, 0.3827, 0, 0]) would give a matrix rotating by 45° about the x-axis.
-
-"""
 
 # ╔═╡ 7a1b92c2-50f0-45b6-8dd9-64099baba396
 md"""
 
-# **Quaternion Kinematics (Euler Parameter ODE)**
+## Quaternion Kinematics (Euler Parameter ODE)
 
-  
+To update the orientation over time, we integrate the **quaternion kinematic equation**. If the rigid body has an angular velocity $\boldsymbol{\omega} = [ωₓ, ω_y, ω_z]^\top$ (in body-fixed coordinates), we first define a **pure quaternion** from the angular velocity:
 
-To update the orientation over time, we integrate the **quaternion kinematic equation**. If the rigid body has an angular velocity **ω** = (ωₓ, ω_y, ω_z) (in body-fixed coordinates), we form a pure quaternion $w = (0, ω_x, ω_y, ω_z)$. The time derivative of the orientation quaternion $q(t)$ is given by:
+$\boldsymbol{w} = \begin{bmatrix} 0 \\ \boldsymbol{\omega} \end{bmatrix} = [0, \omega_x, \omega_y, \omega_z]^\top$
 
-$\dot{q}(t) = \frac{1}{2}\; q(t)\; w(t),$
+The quaternion differential equation is:
 
-assuming ω is expressed in the rotating body frame. This formula means the quaternion’s rate of change is half the quaternion-product of itself with the angular velocity (conceptually analogous to $\dot{\theta} = \omega$ in 2D rotation). Expanding the quaternion product gives a system of first-order ODEs for the Euler parameters:
+$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{q} \otimes \boldsymbol{w} \quad \text{(if } \boldsymbol{\omega} \text{ is in the body frame)}$
+
+or alternatively,
+
+$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{w} \otimes \boldsymbol{q} \quad \text{(if } \boldsymbol{\omega} \text{ is in the world frame)}$
+
+Here, $\otimes$ denotes quaternion multiplication.
+
+We will assume that $\boldsymbol{\omega}$ is expressed in the rotating body frame. Those formulas means the quaternion’s rate of change is half the quaternion-product of itself with the angular velocity (conceptually analogous to $\dot{\theta} = \omega$ in 2D rotation). Expanding the quaternion product gives a system of first-order ODEs for the Euler parameters:
 
 $\dot e_0 = -\tfrac{1}{2}(e_1 \omega_x + e_2 \omega_y + e_3 \omega_z),$
 
@@ -176,14 +354,14 @@ end
 # ╔═╡ 40a935d4-c2f0-43e2-a714-103f0380f8c1
 md"""
 
-This function computes $\dot{q}$ for any given quaternion q and angular velocity ω. In essence, it continuously “spins” the quaternion according to ω. (If ω is in world frame instead, one would use $\dot{q} = \frac{1}{2} w, q$ by multiplying on the other side.)
+This function computes $\dot{\boldsymbol{q}}$ for any given quaternion $\boldsymbol{q}$ and angular velocity $\boldsymbol{ω}$. In essence, it continuously “spins” the quaternion according to $\boldsymbol{ω}$.
 
 """
 
 # ╔═╡ 1081a378-e2ec-497f-8382-3ea00b27d860
 md"""
 
-## Numerical Integration Example (Julia + DifferentialEquations.jl)
+## Numerical Integration Example
 
 Using the above ODE, we can simulate the orientation over time. We set up an ODE problem with an initial orientation and a given angular velocity, then solve it with a standard integrator:
 
@@ -193,56 +371,63 @@ Using the above ODE, we can simulate the orientation over time. We set up an ODE
 ω_const = [0.0, 0.0, 1.0]    # constant angular velocity about z-axis (1 rad/s)
 
 # ╔═╡ 7f1b2d97-39f3-4cc0-af21-72a5af1c44c5
-q0 = [1.0, 0.0, 0.0, 0.0]             # initial quaternion (no rotation)
+e0 = [1.0, 0.0, 0.0, 0.0]             # initial quaternion (no rotation)
 
 # ╔═╡ 5ae3a26c-dc5e-42f3-b4f2-5d9c75bed5b8
 tspan = (0.0, 10.0)                   # simulate 10 seconds
 
 # ╔═╡ c25f1923-8a4e-491f-a4e6-4f3ea267d374
-prob = ODEProblem(quaternion_ode!, q0, tspan, ω_const)
+# ╠═╡ disabled = true
+#=╠═╡
+prob = ODEProblem(quaternion_ode!, e0, tspan, ω_const)
+  ╠═╡ =#
 
 # ╔═╡ 4aeea69d-cd46-47e8-bd70-bca18cd09a88
+#=╠═╡
 sol = solve(prob, Tsit5(), dt=0.01)   # 5th-order solver with 0.01s time step
+  ╠═╡ =#
 
 # ╔═╡ d47bc690-08cb-40b5-8d2f-425ad1ee5a7c
+#=╠═╡
 plot(sol, title="Quaternion components over time", 
      label=["e₀" "e₁" "e₂" "e₃"], legend=:right)
+  ╠═╡ =#
 
 # ╔═╡ 59bd1be4-9b20-46d2-a68f-287a57edb223
 md"""
 
-This integrates $\dot{q} = \frac{1}{2}q ω$ over 0–10 s. The result `sol(t)` gives the quaternion at time `t`. We can plot each component to verify the behavior. For a constant rotation about the z-axis, $e_0$ will decrease from 1 toward 0 (as the rotation angle increases to 180°), $e_3$ (the component along z-axis) will increase, while $e_1, e_2$ remain zero (since the rotation axis has no x or y component). In all cases, the solution quaternions stay on the unit sphere, as expected.
-
-  
-
-_Example_: Evolution of quaternion components for a rotation about the axis (1,1,1) at 1 rad/s. Here $e_0$ (orange) starts near 1 and decreases as rotation accumulates, while $(e_1,e_2,e_3)$ (other colors) vary sinusoidally. The quaternion remains normalized (all curves satisfy $e_0^2+e_1^2+e_2^2+e_3^2=1$ at any time).
+This integrates $\dot{\boldsymbol{q}} = \frac{1}{2} \boldsymbol{q} \otimes \boldsymbol{w}$ over 0–10 s. The result `sol(t)` gives the quaternion at time `t`. We can plot each component to verify the behavior. For a constant rotation about the z-axis, $e_0$ will decrease from 1 toward 0 (as the rotation angle increases to 180°), $e_3$ (the component along z-axis) will increase, while $e_1, e_2$ remain zero (since the rotation axis has no x or y component). In all cases, the solution quaternions stay on the unit sphere, as expected.
 
 """
 
-# ╔═╡ 06964bbb-c096-42a5-8c3f-460eee58880a
+# ╔═╡ b0130ccd-6b36-40ff-ac8a-ae43b1ac10d0
 md"""
 
-# **Interactive Exploration with PlutoUI**
+## Quaternion Kinematics in Multibody Dynamics
+
+To describe how the orientation of a rigid body evolves in time, we use the **quaternion kinematic equation**. This relates the time derivative of the orientation quaternion $\boldsymbol{q}(t) = [e_0, e_1, e_2, e_3]^\top$ to the body’s angular velocity $\boldsymbol{\omega} \in \mathbb{R}^3$.
+
+As you recall, the quaternion differential equation is:
+
+$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{q} \otimes \boldsymbol{w} \quad \text{(if } \boldsymbol{\omega} \text{ is in the body frame)}$
+
+or alternatively,
+
+$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{w} \otimes \boldsymbol{q} \quad \text{(if } \boldsymbol{\omega} \text{ is in the world frame)}$
+
+To express this as a matrix-vector product, we define matrices $\boldsymbol{L}(\boldsymbol{q})$ and $\boldsymbol{R}(\boldsymbol{q})$, both linear in $\boldsymbol{q}$, such that:
+
+$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{L}(\boldsymbol{q})^\top \, \boldsymbol{\omega} \quad \text{(body-frame angular velocity)}$
+
+$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{R}(\boldsymbol{q})^\top \, \boldsymbol{\omega} \quad \text{(world-frame angular velocity)}$
+
+In **multibody dynamics**, we typically express $\boldsymbol{\omega}$ in the **body frame**, so the standard kinematic equation becomes:
+
+$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{L}(\boldsymbol{q})^\top \, \boldsymbol{\omega}$
 
   
 
-One powerful feature of the Julia + Pluto environment is interactivity. Using **PlutoUI**, we can add sliders and other controls to manipulate parameters (like angular velocity) and instantly see the effect on the orientation. For example, we can let the user adjust the angular velocity components with sliders and re-run the simulation:
-
-```
-using PlutoUI
-
-# Interactive sliders for angular velocity (in rad/s)
-@bind ωx Slider(-6.28, 6.28, step=0.1, default=1.0, label="ω_x")
-@bind ωy Slider(-6.28, 6.28, step=0.1, default=0.0, label="ω_y")
-@bind ωz Slider(-6.28, 6.28, step=0.1, default=0.0, label="ω_z")
-
-ω = [ωx, ωy, ωz]                            # current angular velocity vector from sliders
-prob = ODEProblem(quaternion_ode!, q0, tspan, ω)
-sol = solve(prob, Tsit5(), dt=0.01)
-plot(sol, label=["e₀","e₁","e₂","e₃"])
-```
-
-In a Pluto notebook, moving any slider (ω_x, ω_y, ω_z) will automatically re-run the ODEProblem and solve, updating the plot. This interactive visualization lets students **experiment** with different rotation axes and rates to build intuition. For instance, one can set $(\omega_x,\omega_y,\omega_z)$ to spin about different axes or even simulate precession by giving multiple components, and immediately observe how the quaternion components and orientation evolve. We could further use the quaternion sol(t) to rotate a 3D object or coordinate frame in real-time for a visual demonstration of the rigid body’s orientation. The combination of **DifferentialEquations.jl** for dynamics and PlutoUI for interactivity provides a rich playground for understanding multibody rotation behavior.
+This form is numerically efficient and avoids singularities, making it ideal for time integration in simulation.
 
 """
 
@@ -250,44 +435,84 @@ In a Pluto notebook, moving any slider (ω_x, ω_y, ω_z) will automatically re-
 md"""
 ## Rigid Body Rotation with Quaternions
 
-We describe orientation using unit quaternions $q$:
 
-- $q = [q_0, q_1, q_2, q_3]$
-- $\|q\| = 1$
+In multibody dynamics, the orientation of a rigid body is represented by a **unit quaternion** (Euler parameters)
 
-The dynamics are governed by:
+$\boldsymbol{q}(t) = [e_0, e_1, e_2, e_3]^\top$
 
-$\dot{q} = \frac{1}{2} \Omega(\omega) q$
 
-and 
+Its time evolution is governed by:
 
-$I \dot{\omega} + \omega \times (I \omega) = 0$
+- The **angular velocity** $\boldsymbol{\omega}(t) = [\omega_x, \omega_y, \omega_z]^\top$ in the **body-fixed frame**
+    
+- The **inertia matrix** $\boldsymbol{I} \in \mathbb{R}^{3 \times 3}$, constant in the body frame
+    
+- The **applied torque** $\boldsymbol{T}(t) \in \mathbb{R}^3$, expressed in the body frame
+    
+### Kinematic Equation (Quaternion Rate)
+
+  
+
+$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{L}(\boldsymbol{q})^\top \, \boldsymbol{\omega}$
+
+where $\boldsymbol{L}(\boldsymbol{q}) \in \mathbb{R}^{3 \times 4}$ is defined as:
+
+$\boldsymbol{L}(\boldsymbol{q}) = \begin{bmatrix} -e_1 & e_0 & -e_3 & e_2 \\ -e_2 & e_3 & e_0 & -e_1 \\ -e_3 & -e_2 & e_1 & e_0 \end{bmatrix}$
+
+  
+### Dynamic Equation (Euler’s Equations of Motion)
+
+$\boldsymbol{I} \, \dot{\boldsymbol{\omega}} + \boldsymbol{\omega} \times (\boldsymbol{I} \boldsymbol{\omega}) = \boldsymbol{T}(t)$
+
+
+These two equations together define the rigid body’s rotational motion.
+
+This formulation is:
+
+- **Minimal**: no extra rotation matrices needed
+    
+- **Stable**: quaternions avoid singularities
+    
+- **Extensible**: integrates cleanly into multibody systems where bodies have both translation and rotation
+    
+
+
+Make sure to normalize $\boldsymbol{q}(t)$ after integration steps to maintain unit norm:
+
+$\boldsymbol{q} \leftarrow \frac{\boldsymbol{q}}{\|\boldsymbol{q}\|}$
+
+
 """
 
 # ╔═╡ e2b9a3b1-28f4-4556-88c9-15619b611f32
 function rigid_body!(du, u, p, t)
-    # State vector: [q0, q1, q2, q3, wx, wy, wz]
-    q = u[1:4]
-    ω = u[5:7]
-    
-    # Inertia matrix (diagonal for simplicity)
-    I = Diagonal([1.0, 2.0, 3.0])
-    #Iinv = inv(I)
-    
-    # Quaternion derivative
-    Ω = [
-        0.0 -ω[1] -ω[2] -ω[3];
-        ω[1] 0.0 ω[3] -ω[2];
-        ω[2] -ω[3] 0.0 ω[1];
-        ω[3] ω[2] -ω[1] 0.0
-    ]
-    dq = 0.5 * Ω * q
-    
-    # Angular velocity derivative
-    domega = I \ cross(-ω, I * ω)
-    
-    du[1:4] .= dq
-    du[5:7] .= domega
+    # State vector: u = [q; ω] where
+    #   q = orientation quaternion (4,)
+    #   ω = angular velocity in body frame (3,)
+    q = @view u[1:4]
+    ω = @view u[5:7]
+
+    # Output derivatives
+    dq = @view du[1:4]
+    dω = @view du[5:7]
+
+    # Parameters
+    I = p.I         # Inertia matrix in body frame (3x3)
+    T = p.T(t)      # External torque in body frame, may depend on time
+
+    # Quaternion kinematics
+    L = L_matrix(q)
+    dq[:] = 0.5 * transpose(L) * ω
+
+    # Rigid body rotational dynamics (Euler's equation)
+    Iω = I * ω
+    dω[:] = I \ (T - cross(ω, Iω))  # Equivalent to inv(I)*(T - ω × (Iω))
+end
+
+# ╔═╡ 49475e63-f3cb-4c68-bd81-ce2aaa87a8d2
+struct RigidBodyParams
+    I::Matrix{Float64}          # 3×3 inertia matrix
+    T::Function                 # T(t): torque function returning 3×1 vector
 end
 
 # ╔═╡ 6efcb593-4d04-4dee-891d-880bc342c86a
@@ -301,8 +526,21 @@ end
 # ╔═╡ 5a00b31e-3c07-4529-9812-51c1c76d80f4
 tspan_rb = (0.0, 10.0)
 
-# ╔═╡ 9aaf9ece-03f6-46ea-bfe0-260950791f08
-prob_rb = ODEProblem(rigid_body!, u0_rb, tspan_rb)
+# ╔═╡ 24c4a618-afd6-4aa3-909f-f966ae59613d
+# Time-varying torque function: returns a 3D vector in body frame
+function torque_vector(t)
+    return [0.0, 0.0, sin(t)]  # example: sinusoidal torque about z-axis
+end
+
+# ╔═╡ 99a27d56-dfc4-4816-aa3b-2b1150f11bae
+# Example: diagonal inertia tensor (e.g., uniform box or sphere)
+I = Diagonal([1.0, 2.0, 3.0]) |> Matrix  # must be a full matrix
+
+# ╔═╡ 29871224-af35-4283-aa1d-ea76e030d68f
+p = RigidBodyParams(I, t -> torque_vector(t))      # inertia + time-varying torque
+
+# ╔═╡ 112c561a-224c-44e2-9524-7941e1aa305b
+prob_rb = ODEProblem(rigid_body!, u0_rb, (0.0, 10.0), p)
 
 # ╔═╡ 27680643-bdbb-46d9-970c-3735e44b459d
 sol_rb = solve(prob_rb)
@@ -310,16 +548,68 @@ sol_rb = solve(prob_rb)
 # ╔═╡ 35c2edfe-2ef8-47cd-a73b-d894f3101db4
 plot(sol_rb, idxs=(0,5), xlabel="Time", ylabel="ωₓ", label="ωₓ")
 
+# ╔═╡ 2dd090f6-561d-421c-88f9-2f19af6d92db
+md"""
+
+## Toward a Multibody Dynamics Codebase
+
+The code and concepts presented can be extended and reused in a general multibody simulation framework.
+
+Key points and definitions:
+
+- **Angular velocity** $\boldsymbol{\omega}$
+    
+    A 3D vector representing the rotational speed and axis of a rigid body, typically expressed in the **body-fixed frame**. It is related to the time derivative of the orientation quaternion $\boldsymbol{q}(t)$ via the kinematic equation:
+    
+$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{E}(\boldsymbol{q})^\top \, \boldsymbol{\omega}$
+    
+where $\boldsymbol{E}(\boldsymbol{q}) \in \mathbb{R}^{3 \times 4}$ is a matrix linear in $\boldsymbol{q}$. $\boldsymbol{L}(\boldsymbol{q})$ or $\boldsymbol{R}(\boldsymbol{q})$.
+    
+- **Inertia matrix** $\boldsymbol{I}$
+    
+    A symmetric, positive-definite $3 \times 3$ matrix that encodes the body’s mass distribution about its center of mass. In the **body-fixed frame**, the rigid body’s rotational equation of motion is:
+    
+$\boldsymbol{I} \, \dot{\boldsymbol{\omega}} + \boldsymbol{\omega} \times (\boldsymbol{I} \boldsymbol{\omega}) = \boldsymbol{T}$
+    
+where $\boldsymbol{T}$ is the external torque applied to the body.
+       
+- **Quaternion normalization**
+    
+    To prevent drift from roundoff error during integration, it’s good practice to **renormalize** $\boldsymbol{q} \leftarrow \boldsymbol{q} / \|\boldsymbol{q}\|$ occasionally.
+    
+- **L(q), R(q) matrices**
+    
+    Use the linear structure of the rotation matrix:
+    
+$\boldsymbol{A}(\boldsymbol{q}) = \boldsymbol{L}(\boldsymbol{q})^\top \boldsymbol{R}(\boldsymbol{q})$
+    
+to derive angular velocity and rotation equations analytically and efficiently.
+    
+- **Extending to multibody systems**
+    
+    Combine each body’s state (position, orientation, velocity) into a global state vector. Your Euler-parameter-based orientation model integrates naturally with translational motion and constraints.
+   
+
+"""
+
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
+Base64 = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
+LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+PlotlyJS = "f0f68f2c-4968-5e81-91da-67840de0976a"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 
 [compat]
 DifferentialEquations = "~7.16.1"
+LaTeXStrings = "~1.4.0"
+PlotlyJS = "~0.18.16"
 Plots = "~1.40.13"
+PlutoUI = "~0.7.23"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -328,7 +618,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "9515e06f79d2d0db2a05d557a8a0d88e037551b4"
+project_hash = "9460d128fc492907406a060e0feeb3feb021e4c1"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e2478490447631aedba0823d4d7a80b2cc8cdb32"
@@ -340,6 +630,12 @@ weakdeps = ["ChainRulesCore", "ConstructionBase", "EnzymeCore"]
     ADTypesChainRulesCoreExt = "ChainRulesCore"
     ADTypesConstructionBaseExt = "ConstructionBase"
     ADTypesEnzymeCoreExt = "EnzymeCore"
+
+[[deps.AbstractPlutoDingetjes]]
+deps = ["Pkg"]
+git-tree-sha1 = "6e1d2a35f2f90a4bc7c2ed98079b2ba09c35b83a"
+uuid = "6e696c72-6542-2067-7265-42206c756150"
+version = "1.3.2"
 
 [[deps.Accessors]]
 deps = ["CompositionsBase", "ConstructionBase", "Dates", "InverseFunctions", "MacroTools"]
@@ -444,6 +740,12 @@ weakdeps = ["SparseArrays"]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
 version = "1.11.0"
 
+[[deps.AssetRegistry]]
+deps = ["Distributed", "JSON", "Pidfile", "SHA", "Test"]
+git-tree-sha1 = "b25e88db7944f98789130d7b503276bc34bc098e"
+uuid = "bf4720bc-e11a-5d0c-854e-bdca1663c893"
+version = "0.1.0"
+
 [[deps.BandedMatrices]]
 deps = ["ArrayLayouts", "FillArrays", "LinearAlgebra", "PrecompileTools"]
 git-tree-sha1 = "e35c672b239c5105f597963c33e740eeb46cf0ab"
@@ -472,6 +774,12 @@ deps = ["Static"]
 git-tree-sha1 = "f21cfd4950cb9f0587d5067e69405ad2acd27b87"
 uuid = "62783981-4cbd-42fc-bca8-16325de8dc4b"
 version = "0.1.6"
+
+[[deps.Blink]]
+deps = ["Base64", "Distributed", "HTTP", "JSExpr", "JSON", "Lazy", "Logging", "MacroTools", "Mustache", "Mux", "Pkg", "Reexport", "Sockets", "WebIO"]
+git-tree-sha1 = "bc93511973d1f949d45b0ea17878e6cb0ad484a1"
+uuid = "ad839575-38b3-5650-b840-f874b8c74a25"
+version = "0.12.9"
 
 [[deps.BoundaryValueDiffEq]]
 deps = ["ADTypes", "ArrayInterface", "BoundaryValueDiffEqAscher", "BoundaryValueDiffEqCore", "BoundaryValueDiffEqFIRK", "BoundaryValueDiffEqMIRK", "BoundaryValueDiffEqMIRKN", "BoundaryValueDiffEqShooting", "DiffEqBase", "FastClosures", "ForwardDiff", "LinearAlgebra", "Reexport", "SciMLBase"]
@@ -1087,6 +1395,12 @@ git-tree-sha1 = "b104d487b34566608f8b4e1c39fb0b10aa279ff8"
 uuid = "77dc65aa-8811-40c2-897b-53d922fa7daf"
 version = "0.1.3"
 
+[[deps.FunctionalCollections]]
+deps = ["Test"]
+git-tree-sha1 = "04cb9cfaa6ba5311973994fe3496ddec19b6292a"
+uuid = "de31a74c-ac4f-5751-b3fd-e18cd04993ca"
+version = "0.5.0"
+
 [[deps.Functors]]
 deps = ["Compat", "ConstructionBase", "LinearAlgebra", "Random"]
 git-tree-sha1 = "60a0339f28a233601cb74468032b5c302d5067de"
@@ -1169,11 +1483,35 @@ git-tree-sha1 = "55c53be97790242c29031e5cd45e8ac296dadda3"
 uuid = "2e76f6c2-a576-52d4-95c1-20adfe4de566"
 version = "8.5.0+0"
 
+[[deps.Hiccup]]
+deps = ["MacroTools", "Test"]
+git-tree-sha1 = "6187bb2d5fcbb2007c39e7ac53308b0d371124bd"
+uuid = "9fb69e20-1954-56bb-a84f-559cc56a8ff7"
+version = "0.2.2"
+
 [[deps.HypergeometricFunctions]]
 deps = ["LinearAlgebra", "OpenLibm_jll", "SpecialFunctions"]
 git-tree-sha1 = "68c173f4f449de5b438ee67ed0c9c748dc31a2ec"
 uuid = "34004b35-14d8-5ef3-9330-4cdb6864b03a"
 version = "0.3.28"
+
+[[deps.Hyperscript]]
+deps = ["Test"]
+git-tree-sha1 = "8d511d5b81240fc8e6802386302675bdf47737b9"
+uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
+version = "0.0.4"
+
+[[deps.HypertextLiteral]]
+deps = ["Tricks"]
+git-tree-sha1 = "7134810b1afce04bbc1045ca1985fbe81ce17653"
+uuid = "ac1192a8-f4b3-4bfe-ba22-af5b92cd3ab2"
+version = "0.9.5"
+
+[[deps.IOCapture]]
+deps = ["Logging", "Random"]
+git-tree-sha1 = "b6d6bfdd7ce25b0f9b2f6b3dd56b2673a66c8770"
+uuid = "b5f81e59-6552-4d32-b1f0-c071b021bf89"
+version = "0.2.5"
 
 [[deps.IfElse]]
 git-tree-sha1 = "debdd00ffef04665ccbb3e150747a77560e8fad1"
@@ -1228,6 +1566,12 @@ git-tree-sha1 = "a007feb38b422fbdab534406aeca1b86823cb4d6"
 uuid = "692b3bcd-3c85-4b1f-b108-f13ce0eb3210"
 version = "1.7.0"
 
+[[deps.JSExpr]]
+deps = ["JSON", "MacroTools", "Observables", "WebIO"]
+git-tree-sha1 = "b413a73785b98474d8af24fd4c8a975e31df3658"
+uuid = "97c1335a-c9c5-57fe-bc5d-ec35cebe8660"
+version = "0.5.4"
+
 [[deps.JSON]]
 deps = ["Dates", "Mmap", "Parsers", "Unicode"]
 git-tree-sha1 = "31e996f0a15c7b280ba9f76636b3ff9e2ae58c9a"
@@ -1252,6 +1596,12 @@ git-tree-sha1 = "f2bdec5b4580414aee3178c8caa6e46c344c0bbc"
 uuid = "ccbc3e58-028d-4f4c-8cd5-9ae44345cda5"
 version = "9.14.3"
 weakdeps = ["FastBroadcast"]
+
+[[deps.Kaleido_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
+git-tree-sha1 = "43032da5832754f58d14a91ffbe86d5f176acda9"
+uuid = "f7e6163d-2fa5-5f23-b69c-1db539e41963"
+version = "0.2.1+0"
 
 [[deps.Krylov]]
 deps = ["LinearAlgebra", "Printf", "SparseArrays"]
@@ -1309,6 +1659,12 @@ deps = ["ArrayInterface", "LinearAlgebra", "ManualMemory", "SIMDTypes", "Static"
 git-tree-sha1 = "a9eaadb366f5493a5654e843864c13d8b107548c"
 uuid = "10f19ff3-798f-405d-979b-55457f8fc047"
 version = "0.1.17"
+
+[[deps.Lazy]]
+deps = ["MacroTools"]
+git-tree-sha1 = "1370f8202dac30758f3c345f9909b97f53d87d3f"
+uuid = "50d2b5c4-7a5e-59d5-8109-a42b560f39c0"
+version = "0.15.1"
 
 [[deps.LazyArrays]]
 deps = ["ArrayLayouts", "FillArrays", "LinearAlgebra", "MacroTools", "SparseArrays"]
@@ -1575,6 +1931,18 @@ git-tree-sha1 = "cac9cc5499c25554cba55cd3c30543cff5ca4fab"
 uuid = "46d2c3a1-f734-5fdb-9937-b9b9aeba4221"
 version = "0.2.4"
 
+[[deps.Mustache]]
+deps = ["Printf", "Tables"]
+git-tree-sha1 = "3b2db451a872b20519ebb0cec759d3d81a1c6bcb"
+uuid = "ffc61752-8dc7-55ee-8c37-f3e9cdd09e70"
+version = "1.0.20"
+
+[[deps.Mux]]
+deps = ["AssetRegistry", "Base64", "HTTP", "Hiccup", "MbedTLS", "Pkg", "Sockets"]
+git-tree-sha1 = "7295d849103ac4fcbe3b2e439f229c5cc77b9b69"
+uuid = "a975b10e-0019-58db-a62f-e48ff68538c9"
+version = "1.0.2"
+
 [[deps.NLSolversBase]]
 deps = ["ADTypes", "DifferentiationInterface", "Distributed", "FiniteDiff", "ForwardDiff"]
 git-tree-sha1 = "b14c7be6046e7d48e9063a0053f95ee0fc954176"
@@ -1670,6 +2038,11 @@ weakdeps = ["ForwardDiff"]
 
     [deps.NonlinearSolveSpectralMethods.extensions]
     NonlinearSolveSpectralMethodsForwardDiffExt = "ForwardDiff"
+
+[[deps.Observables]]
+git-tree-sha1 = "7438a59546cf62428fc9d1bc94729146d37a7225"
+uuid = "510215fc-4207-5dde-b226-833fc4488ee2"
+version = "0.5.5"
 
 [[deps.Ogg_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1953,6 +2326,12 @@ git-tree-sha1 = "7d2f8f21da5db6a806faf7b9b292296da42b2810"
 uuid = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
 version = "2.8.3"
 
+[[deps.Pidfile]]
+deps = ["FileWatching", "Test"]
+git-tree-sha1 = "2d8aaf8ee10df53d0dfb9b8ee44ae7c04ced2b03"
+uuid = "fa939f87-e72e-5be4-a000-7fc836dbe307"
+version = "1.3.0"
+
 [[deps.Pixman_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "LLVMOpenMP_jll", "Libdl"]
 git-tree-sha1 = "db76b1ecd5e9715f3d043cec13b2ec93ce015d53"
@@ -1980,6 +2359,48 @@ git-tree-sha1 = "3ca9a356cd2e113c420f2c13bea19f8d3fb1cb18"
 uuid = "995b91a9-d308-5afd-9ec6-746e21dbc043"
 version = "1.4.3"
 
+[[deps.PlotlyBase]]
+deps = ["ColorSchemes", "Colors", "Dates", "DelimitedFiles", "DocStringExtensions", "JSON", "LaTeXStrings", "Logging", "Parameters", "Pkg", "REPL", "Requires", "Statistics", "UUIDs"]
+git-tree-sha1 = "28278bb0053da0fd73537be94afd1682cc5a0a83"
+uuid = "a03496cd-edff-5a9b-9e67-9cda94a718b5"
+version = "0.8.21"
+
+    [deps.PlotlyBase.extensions]
+    DataFramesExt = "DataFrames"
+    DistributionsExt = "Distributions"
+    IJuliaExt = "IJulia"
+    JSON3Ext = "JSON3"
+
+    [deps.PlotlyBase.weakdeps]
+    DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+    Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+    IJulia = "7073ff75-c697-5162-941a-fcdaad2a7d2a"
+    JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
+
+[[deps.PlotlyJS]]
+deps = ["Base64", "Blink", "DelimitedFiles", "JSExpr", "JSON", "Kaleido_jll", "Markdown", "Pkg", "PlotlyBase", "PlotlyKaleido", "REPL", "Reexport", "Requires", "WebIO"]
+git-tree-sha1 = "b816b0f301b074e002476159a9ada5691eebaf61"
+uuid = "f0f68f2c-4968-5e81-91da-67840de0976a"
+version = "0.18.16"
+
+    [deps.PlotlyJS.extensions]
+    CSVExt = "CSV"
+    DataFramesExt = ["DataFrames", "CSV"]
+    IJuliaExt = "IJulia"
+    JSON3Ext = "JSON3"
+
+    [deps.PlotlyJS.weakdeps]
+    CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+    DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+    IJulia = "7073ff75-c697-5162-941a-fcdaad2a7d2a"
+    JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
+
+[[deps.PlotlyKaleido]]
+deps = ["Artifacts", "Base64", "JSON", "Kaleido_jll"]
+git-tree-sha1 = "9ef5c9e588ec7e912f01a76c7fd3dddf1913d4f2"
+uuid = "f2990250-8cf9-495f-b13a-cce12b45703c"
+version = "2.3.0"
+
 [[deps.Plots]]
 deps = ["Base64", "Contour", "Dates", "Downloads", "FFMPEG", "FixedPointNumbers", "GR", "JLFzf", "JSON", "LaTeXStrings", "Latexify", "LinearAlgebra", "Measures", "NaNMath", "Pkg", "PlotThemes", "PlotUtils", "PrecompileTools", "Printf", "REPL", "Random", "RecipesBase", "RecipesPipeline", "Reexport", "RelocatableFolders", "Requires", "Scratch", "Showoff", "SparseArrays", "Statistics", "StatsBase", "TOML", "UUIDs", "UnicodeFun", "UnitfulLatexify", "Unzip"]
 git-tree-sha1 = "809ba625a00c605f8d00cd2a9ae19ce34fc24d68"
@@ -1999,6 +2420,12 @@ version = "1.40.13"
     IJulia = "7073ff75-c697-5162-941a-fcdaad2a7d2a"
     ImageInTerminal = "d8c32880-2388-543b-8c61-d9f865259254"
     Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
+
+[[deps.PlutoUI]]
+deps = ["AbstractPlutoDingetjes", "Base64", "Dates", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "Markdown", "Random", "Reexport", "UUIDs"]
+git-tree-sha1 = "5152abbdab6488d5eec6a01029ca6697dff4ec8f"
+uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+version = "0.7.23"
 
 [[deps.PoissonRandom]]
 deps = ["Random"]
@@ -2590,6 +3017,11 @@ git-tree-sha1 = "0c45878dcfdcfa8480052b6ab162cdd138781742"
 uuid = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
 version = "0.11.3"
 
+[[deps.Tricks]]
+git-tree-sha1 = "6cae795a5a9313bbb4f60683f7263318fc7d1505"
+uuid = "410a4b4d-49e4-4fbc-ab6d-cb71b17b3775"
+version = "0.1.10"
+
 [[deps.TruncatedStacktraces]]
 deps = ["InteractiveUtils", "MacroTools", "Preferences"]
 git-tree-sha1 = "ea3e54c2bdde39062abf5a9758a23735558705e1"
@@ -2666,6 +3098,24 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "5db3e9d307d32baba7067b13fc7b5aa6edd4a19a"
 uuid = "2381bf8a-dfd0-557d-9999-79630e7b1b91"
 version = "1.36.0+0"
+
+[[deps.WebIO]]
+deps = ["AssetRegistry", "Base64", "Distributed", "FunctionalCollections", "JSON", "Logging", "Observables", "Pkg", "Random", "Requires", "Sockets", "UUIDs", "WebSockets", "Widgets"]
+git-tree-sha1 = "0eef0765186f7452e52236fa42ca8c9b3c11c6e3"
+uuid = "0f1e0344-ec1d-5b48-a673-e5cf874b6c29"
+version = "0.8.21"
+
+[[deps.WebSockets]]
+deps = ["Base64", "Dates", "HTTP", "Logging", "Sockets"]
+git-tree-sha1 = "4162e95e05e79922e44b9952ccbc262832e4ad07"
+uuid = "104b5d7c-a370-577a-8038-80a2059c5097"
+version = "1.6.0"
+
+[[deps.Widgets]]
+deps = ["Colors", "Dates", "Observables", "OrderedCollections"]
+git-tree-sha1 = "e9aeb174f95385de31e70bd15fa066a505ea82b9"
+uuid = "cc8bc4a8-27d6-5769-a93b-9d913e69aa62"
+version = "0.6.7"
 
 [[deps.XML2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libiconv_jll", "Zlib_jll"]
@@ -2941,14 +3391,29 @@ version = "1.4.1+2"
 """
 
 # ╔═╡ Cell order:
-# ╠═ed866e82-2722-11f0-290a-79ad6e0c862c
-# ╠═76361d5f-fac2-4420-b99b-9a24e7be3984
-# ╠═c8d97023-21f9-4b51-828f-635b71b91dbf
-# ╠═b9ad21d4-d4a4-4f20-a55c-037a62fd063c
+# ╟─ed866e82-2722-11f0-290a-79ad6e0c862c
+# ╠═104730c1-d576-4375-b75e-13123e970bdb
+# ╟─76361d5f-fac2-4420-b99b-9a24e7be3984
+# ╟─f67a7a9c-f5e4-411c-891a-db10745e01b3
+# ╟─9164f8e8-f4ca-4d84-94b1-a92054f640a2
+# ╟─27a0c2d5-58ee-4de2-bf5e-4f20e4eca98c
+# ╟─b859f319-d0f4-41f6-86fe-b1dfc0f01806
+# ╟─5dd1c35b-2a8b-4531-aa8e-305b12bafcdb
+# ╟─1def9119-468f-4bb2-9857-ea54986b36bc
+# ╟─758b8ba6-6a46-4ae5-831f-b0c1ecc83485
+# ╟─6680a825-0ead-41a0-8eef-63d36fd06c43
+# ╟─9b95787c-3858-4c7f-90e5-d7940fad378b
+# ╟─c8d97023-21f9-4b51-828f-635b71b91dbf
+# ╟─b9ad21d4-d4a4-4f20-a55c-037a62fd063c
+# ╟─13c58b0a-9434-433a-bb89-d53cbabed974
+# ╟─e84bb5da-f233-439c-9275-f264a9ffb7d1
+# ╠═43dd28c3-28ab-42e6-8723-1222455236f8
+# ╠═de4506b7-f864-41d5-90c9-6ae7025faeac
+# ╠═a13b5a74-11ed-4d70-9812-3ac3c13f2049
 # ╠═b79c1516-543e-443d-923e-c552103062c0
 # ╟─7a1b92c2-50f0-45b6-8dd9-64099baba396
 # ╠═b5d3d04d-5496-4066-a588-08b9b18aca33
-# ╠═40a935d4-c2f0-43e2-a714-103f0380f8c1
+# ╟─40a935d4-c2f0-43e2-a714-103f0380f8c1
 # ╟─1081a378-e2ec-497f-8382-3ea00b27d860
 # ╠═628a7564-1dfe-461a-b552-ba49742f8946
 # ╠═7f1b2d97-39f3-4cc0-af21-72a5af1c44c5
@@ -2956,15 +3421,19 @@ version = "1.4.1+2"
 # ╠═c25f1923-8a4e-491f-a4e6-4f3ea267d374
 # ╠═4aeea69d-cd46-47e8-bd70-bca18cd09a88
 # ╠═d47bc690-08cb-40b5-8d2f-425ad1ee5a7c
-# ╠═59bd1be4-9b20-46d2-a68f-287a57edb223
-# ╠═06964bbb-c096-42a5-8c3f-460eee58880a
+# ╟─59bd1be4-9b20-46d2-a68f-287a57edb223
+# ╟─b0130ccd-6b36-40ff-ac8a-ae43b1ac10d0
 # ╟─4307191c-8ccc-4af9-92b6-ca5a1069fa26
-# ╠═8df6395b-bdbb-47ca-bfd8-9486b03b23d1
 # ╠═e2b9a3b1-28f4-4556-88c9-15619b611f32
+# ╠═49475e63-f3cb-4c68-bd81-ce2aaa87a8d2
 # ╠═6efcb593-4d04-4dee-891d-880bc342c86a
 # ╠═5a00b31e-3c07-4529-9812-51c1c76d80f4
-# ╠═9aaf9ece-03f6-46ea-bfe0-260950791f08
+# ╠═24c4a618-afd6-4aa3-909f-f966ae59613d
+# ╠═99a27d56-dfc4-4816-aa3b-2b1150f11bae
+# ╠═29871224-af35-4283-aa1d-ea76e030d68f
+# ╠═112c561a-224c-44e2-9524-7941e1aa305b
 # ╠═27680643-bdbb-46d9-970c-3735e44b459d
 # ╠═35c2edfe-2ef8-47cd-a73b-d894f3101db4
+# ╟─2dd090f6-561d-421c-88f9-2f19af6d92db
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
