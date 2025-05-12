@@ -4,594 +4,205 @@
 using Markdown
 using InteractiveUtils
 
-# This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
-macro bind(def, element)
-    #! format: off
-    return quote
-        local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
-        local el = $(esc(element))
-        global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
-        el
-    end
-    #! format: on
-end
-
-# ╔═╡ 104730c1-d576-4375-b75e-13123e970bdb
+# ╔═╡ 100c5f41-a4dc-42db-a668-e3825266e487
 begin
 	using DifferentialEquations
 	import PlotlyJS
 	using Plots
+	plotlyjs()
 	using LaTeXStrings
 	using PlutoUI
 	using LinearAlgebra
+	using Printf
+	using Base64
+	function embed_image(path_to_image::AbstractString; height::Integer=240, type::String="png")
+	    img_bytes = read(path_to_image)
+	    # Build a data URL: "data:image/{type};base64,{...}"
+	    data_url = "data:image/$(type);base64," * base64encode(img_bytes)
+    	attrs = (:height => height,)
+	    PlutoUI.Resource(data_url, MIME("image/$(type)"), attrs)
+	end
 end;
 
-# ╔═╡ ed866e82-2722-11f0-290a-79ad6e0c862c
+# ╔═╡ 14557d3a-2f36-11f0-236e-29decfbecc3f
 md"""
 # Programming Multibody Systems in Julia
 
-### Lecture 4: Rigid Body Rotations and Quaternions
+### Lecture 5: Multibody Dynamics and Choice of Coordinates
 
 Grzegorz Orzechowski
 """
 
-# ╔═╡ 76361d5f-fac2-4420-b99b-9a24e7be3984
+# ╔═╡ 58705fe7-c2a5-4681-b2db-94d8ef1ce799
 md"""
-## Euler Parameters: Definition & Geometric Meaning
+## Multibody Systems
 
-Euler parameters are a four-parameter description of a 3D rotation (also called **Euler–Rodrigues parameters**). They correspond to an **axis–angle** representation of a rotation. Given a rotation by angle φ about a unit axis **n**, we define:
+- A mechanical system is a collection of bodies (or links) in which some or all the bodies can move relative to one another.
+- The four-bar linkage is the most used mechanism for motion transmission.
+- The slider-crank mechanism finds its most significant application in the internal combustion engine.
 
--  $e₀ = \cos(φ/2)$ (scalar component)
-    
--  $\boldsymbol{e} = [e₁, e₂, e₃]^\top = \boldsymbol{n} · \sin(φ/2)$ (vector component).
-    
-    These parameters thus encode the rotation angle and axis: $e₀$ represents the “amount” of rotation (via half-angle), while $e₁, e₂, e₃$ point along the rotation axis scaled by $\sin(φ/2)$. Geometrically, any 3D rotation can be described by some axis and angle (Euler’s rotation theorem), and Euler parameters are a convenient numerical representation of that rotation. Notably, the four parameters $(e_0, e_1, e_2, e_3)$ can be viewed as the components of a **quaternion** representing the orientation.
-    
+$(embed_image("../../assets/figures/lecture_22_three_mechanisms.png", type="png", height=180))
 """
 
-# ╔═╡ f67a7a9c-f5e4-411c-891a-db10745e01b3
-md"""
-Rotation axis component $u_x$
-"""
-
-# ╔═╡ 9164f8e8-f4ca-4d84-94b1-a92054f640a2
-@bind ux Slider(-1.0:0.1:1.0, default=0.5, show_value=true)
-
-# ╔═╡ 27a0c2d5-58ee-4de2-bf5e-4f20e4eca98c
-md"""
-Rotation axis component $u_y$
-"""
-
-# ╔═╡ b859f319-d0f4-41f6-86fe-b1dfc0f01806
-@bind uy Slider(-1.0:0.1:1.0, default=0.5, show_value=true)
-
-# ╔═╡ 5dd1c35b-2a8b-4531-aa8e-305b12bafcdb
-md"""
-Rotation axis component $u_z$
-"""
-
-# ╔═╡ 1def9119-468f-4bb2-9857-ea54986b36bc
-@bind uz Slider(-1.0:0.1:1.0, default=0.2, show_value=true)
-
-# ╔═╡ 758b8ba6-6a46-4ae5-831f-b0c1ecc83485
-md"""
-Rotation angle $\theta$ (°)
-"""
-
-# ╔═╡ 6680a825-0ead-41a0-8eef-63d36fd06c43
-@bind θ  Slider(0:5:360,      default=45,  show_value=true)
-
-# ╔═╡ 9b95787c-3858-4c7f-90e5-d7940fad378b
-### Pluto.jl cell ###
-begin
-    # using PlotlyJS          # ] add PlotlyJS
-    plotlyjs()               # 3D rotations feel smoother
-
-    # 2) Normalize axis
-    u = normalize([ux, uy, uz])
-
-    # 3) Build the quaternion (Euler parameters)
-    th = θ * π/180
-    q0 = cos(th/2)
-    qv = sin(th/2) * u              # vector part
-    # for clarity:
-    q1, q2, q3 = qv
-
-    # 4) Convert quaternion to rotation matrix R
-    R = [
-	    q0^2 + q1^2 - q2^2 - q3^2   2*(q1*q2 - q0*q3)       2*(q1*q3 + q0*q2);
-	    2*(q2*q1 + q0*q3)           q0^2 - q1^2 + q2^2 - q3^2 2*(q2*q3 - q0*q1);
-	    2*(q3*q1 - q0*q2)           2*(q3*q2 + q0*q1)       q0^2 - q1^2 - q2^2 + q3^2]
-
-    # 5) Original vector and its rotated image
-    v0 = [1.0, 0.0, 0.0]
-    v1 = R * v0
-
-    # 6) Build a translucent unit‐sphere
-    ϕ = range(0, 2π; length=40)
-    θs = range(0, π; length=20)
-    xs = [sin(t)*cos(p) for t in θs, p in ϕ]
-    ys = [sin(t)*sin(p) for t in θs, p in ϕ]
-    zs = [cos(t)        for t in θs, p in ϕ]
-
-    # 7) Plot!
-    # now use `plot` with seriestype=:surface`
-    plt = plot(
-      xs, ys, zs;
-      seriestype  = :surface,
-      opacity     = 0.2,
-      color       = :gray,
-      showscale   = false,
-      legend      = false,
-      xlabel      = "x",
-      ylabel      = "y",
-      zlabel      = "z"
-    )
-    # original vector in blue
-    plot!(plt, [0,v0[1]], [0,v0[2]], [0,v0[3]]; lw=4, color=:blue)
-    scatter!(plt, [v0[1]], [v0[2]], [v0[3]]; marker=(6,:blue))
-
-    # rotated vector in red
-    plot!(plt, [0,v1[1]], [0,v1[2]], [0,v1[3]]; lw=4, color=:red)
-    scatter!(plt, [v1[1]], [v1[2]], [v1[3]]; marker=(6,:red))
-
-    # nice axes limits & labels
-    xlims!(-1,1); ylims!(-1,1); zlims!(-1,1)
-
-    # 8) Show quaternion components
-    annotate!(
-      plt,
-      (-0.9, 0.9, 0.9,
-       text("q = [$(round(q0,digits=3)), $(round(q1,digits=3)), $(round(q2,digits=3)), $(round(q3,digits=3))]", :green))
-    )
-
-    plt
-end
-
-# ╔═╡ c8d97023-21f9-4b51-828f-635b71b91dbf
+# ╔═╡ 5fbe1d32-7415-4d42-932a-0850149d0fb8
 md"""
 
-## Euler Parameters and Unit Quaternions
+## Multibody Systems
 
-Euler parameters are essentially **unit quaternions** – quaternions of unit length used to represent rotations. A quaternion can be written as 
+- Any mechanical system can be represented schematically as a multibody system.
+- The actual shape of a body may not be so crucial for the analysis.
+- More critical are:
+    - Connectivity of the bodies
+    - Their inertial characteristics
+    - The type and the location of the joints
+    - The physical characteristics of the springs, dampers, and other elements in the system
 
-$\boldsymbol{q} = e_0 + e_1 \mathbf{i} + e_2 \mathbf{j} + e_3 \mathbf{k}$
-
-(with $e_0$ scalar part, and $[e_1,e_2,e_3]$ as the vector part). For a valid rotation, these parameters satisfy a normalization constraint:
-
-$e_0^2 + e_1^2 + e_2^2 + e_3^2 = 1,$
-
-ensuring only three degrees of freedom (the rotation axis and angle). This unit-length condition arises because an arbitrary rotation in 3D has just three independent parameters (the fourth quaternion component is determined by the first three). In practice, Euler parameters provide a **singularity-free** orientation description (unlike Euler angles, they have no gimbal lock) and can smoothly cover all possible orientations on the 3D unit sphere (S³).
+$(embed_image("../../assets/figures/lecture_22_multibody_potatoes.png", type="png", height=300))
 
 """
 
-# ╔═╡ b9ad21d4-d4a4-4f20-a55c-037a62fd063c
+# ╔═╡ b2c0b0cc-a96a-4436-9186-f1276802fffa
 md"""
 
-## Orientation Representation in Rigid Body Dynamics
+## Methods of Analysis
 
-  
-
-Unit quaternions (Euler parameters) are widely used to represent the orientation (attitude) of rigid bodies in dynamics simulations. They offer several advantages over traditional Euler angles or rotation matrices:
-
-- **No Gimbal Lock:** Quaternions do not suffer from gimbal lock singularities that Euler angles have.
-    
-- **Stable Composition:** Rotations compose by quaternion multiplication, which is computationally faster and more numerically stable than composing rotation matrices.
-    
-- **Easy Axis-Angle Extraction:** One can readily recover the rotation axis and angle from a unit quaternion.
-    
-- **Interpolation:** Quaternions enable smooth interpolation between orientations, useful for animations or continuous motion.
-    
-    Because of these benefits, almost all modern spacecraft attitude representations, robotics simulations, and game engines use unit quaternions for orientation. In rigid body dynamics code, Euler parameters are treated as part of the state vector to track orientation, with the constraint $e_0^2+e_1^2+e_2^2+e_3^2=1$ enforced either by choice of coordinates or by normalization.
-    
+- **Mechanics** – analysis of motion, time, and forces
+- Traditionally, it is divided into statics and dynamics.
+    - Dynamics is further divided into kinematics and kinetics.
+- **Kinematics** is the study of motion regardless of the forces.
+- **Kinetics** is the study of motion and its relationship with the forces.
+- To analyze the motion, we must make some simplifications.
 
 """
 
-# ╔═╡ 13c58b0a-9434-433a-bb89-d53cbabed974
-md"""
-## What is a Rotation Matrix?
-
-A **rotation matrix** is a $3 \times 3$ orthogonal matrix with determinant $+1$ that represents a proper rotation in 3D space. It transforms coordinates of vectors from one frame (e.g., body frame) to another (e.g., world frame) while preserving vector norms and angles.
-
-Mathematically, a matrix $\boldsymbol{A} \in \mathbb{R}^{3 \times 3}$ is a **rotation matrix** if it satisfies:
-
-- Orthogonality: $\boldsymbol{A}^\top \boldsymbol{A} = \boldsymbol{I}$
-    
-- Unit determinant: $\det(\boldsymbol{A}) = +1$
-
-These conditions imply that $\boldsymbol{A}$ preserves lengths and angles during transformation:
-
-$$\|\boldsymbol{A} \boldsymbol{v}\| = \|\boldsymbol{v}\|, \quad \text{and} \quad (\boldsymbol{A} \boldsymbol{u})^\top (\boldsymbol{A} \boldsymbol{v}) = \boldsymbol{u}^\top \boldsymbol{v}$$
-
-A rotation matrix rotates a vector $\boldsymbol{v}$ expressed in one frame into another:
-
-$$\boldsymbol{v}_{\text{world}} = \boldsymbol{A} \cdot \boldsymbol{v}_{\text{body}}$$
-
-Each column of $\boldsymbol{A}$ corresponds to the unit vectors of the rotated body axes expressed in world coordinates.
-
-For example, a rotation of angle $\theta$ about the $z$-axis is represented by:
-
-$$\boldsymbol{A}_z(\theta) = \begin{bmatrix} \cos\theta & -\sin\theta & 0 \\ \sin\theta & \cos\theta & 0 \\ 0 & 0 & 1 \end{bmatrix}$$
-
-Rotation matrices can be composed by matrix multiplication, and are often derived from axis-angle, Euler angles, or quaternions (Euler parameters).
-
-In multibody dynamics, rotation matrices are used to:
-
-- Transform forces and velocities between coordinate frames
-    
-- Construct constraint equations
-    
-- Visualize orientation of rigid bodies
-    
-"""
-
-# ╔═╡ e84bb5da-f233-439c-9275-f264a9ffb7d1
+# ╔═╡ 973aa4d8-3e07-4b47-bd94-662ff3b00823
 md"""
 
-## Rotation Matrix from Euler Parameters
+## Analysis by Vector Algebra
 
-In multibody dynamics, the rotation matrix $\boldsymbol{A}(\boldsymbol{q}) \in \mathbb{R}^{3 \times 3}$ from Euler parameters is often split into two matrices $\boldsymbol{L}(\boldsymbol{q})$ and $\boldsymbol{R}(\boldsymbol{q})$ such that:
+- Find the velocity of the slider (point B).
+ $(embed_image("../../assets/figures/lecture_13_slider_crank_example.png", type="png", height=200))
 
-$\boldsymbol{A}(\boldsymbol{q}) = \boldsymbol{L}(\boldsymbol{q})^\top \boldsymbol{R}(\boldsymbol{q})$
+Having $a = OA$, $b = AB$, and $d = OB$, the geometric relations in the triangle are:
 
-Here, $\boldsymbol{L}(\boldsymbol{q})$ and $\boldsymbol{R}(\boldsymbol{q})$ are **3×4 matrices** that depend linearly on the Euler parameters $\boldsymbol{q} = [e_0, e_1, e_2, e_3]^\top$, and this formulation is very useful in deriving kinematic and dynamic equations, particularly when computing angular velocities or Jacobians.
+$a \cos \phi + b \cos \theta - d = 0$
+$a \sin \phi - b \sin \theta = 0$
 
-The matrices $\boldsymbol{L}(\boldsymbol{q})$ and $\boldsymbol{R}(\boldsymbol{q})$ are defined as:
+As $a$ and $b$ are known, the solution of the above equation yields $\theta$ and $d$.
 
-$\boldsymbol{L}(\boldsymbol{q}) = \begin{bmatrix} -e_1 & e_0 & -e_3 & e_2 \\ -e_2 & e_3 & e_0 & -e_1 \\ -e_3 & -e_2 & e_1 & e_0 \end{bmatrix}$
-
-$\boldsymbol{R}(\boldsymbol{q}) = \begin{bmatrix} -e_1 & e_0 & e_3 & -e_2 \\ -e_2 & -e_3 & e_0 & e_1 \\ -e_3 & e_2 & -e_1 & e_0 \end{bmatrix}$
-
-  These are **linear in** $\boldsymbol{q}$ and appear often when computing rotational kinematics (e.g., angular velocity as a linear function of quaternion rates).
-
-This form is particularly advantageous when:
-
-- Deriving analytical expressions (e.g., for Jacobians).
-    
-- Coupling with quaternion rate equations: $\dot{q} = \frac{1}{2} \boldsymbol{E}(\boldsymbol{q})^\top \omega$, where $\boldsymbol{E}(\boldsymbol{q}) = \boldsymbol{L}(\boldsymbol{q})$ or $\boldsymbol{R}(\boldsymbol{q})$.
-    
-- Expressing virtual rotations and variations in the principle of virtual work.
-
-The rotation matrix $\boldsymbol{A}$ corresponding to quaternion $\boldsymbol{q}$ can be written explicitly as:
-
-$\boldsymbol{A}(\boldsymbol{q}) = \begin{bmatrix} e_0^2 + e_1^2 - e_2^2 - e_3^2 & 2(e_1 e_2 + e_0 e_3) & 2(e_1 e_3 - e_0 e_2) \\ 2(e_1 e_2 - e_0 e_3) & e_0^2 - e_1^2 + e_2^2 - e_3^2 & 2(e_2 e_3 + e_0 e_1) \\ 2(e_1 e_3 + e_0 e_2) & 2(e_2 e_3 - e_0 e_1) & e_0^2 - e_1^2 - e_2^2 + e_3^2 \end{bmatrix}$
-
-This matrix satisfies $\boldsymbol{A}^\top \boldsymbol{A} = \boldsymbol{I}$ and $\det(\boldsymbol{A}) = 1$ provided that $\boldsymbol{q}^\top \boldsymbol{q} = 1$ (i.e., $\boldsymbol{q}$ is a unit quaternion).
+ $\phi = 30^\circ$ gives $\theta = 14.48^\circ$ and $d = 0.28 , \text{m}$.
 
 """
 
-# ╔═╡ 43dd28c3-28ab-42e6-8723-1222455236f8
-function L_matrix(q)
-    e0, e1, e2, e3 = q
-    return [
-        -e1   e0  -e3   e2;
-        -e2   e3   e0  -e1;
-        -e3  -e2   e1   e0
-    ]
-end
-
-# ╔═╡ de4506b7-f864-41d5-90c9-6ae7025faeac
-function R_matrix(q)
-    e0, e1, e2, e3 = q
-    return [
-        -e1   e0   e3  -e2;
-        -e2  -e3   e0   e1;
-        -e3   e2  -e1   e0
-    ]
-end
-
-# ╔═╡ a13b5a74-11ed-4d70-9812-3ac3c13f2049
-function rotation_matrix_LR(q)
-    L = L_matrix(q)
-    R = R_matrix(q)
-    return transpose(L) * R
-end
-
-# ╔═╡ b79c1516-543e-443d-923e-c552103062c0
-# Compute 3x3 rotation matrix from Euler parameters (unit quaternion)
-function rotation_matrix_from_quat(q)
-    e0, e1, e2, e3 = q  # unpack quaternion components
-    return [
-        e0^2 + e1^2 - e2^2 - e3^2   2*(e1*e2 + e0*e3)       2*(e1*e3 - e0*e2);
-        2*(e1*e2 - e0*e3)          e0^2 - e1^2 + e2^2 - e3^2 2*(e2*e3 + e0*e1);
-        2*(e1*e3 + e0*e2)          2*(e2*e3 - e0*e1)        e0^2 - e1^2 - e2^2 + e3^2
-    ]
-end
-
-
-# ╔═╡ 7a1b92c2-50f0-45b6-8dd9-64099baba396
+# ╔═╡ a2db6e50-6405-46ea-b593-7f100861919b
 md"""
+Time derivative gives:
 
-## Quaternion Kinematics (Euler Parameter ODE)
+$-a \dot{\phi} \sin \phi - b \dot{\theta} \sin \theta - \dot{d} = 0$
+$a \dot{\phi} \cos \phi - b \dot{\theta} \cos \theta = 0$
 
-To update the orientation over time, we integrate the **quaternion kinematic equation**. If the rigid body has an angular velocity $\boldsymbol{\omega} = [ωₓ, ω_y, ω_z]^\top$ (in body-fixed coordinates), we first define a **pure quaternion** from the angular velocity:
+The angular velocity of the crank is $\omega = \dot{\phi} = -1 \, \text{rad/s}$.
+ 
+Thus, $\dot{\theta} = -0.45 \, \text{rad/s}$ and $\dot{d} = 0.072 \, \text{m/s}$.  $\dot{d}$ represents the velocity of point $B$.
 
-$\boldsymbol{w} = \begin{bmatrix} 0 \\ \boldsymbol{\omega} \end{bmatrix} = [0, \omega_x, \omega_y, \omega_z]^\top$
-
-The quaternion differential equation is:
-
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{q} \otimes \boldsymbol{w} \quad \text{(if } \boldsymbol{\omega} \text{ is in the body frame)}$
-
-or alternatively,
-
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{w} \otimes \boldsymbol{q} \quad \text{(if } \boldsymbol{\omega} \text{ is in the world frame)}$
-
-Here, $\otimes$ denotes quaternion multiplication.
-
-We will assume that $\boldsymbol{\omega}$ is expressed in the rotating body frame. Those formulas means the quaternion’s rate of change is half the quaternion-product of itself with the angular velocity (conceptually analogous to $\dot{\theta} = \omega$ in 2D rotation). Expanding the quaternion product gives a system of first-order ODEs for the Euler parameters:
-
-$\dot e_0 = -\tfrac{1}{2}(e_1 \omega_x + e_2 \omega_y + e_3 \omega_z),$
-
-$\dot e_1 = \;\;\tfrac{1}{2}(e_0 \omega_x + e_2 \omega_z - e_3 \omega_y), \quad \text{(and cyclic perms for }\dot e_2,\dot e_3).$
-
-We implement this in Julia for use with **DifferentialEquations.jl**:
-
-"""
-# ODE function defining quaternion dynamics given angular velocity ω(t)
-
-# ╔═╡ b5d3d04d-5496-4066-a588-08b9b18aca33
-function quaternion_ode!(dq, q, p, t)
-    # q = (e0, e1, e2, e3) is the state (orientation quaternion)
-    e0, e1, e2, e3 = q        # unpack current quaternion
-    ω = p                     # angular velocity (passed as parameter)
-    ωx, ωy, ωz = ω            # components of angular velocity in body frame
-    # Compute dq/dt = 0.5 * q * (0, ω):
-    dq[1] = -0.5 * (e1*ωx + e2*ωy + e3*ωz)                    # dot e0 
-    dq[2] =  0.5 * ( e0*ωx + e2*ωz - e3*ωy )                  # dot e1
-    dq[3] =  0.5 * ( e0*ωy + e3*ωx - e1*ωz )                  # dot e2
-    dq[4] =  0.5 * ( e0*ωz + e1*ωy - e2*ωx )                  # dot e3
-end
-
-# ╔═╡ 40a935d4-c2f0-43e2-a714-103f0380f8c1
-md"""
-
-This function computes $\dot{\boldsymbol{q}}$ for any given quaternion $\boldsymbol{q}$ and angular velocity $\boldsymbol{ω}$. In essence, it continuously “spins” the quaternion according to $\boldsymbol{ω}$.
+- The analytic approach is systematic and easy to implement as a program.
 
 """
 
-# ╔═╡ 1081a378-e2ec-497f-8382-3ea00b27d860
+# ╔═╡ 66aabfdf-539d-4d43-a00d-63e283b03513
 md"""
+## Efficiency versus Simplicity
 
-## Numerical Integration Example
-
-Using the above ODE, we can simulate the orientation over time. We set up an ODE problem with an initial orientation and a given angular velocity, then solve it with a standard integrator:
+- **General-purpose programs** can analyze a variety of mechanisms.
+- The input for the program must include:
+    - The number of bodies
+    - Connectivity between bodies
+    - Joint types
+    - Force elements
+    - Geometric and physical characteristics
+- The program generates all the governing equations of motion and solves them numerically.
+- **Computational efficiency** depends on:
+    - The choice of coordinates
+    - Numerical solution methods
 
 """
 
-# ╔═╡ 628a7564-1dfe-461a-b552-ba49742f8946
-ω_const = [0.0, 0.0, 1.0]    # constant angular velocity about z-axis (1 rad/s)
-
-# ╔═╡ 7f1b2d97-39f3-4cc0-af21-72a5af1c44c5
-e0 = [1.0, 0.0, 0.0, 0.0]             # initial quaternion (no rotation)
-
-# ╔═╡ 5ae3a26c-dc5e-42f3-b4f2-5d9c75bed5b8
-tspan = (0.0, 10.0)                   # simulate 10 seconds
-
-# ╔═╡ c25f1923-8a4e-491f-a4e6-4f3ea267d374
-prob = ODEProblem(quaternion_ode!, e0, tspan, ω_const)
-
-# ╔═╡ 4aeea69d-cd46-47e8-bd70-bca18cd09a88
-sol = solve(prob, Tsit5(), dt=0.01)   # 5th-order solver with 0.01s time step
-
-# ╔═╡ d47bc690-08cb-40b5-8d2f-425ad1ee5a7c
-plot(sol, title="Quaternion components over time", 
-     label=["e₀" "e₁" "e₂" "e₃"], legend=:right)
-
-# ╔═╡ 59bd1be4-9b20-46d2-a68f-287a57edb223
+# ╔═╡ 95c6fe10-5e2b-4496-8286-a011f4a0f54d
 md"""
 
-This integrates $\dot{\boldsymbol{q}} = \frac{1}{2} \boldsymbol{q} \otimes \boldsymbol{w}$ over 0–10 s. The result `sol(t)` gives the quaternion at time `t`. We can plot each component to verify the behavior. For a constant rotation about the z-axis, $e_0$ will decrease from 1 toward 0 (as the rotation angle increases to 180°), $e_3$ (the component along z-axis) will increase, while $e_1, e_2$ remain zero (since the rotation axis has no x or y component). In all cases, the solution quaternions stay on the unit sphere, as expected.
+## Choice of Coordinates
 
+- **Equations of motion** can be derived in various forms depending on the coordinates being employed.
+- Coordinates $\boldsymbol{q}$ can describe the position of the elements with respect to each other or a common reference frame.
+- Using a **four-bar linkage** to demonstrate:
+    - Generalized coordinates
+    - Relative coordinates
+    - Cartesian coordinates
 """
 
-# ╔═╡ b0130ccd-6b36-40ff-ac8a-ae43b1ac10d0
+# ╔═╡ 2885d73e-d0bf-40e1-bf21-bc81264fd977
 md"""
+## Generalized Coordinates
 
-## Quaternion Kinematics in Multibody Dynamics
-
-To describe how the orientation of a rigid body evolves in time, we use the **quaternion kinematic equation**. This relates the time derivative of the orientation quaternion $\boldsymbol{q}(t) = [e_0, e_1, e_2, e_3]^\top$ to the body’s angular velocity $\boldsymbol{\omega} \in \mathbb{R}^3$.
-
-As you recall, the quaternion differential equation is:
-
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{q} \otimes \boldsymbol{w} \quad \text{(if } \boldsymbol{\omega} \text{ is in the body frame)}$
-
-or alternatively,
-
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{w} \otimes \boldsymbol{q} \quad \text{(if } \boldsymbol{\omega} \text{ is in the world frame)}$
-
-To express this as a matrix-vector product, we define matrices $\boldsymbol{L}(\boldsymbol{q})$ and $\boldsymbol{R}(\boldsymbol{q})$, both linear in $\boldsymbol{q}$, such that:
-
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{L}(\boldsymbol{q})^\top \, \boldsymbol{\omega} \quad \text{(body-frame angular velocity)}$
-
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{R}(\boldsymbol{q})^\top \, \boldsymbol{\omega} \quad \text{(world-frame angular velocity)}$
-
-In **multibody dynamics**, we typically express $\boldsymbol{\omega}$ in the **body frame**, so the standard kinematic equation becomes:
-
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{L}(\boldsymbol{q})^\top \, \boldsymbol{\omega}$
-
-  
-
-This form is numerically efficient and avoids singularities, making it ideal for time integration in simulation.
-
+- The number of coordinates equals the number of degrees of freedom (DOF).
+- **Four-bar linkage** has one DOF:
+    - $q = [\phi]$
+- For any $\phi$, other positions of the linkage can be calculated:
+    - $\theta_1$
+    - $\theta_2$
+    - $\theta_3$
 """
 
-# ╔═╡ 4307191c-8ccc-4af9-92b6-ca5a1069fa26
+# ╔═╡ 11aaab40-ab34-48f5-a786-2fff5e05083c
 md"""
-## Rigid Body Rotation with Quaternions
 
-
-In multibody dynamics, the orientation of a rigid body is represented by a **unit quaternion** (Euler parameters)
-
-$\boldsymbol{q}(t) = [e_0, e_1, e_2, e_3]^\top$
-
-
-Its time evolution is governed by:
-
-- The **angular velocity** $\boldsymbol{\omega}(t) = [\omega_x, \omega_y, \omega_z]^\top$ in the **body-fixed frame**
-    
-- The **inertia matrix** $\boldsymbol{I} \in \mathbb{R}^{3 \times 3}$, constant in the body frame
-    
-- The **applied torque** $\boldsymbol{T}(t) \in \mathbb{R}^3$, expressed in the body frame
-    
-### Kinematic Equation (Quaternion Rate)
-
-  
-
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{L}(\boldsymbol{q})^\top \, \boldsymbol{\omega}$
-
-where $\boldsymbol{L}(\boldsymbol{q}) \in \mathbb{R}^{3 \times 4}$ is defined as:
-
-$\boldsymbol{L}(\boldsymbol{q}) = \begin{bmatrix} -e_1 & e_0 & -e_3 & e_2 \\ -e_2 & e_3 & e_0 & -e_1 \\ -e_3 & -e_2 & e_1 & e_0 \end{bmatrix}$
-
-  
-### Dynamic Equation (Euler’s Equations of Motion)
-
-$\boldsymbol{I} \, \dot{\boldsymbol{\omega}} + \boldsymbol{\omega} \times (\boldsymbol{I} \boldsymbol{\omega}) = \boldsymbol{T}(t)$
-
-
-These two equations together define the rigid body’s rotational motion.
-
-This formulation is:
-
-- **Minimal**: no extra rotation matrices needed
-    
-- **Stable**: quaternions avoid singularities
-    
-- **Extensible**: integrates cleanly into multibody systems where bodies have both translation and rotation
-    
-
-
-Make sure to normalize $\boldsymbol{q}(t)$ after integration steps to maintain unit norm:
-
-$\boldsymbol{q} \leftarrow \frac{\boldsymbol{q}}{\|\boldsymbol{q}\|}$
-
-
+- Using generalized coordinates to solve a system of equations:
+    - $(r^2 + l^2 + s^2 - d^2) - 2rl \cos \phi + 2ls \cos \theta_1 - 2rs \cos (\phi - \theta_1) = 0$
+    - $(r^2 + l^2 + s^2 - d^2) - 2rl \cos \phi + 2ds \cos \theta_2 = 0$
+    - $\phi + \theta_1 + \theta_2 + \theta_3 - 2\pi = 0$
+- $r, d, s$ are link lengths, $l$ is the distance AD.
+- With $\phi$, you can get $\theta_1, \theta_2, \theta_3$ and compute the position of point F.
 """
 
-# ╔═╡ e2b9a3b1-28f4-4556-88c9-15619b611f32
-function rigid_body!(du, u, p, t)
-    # State vector: u = [q; ω] where
-    #   q = orientation quaternion (4,)
-    #   ω = angular velocity in body frame (3,)
-    q = @view u[1:4]
-    ω = @view u[5:7]
-
-    # Output derivatives
-    dq = @view du[1:4]
-    dω = @view du[5:7]
-
-    # Parameters
-    I = p.I         # Inertia matrix in body frame (3x3)
-    T = p.T(t)      # External torque in body frame, may depend on time
-
-    # Quaternion kinematics
-    L = L_matrix(q)
-    dq[:] = 0.5 * transpose(L) * ω
-
-    # Rigid body rotational dynamics (Euler's equation)
-    Iω = I * ω
-    dω[:] = I \ (T - cross(ω, Iω))  # Equivalent to inv(I)*(T - ω × (Iω))
-end
-
-# ╔═╡ 49475e63-f3cb-4c68-bd81-ce2aaa87a8d2
-struct RigidBodyParams
-    I::Matrix{Float64}          # 3×3 inertia matrix
-    T::Function                 # T(t): torque function returning 3×1 vector
-end
-
-# ╔═╡ 6efcb593-4d04-4dee-891d-880bc342c86a
-# Initial conditions
-begin
-	q0_ = [1.0, 0.0, 0.0, 0.0]
-	ω0_ = [0.1, 0.2, 0.3]
-	u0_rb = [q0_; ω0_]
-end
-
-# ╔═╡ 5a00b31e-3c07-4529-9812-51c1c76d80f4
-tspan_rb = (0.0, 10.0)
-
-# ╔═╡ 24c4a618-afd6-4aa3-909f-f966ae59613d
-# Time-varying torque function: returns a 3D vector in body frame
-function torque_vector(t)
-    return [0.0, 0.0, sin(t)]  # example: sinusoidal torque about z-axis
-end
-
-# ╔═╡ 99a27d56-dfc4-4816-aa3b-2b1150f11bae
-# Example: diagonal inertia tensor (e.g., uniform box or sphere)
-I = Diagonal([1.0, 2.0, 3.0]) |> Matrix  # must be a full matrix
-
-# ╔═╡ 29871224-af35-4283-aa1d-ea76e030d68f
-p = RigidBodyParams(I, t -> torque_vector(t))      # inertia + time-varying torque
-
-# ╔═╡ 112c561a-224c-44e2-9524-7941e1aa305b
-prob_rb = ODEProblem(rigid_body!, u0_rb, (0.0, 10.0), p)
-
-# ╔═╡ 27680643-bdbb-46d9-970c-3735e44b459d
-sol_rb = solve(prob_rb)
-
-# ╔═╡ 35c2edfe-2ef8-47cd-a73b-d894f3101db4
-plot(sol_rb, idxs=(0,5), xlabel="Time", ylabel="ωₓ", label="ωₓ")
-
-# ╔═╡ 2dd090f6-561d-421c-88f9-2f19af6d92db
+# ╔═╡ a92a026a-6c58-42bc-b546-f1f088ab6260
 md"""
+## Relative Coordinates
 
-## Toward a Multibody Dynamics Codebase
+- Selected coordinates may define the orientation of each body with respect to a nonmoving or another moving body.
+- **Three angles** are selected to describe these orientations:
+    - $q = [\phi_1, \phi_2, \phi_3]$
+- These coordinates are not independent (as we have 1 DOF).
+"""
 
-The code and concepts presented can be extended and reused in a general multibody simulation framework.
+# ╔═╡ 318fa746-792a-4629-a13b-82ed8474a625
+md"""
+## Relative Coordinates (continued)
 
-Key points and definitions:
-
-- **Angular velocity** $\boldsymbol{\omega}$
-    
-    A 3D vector representing the rotational speed and axis of a rigid body, typically expressed in the **body-fixed frame**. It is related to the time derivative of the orientation quaternion $\boldsymbol{q}(t)$ via the kinematic equation:
-    
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{E}(\boldsymbol{q})^\top \, \boldsymbol{\omega}$
-    
-where $\boldsymbol{E}(\boldsymbol{q}) \in \mathbb{R}^{3 \times 4}$ is a matrix linear in $\boldsymbol{q}$. $\boldsymbol{L}(\boldsymbol{q})$ or $\boldsymbol{R}(\boldsymbol{q})$.
-    
-- **Inertia matrix** $\boldsymbol{I}$
-    
-    A symmetric, positive-definite $3 \times 3$ matrix that encodes the body’s mass distribution about its center of mass. In the **body-fixed frame**, the rigid body’s rotational equation of motion is:
-    
-$\boldsymbol{I} \, \dot{\boldsymbol{\omega}} + \boldsymbol{\omega} \times (\boldsymbol{I} \boldsymbol{\omega}) = \boldsymbol{T}$
-    
-where $\boldsymbol{T}$ is the external torque applied to the body.
-       
-- **Quaternion normalization**
-    
-    To prevent drift from roundoff error during integration, it’s good practice to **renormalize** $\boldsymbol{q} \leftarrow \boldsymbol{q} / \|\boldsymbol{q}\|$ occasionally.
-    
-- **L(q), R(q) matrices**
-    
-    Use the linear structure of the rotation matrix:
-    
-$\boldsymbol{A}(\boldsymbol{q}) = \boldsymbol{L}(\boldsymbol{q})^\top \boldsymbol{R}(\boldsymbol{q})$
-    
-to derive angular velocity and rotation equations analytically and efficiently.
-    
-- **Extending to multibody systems**
-    
-    Combine each body’s state (position, orientation, velocity) into a global state vector. Your Euler-parameter-based orientation model integrates naturally with translational motion and constraints.
-   
-
+- **Two loop equations** relating them:
+    - $r \cos \phi_1 + d \cos \phi_2 + s \cos \phi_3 - l = 0$
+    - $r \sin \phi_1 + d \sin \phi_2 + s \sin \phi_3 = 0$
+- For any $\phi_1$, those equations must be solved for $\phi_2$ and $\phi_3$.
+- After that, other information, such as the coordinates of point F, can be calculated.
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
+Base64 = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
 LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 PlotlyJS = "f0f68f2c-4968-5e81-91da-67840de0976a"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 
 [compat]
 DifferentialEquations = "~7.16.1"
 LaTeXStrings = "~1.4.0"
 PlotlyJS = "~0.18.16"
 Plots = "~1.40.13"
-PlutoUI = "~0.7.23"
+PlutoUI = "~0.7.62"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -600,7 +211,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "7b2294641530d8fb1d50c43c84456e04cfc80de3"
+project_hash = "e49f6ba6fee415627a1b413954b4f100476faeac"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e2478490447631aedba0823d4d7a80b2cc8cdb32"
@@ -678,9 +289,9 @@ version = "0.4.0"
 
 [[deps.ArrayInterface]]
 deps = ["Adapt", "LinearAlgebra"]
-git-tree-sha1 = "017fcb757f8e921fb44ee063a7aafe5f89b86dd1"
+git-tree-sha1 = "bebb10cd3f0796dd1429ba61e43990ba391186e9"
 uuid = "4fba245c-0d91-5ea0-9b3e-6abc04ee57a9"
-version = "7.18.0"
+version = "7.18.1"
 
     [deps.ArrayInterface.extensions]
     ArrayInterfaceBandedMatricesExt = "BandedMatrices"
@@ -764,10 +375,10 @@ uuid = "ad839575-38b3-5650-b840-f874b8c74a25"
 version = "0.12.9"
 
 [[deps.BoundaryValueDiffEq]]
-deps = ["ADTypes", "ArrayInterface", "BoundaryValueDiffEqAscher", "BoundaryValueDiffEqCore", "BoundaryValueDiffEqFIRK", "BoundaryValueDiffEqMIRK", "BoundaryValueDiffEqMIRKN", "BoundaryValueDiffEqShooting", "DiffEqBase", "FastClosures", "ForwardDiff", "LinearAlgebra", "Reexport", "SciMLBase"]
-git-tree-sha1 = "e3829b5aa0cb49348956c81b927b5edf64cdf6bf"
+deps = ["ADTypes", "BoundaryValueDiffEqAscher", "BoundaryValueDiffEqCore", "BoundaryValueDiffEqFIRK", "BoundaryValueDiffEqMIRK", "BoundaryValueDiffEqMIRKN", "BoundaryValueDiffEqShooting", "DiffEqBase", "FastClosures", "ForwardDiff", "LinearAlgebra", "Reexport", "SciMLBase"]
+git-tree-sha1 = "ca42053e5c1f2c1ec52111a2ab3e5a0908d9276d"
 uuid = "764a87c0-6b3e-53db-9096-fe964310641d"
-version = "5.16.0"
+version = "5.16.1"
 
     [deps.BoundaryValueDiffEq.extensions]
     BoundaryValueDiffEqODEInterfaceExt = "ODEInterface"
@@ -776,40 +387,40 @@ version = "5.16.0"
     ODEInterface = "54ca160b-1b9f-5127-a996-1867f4bc2a2c"
 
 [[deps.BoundaryValueDiffEqAscher]]
-deps = ["ADTypes", "AlmostBlockDiagonals", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
-git-tree-sha1 = "a3ed69c1c0249a53622bd4435384c4e76ac547d9"
+deps = ["ADTypes", "AlmostBlockDiagonals", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastClosures", "ForwardDiff", "LinearAlgebra", "PreallocationTools", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield"]
+git-tree-sha1 = "61fbc62e8277c4d540e1e1954962ec2fdfca5965"
 uuid = "7227322d-7511-4e07-9247-ad6ff830280e"
-version = "1.5.0"
+version = "1.5.1"
 
 [[deps.BoundaryValueDiffEqCore]]
-deps = ["ADTypes", "Adapt", "ArrayInterface", "ConcreteStructs", "DiffEqBase", "ForwardDiff", "LineSearch", "LinearAlgebra", "LinearSolve", "Logging", "NonlinearSolveFirstOrder", "PreallocationTools", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays", "SparseConnectivityTracer", "SparseMatrixColorings"]
-git-tree-sha1 = "832ade257129d0c222a53b66e2d7e6f5d937ae34"
+deps = ["ADTypes", "Adapt", "ArrayInterface", "ConcreteStructs", "DiffEqBase", "ForwardDiff", "LineSearch", "LinearAlgebra", "Logging", "NonlinearSolveFirstOrder", "PreallocationTools", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays", "SparseConnectivityTracer", "SparseMatrixColorings"]
+git-tree-sha1 = "8278c1ff5aa1875e9167d2da8c419f5b8362a171"
 uuid = "56b672f2-a5fe-4263-ab2d-da677488eb3a"
-version = "1.8.0"
+version = "1.8.1"
 
 [[deps.BoundaryValueDiffEqFIRK]]
-deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
-git-tree-sha1 = "a92feb2cbb12c6c9adc4d3c4e7427709e9477540"
+deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
+git-tree-sha1 = "5030e5ef731082893f744272dc592978dd6fae7c"
 uuid = "85d9eb09-370e-4000-bb32-543851f73618"
-version = "1.6.0"
+version = "1.6.1"
 
 [[deps.BoundaryValueDiffEqMIRK]]
-deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
-git-tree-sha1 = "4cd74dc128326804f780ad6e18ec4886279293de"
+deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
+git-tree-sha1 = "c02fa2e95ccffe1dc7a4acb602c25740dfa8bfdf"
 uuid = "1a22d4ce-7765-49ea-b6f2-13c8438986a6"
-version = "1.6.0"
+version = "1.6.1"
 
 [[deps.BoundaryValueDiffEqMIRKN]]
-deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
-git-tree-sha1 = "0db565e02c9784e254325b616a8dd6c0dfec7403"
+deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
+git-tree-sha1 = "3f5635756bcffa7aa522e6dd61da39bbbe0cd3df"
 uuid = "9255f1d6-53bf-473e-b6bd-23f1ff009da4"
-version = "1.5.0"
+version = "1.5.1"
 
 [[deps.BoundaryValueDiffEqShooting]]
-deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
-git-tree-sha1 = "7429a95010c57e67bd10e52dd3f276db4d2abdeb"
+deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
+git-tree-sha1 = "400776e8f37030321d6e46576cf613142668cc55"
 uuid = "ed55bfe0-3725-4db6-871e-a1dc9f42a757"
-version = "1.6.0"
+version = "1.6.1"
 
 [[deps.BracketingNonlinearSolve]]
 deps = ["CommonSolve", "ConcreteStructs", "NonlinearSolveBase", "PrecompileTools", "Reexport", "SciMLBase"]
@@ -874,19 +485,15 @@ version = "3.29.0"
 
 [[deps.ColorTypes]]
 deps = ["FixedPointNumbers", "Random"]
-git-tree-sha1 = "67e11ee83a43eb71ddc950302c53bf33f0690dfe"
+git-tree-sha1 = "b10d0b65641d57b8b4d5e234446582de5047050d"
 uuid = "3da002f7-5984-5a60-b8a6-cbb66c0b333f"
-version = "0.12.1"
-weakdeps = ["StyledStrings"]
-
-    [deps.ColorTypes.extensions]
-    StyledStringsExt = "StyledStrings"
+version = "0.11.5"
 
 [[deps.ColorVectorSpace]]
 deps = ["ColorTypes", "FixedPointNumbers", "LinearAlgebra", "Requires", "Statistics", "TensorCore"]
-git-tree-sha1 = "8b3b6f87ce8f65a2b4f857528fd8d70086cd72b1"
+git-tree-sha1 = "a1f44953f2382ebb937d60dafbe2deea4bd23249"
 uuid = "c3611d14-8923-5661-9e6a-0046d554d3a4"
-version = "0.11.0"
+version = "0.10.0"
 weakdeps = ["SpecialFunctions"]
 
     [deps.ColorVectorSpace.extensions]
@@ -1009,9 +616,9 @@ version = "1.16.2+0"
 
 [[deps.DelayDiffEq]]
 deps = ["ArrayInterface", "DataStructures", "DiffEqBase", "LinearAlgebra", "Logging", "OrdinaryDiffEq", "OrdinaryDiffEqCore", "OrdinaryDiffEqDefault", "OrdinaryDiffEqDifferentiation", "OrdinaryDiffEqNonlinearSolve", "OrdinaryDiffEqRosenbrock", "Printf", "RecursiveArrayTools", "Reexport", "SciMLBase", "SimpleNonlinearSolve", "SimpleUnPack", "SymbolicIndexingInterface"]
-git-tree-sha1 = "f21c4d910df39e556a4656db85df077218287a39"
+git-tree-sha1 = "8b416f6b1f9ef8df4c13dd0fe6c191752722b36f"
 uuid = "bcd4f6db-9728-5f36-b5f7-82caef46ccdb"
-version = "5.53.0"
+version = "5.53.1"
 
 [[deps.DelimitedFiles]]
 deps = ["Mmap"]
@@ -1021,9 +628,9 @@ version = "1.9.1"
 
 [[deps.DiffEqBase]]
 deps = ["ArrayInterface", "ConcreteStructs", "DataStructures", "DocStringExtensions", "EnumX", "EnzymeCore", "FastBroadcast", "FastClosures", "FastPower", "FunctionWrappers", "FunctionWrappersWrappers", "LinearAlgebra", "Logging", "Markdown", "MuladdMacro", "Parameters", "PrecompileTools", "Printf", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators", "SciMLStructures", "Setfield", "Static", "StaticArraysCore", "Statistics", "SymbolicIndexingInterface", "TruncatedStacktraces"]
-git-tree-sha1 = "ae6f0576b4a99e1aab7fde7532efe7e47539b588"
+git-tree-sha1 = "575a4b945c26f654625c9bc58a1ed10a4eddd267"
 uuid = "2b5f629d-d688-5b77-993f-72d75c75574e"
-version = "6.170.1"
+version = "6.173.0"
 
     [deps.DiffEqBase.extensions]
     DiffEqBaseCUDAExt = "CUDA"
@@ -1095,9 +702,9 @@ version = "7.16.1"
 
 [[deps.DifferentiationInterface]]
 deps = ["ADTypes", "LinearAlgebra"]
-git-tree-sha1 = "aa87a743e3778d35a950b76fbd2ae64f810a2bb3"
+git-tree-sha1 = "c8d85ecfcbaef899308706bebdd8b00107f3fb43"
 uuid = "a0c0ee7d-e4b9-4e03-894e-1c5f64a51d63"
-version = "0.6.52"
+version = "0.6.54"
 
     [deps.DifferentiationInterface.extensions]
     DifferentiationInterfaceChainRulesCoreExt = "ChainRulesCore"
@@ -1161,9 +768,9 @@ version = "1.11.0"
 
 [[deps.Distributions]]
 deps = ["AliasTables", "FillArrays", "LinearAlgebra", "PDMats", "Printf", "QuadGK", "Random", "SpecialFunctions", "Statistics", "StatsAPI", "StatsBase", "StatsFuns"]
-git-tree-sha1 = "6d8b535fd38293bc54b88455465a1386f8ac1c3c"
+git-tree-sha1 = "3e6d038b77f22791b8e3472b7c633acea1ecac06"
 uuid = "31c24e10-a181-5473-b8eb-7969acd0382f"
-version = "0.25.119"
+version = "0.25.120"
 
     [deps.Distributions.extensions]
     DistributionsChainRulesCoreExt = "ChainRulesCore"
@@ -1251,9 +858,9 @@ version = "4.4.4+1"
 
 [[deps.FastAlmostBandedMatrices]]
 deps = ["ArrayInterface", "ArrayLayouts", "BandedMatrices", "ConcreteStructs", "LazyArrays", "LinearAlgebra", "MatrixFactorizations", "PrecompileTools", "Reexport"]
-git-tree-sha1 = "3f03d94c71126b6cfe20d3cbcc41c5cd27e1c419"
+git-tree-sha1 = "9482a2b4face8ade73792c23a54796c79ed1bcbf"
 uuid = "9d29842c-ecb8-4973-b1e9-a27b1157504e"
-version = "0.1.4"
+version = "0.1.5"
 
 [[deps.FastBroadcast]]
 deps = ["ArrayInterface", "LinearAlgebra", "Polyester", "Static", "StaticArrayInterface", "StrideArraysCore"]
@@ -1479,9 +1086,9 @@ version = "0.3.28"
 
 [[deps.Hyperscript]]
 deps = ["Test"]
-git-tree-sha1 = "8d511d5b81240fc8e6802386302675bdf47737b9"
+git-tree-sha1 = "179267cfa5e712760cd43dcae385d7ea90cc25a4"
 uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
-version = "0.0.4"
+version = "0.0.5"
 
 [[deps.HypertextLiteral]]
 deps = ["Tricks"]
@@ -1587,9 +1194,9 @@ version = "0.2.1+0"
 
 [[deps.Krylov]]
 deps = ["LinearAlgebra", "Printf", "SparseArrays"]
-git-tree-sha1 = "efadd12a94e5e73b7652479c2693cd394d684f95"
+git-tree-sha1 = "b94257a1a8737099ca40bc7271a8b374033473ed"
 uuid = "ba0b0d4f-ebba-5204-a429-3ac8c609bfb7"
-version = "0.10.0"
+version = "0.10.1"
 
 [[deps.LAME_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
@@ -1765,9 +1372,9 @@ version = "1.11.0"
 
 [[deps.LinearSolve]]
 deps = ["ArrayInterface", "ChainRulesCore", "ConcreteStructs", "DocStringExtensions", "EnumX", "GPUArraysCore", "InteractiveUtils", "Krylov", "LazyArrays", "Libdl", "LinearAlgebra", "MKL_jll", "Markdown", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators", "Setfield", "StaticArraysCore", "UnPack"]
-git-tree-sha1 = "1e1f3ba20d745a9ea57831b7f30e7b275731486e"
+git-tree-sha1 = "c5e80f547e47f00f53c290aa5d4a11034104b94d"
 uuid = "7ed4a6bd-45f5-4d41-b270-4a48e9bafcae"
-version = "3.9.0"
+version = "3.11.0"
 
     [deps.LinearSolve.extensions]
     LinearSolveBandedMatricesExt = "BandedMatrices"
@@ -1829,6 +1436,11 @@ version = "1.11.0"
 deps = ["Dates", "Logging"]
 git-tree-sha1 = "f02b56007b064fbfddb4c9cd60161b6dd0f40df3"
 uuid = "e6f89c97-d47a-5376-807f-9c37f3926c36"
+version = "1.1.0"
+
+[[deps.MIMEs]]
+git-tree-sha1 = "c64d943587f7187e751162b3b84445bbbd79f691"
+uuid = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
 version = "1.1.0"
 
 [[deps.MKL_jll]]
@@ -1981,9 +1593,9 @@ version = "4.8.0"
 
 [[deps.NonlinearSolveBase]]
 deps = ["ADTypes", "Adapt", "ArrayInterface", "CommonSolve", "Compat", "ConcreteStructs", "DifferentiationInterface", "EnzymeCore", "FastClosures", "LinearAlgebra", "Markdown", "MaybeInplace", "Preferences", "Printf", "RecursiveArrayTools", "SciMLBase", "SciMLJacobianOperators", "SciMLOperators", "StaticArraysCore", "SymbolicIndexingInterface", "TimerOutputs"]
-git-tree-sha1 = "edfa90b9b46fc841b6f03106d9e1a054816f4f1d"
+git-tree-sha1 = "686fd9d0d455171e3530d3540cff94bb01222823"
 uuid = "be0214bd-f91f-a760-ac4e-3421ce2b2da0"
-version = "1.6.0"
+version = "1.7.0"
 weakdeps = ["BandedMatrices", "DiffEqBase", "ForwardDiff", "LineSearch", "LinearSolve", "SparseArrays", "SparseMatrixColorings"]
 
     [deps.NonlinearSolveBase.extensions]
@@ -1997,15 +1609,15 @@ weakdeps = ["BandedMatrices", "DiffEqBase", "ForwardDiff", "LineSearch", "Linear
 
 [[deps.NonlinearSolveFirstOrder]]
 deps = ["ADTypes", "ArrayInterface", "CommonSolve", "ConcreteStructs", "DiffEqBase", "FiniteDiff", "ForwardDiff", "LineSearch", "LinearAlgebra", "LinearSolve", "MaybeInplace", "NonlinearSolveBase", "PrecompileTools", "Reexport", "SciMLBase", "SciMLJacobianOperators", "Setfield", "StaticArraysCore"]
-git-tree-sha1 = "3a559775faab057f7824036c0bc5f30c74b00d1b"
+git-tree-sha1 = "9c8cd0a986518ba317af263549b48e34ac8f776d"
 uuid = "5959db7a-ea39-4486-b5fe-2dd0bf03d60d"
-version = "1.4.0"
+version = "1.5.0"
 
 [[deps.NonlinearSolveQuasiNewton]]
 deps = ["ArrayInterface", "CommonSolve", "ConcreteStructs", "DiffEqBase", "LinearAlgebra", "LinearSolve", "MaybeInplace", "NonlinearSolveBase", "PrecompileTools", "Reexport", "SciMLBase", "SciMLOperators", "StaticArraysCore"]
-git-tree-sha1 = "290d60e3e097eed44e0aba00643995a47284746b"
+git-tree-sha1 = "eafb327f5c2d9f1ac890aa2b9fbe05a1bd7e4dc8"
 uuid = "9a2c21bd-3a47-402d-9113-8faf9a0ee114"
-version = "1.3.0"
+version = "1.4.0"
 weakdeps = ["ForwardDiff"]
 
     [deps.NonlinearSolveQuasiNewton.extensions]
@@ -2085,9 +1697,9 @@ version = "1.8.0"
 
 [[deps.OrdinaryDiffEq]]
 deps = ["ADTypes", "Adapt", "ArrayInterface", "DataStructures", "DiffEqBase", "DocStringExtensions", "EnumX", "ExponentialUtilities", "FastBroadcast", "FastClosures", "FillArrays", "FiniteDiff", "ForwardDiff", "FunctionWrappersWrappers", "InteractiveUtils", "LineSearches", "LinearAlgebra", "LinearSolve", "Logging", "MacroTools", "MuladdMacro", "NonlinearSolve", "OrdinaryDiffEqAdamsBashforthMoulton", "OrdinaryDiffEqBDF", "OrdinaryDiffEqCore", "OrdinaryDiffEqDefault", "OrdinaryDiffEqDifferentiation", "OrdinaryDiffEqExplicitRK", "OrdinaryDiffEqExponentialRK", "OrdinaryDiffEqExtrapolation", "OrdinaryDiffEqFIRK", "OrdinaryDiffEqFeagin", "OrdinaryDiffEqFunctionMap", "OrdinaryDiffEqHighOrderRK", "OrdinaryDiffEqIMEXMultistep", "OrdinaryDiffEqLinear", "OrdinaryDiffEqLowOrderRK", "OrdinaryDiffEqLowStorageRK", "OrdinaryDiffEqNonlinearSolve", "OrdinaryDiffEqNordsieck", "OrdinaryDiffEqPDIRK", "OrdinaryDiffEqPRK", "OrdinaryDiffEqQPRK", "OrdinaryDiffEqRKN", "OrdinaryDiffEqRosenbrock", "OrdinaryDiffEqSDIRK", "OrdinaryDiffEqSSPRK", "OrdinaryDiffEqStabilizedIRK", "OrdinaryDiffEqStabilizedRK", "OrdinaryDiffEqSymplecticRK", "OrdinaryDiffEqTsit5", "OrdinaryDiffEqVerner", "Polyester", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators", "SciMLStructures", "SimpleNonlinearSolve", "SimpleUnPack", "SparseArrays", "Static", "StaticArrayInterface", "StaticArrays", "TruncatedStacktraces"]
-git-tree-sha1 = "2d7026dd8e4c7b3e7f47eef9c13c60ae55fe4912"
+git-tree-sha1 = "dfae5ed215f5949f52de22b92e2e42ea3e3e652d"
 uuid = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
-version = "6.95.1"
+version = "6.96.0"
 
 [[deps.OrdinaryDiffEqAdamsBashforthMoulton]]
 deps = ["DiffEqBase", "FastBroadcast", "MuladdMacro", "OrdinaryDiffEqCore", "OrdinaryDiffEqLowOrderRK", "Polyester", "RecursiveArrayTools", "Reexport", "Static"]
@@ -2103,9 +1715,9 @@ version = "1.5.0"
 
 [[deps.OrdinaryDiffEqCore]]
 deps = ["ADTypes", "Accessors", "Adapt", "ArrayInterface", "DataStructures", "DiffEqBase", "DocStringExtensions", "EnumX", "FastBroadcast", "FastClosures", "FastPower", "FillArrays", "FunctionWrappersWrappers", "InteractiveUtils", "LinearAlgebra", "Logging", "MacroTools", "MuladdMacro", "Polyester", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators", "SciMLStructures", "SimpleUnPack", "Static", "StaticArrayInterface", "StaticArraysCore", "SymbolicIndexingInterface", "TruncatedStacktraces"]
-git-tree-sha1 = "af7374f4af1b9a67ce29524e7fd328fa3da33189"
+git-tree-sha1 = "84e142da0b18f62c5bad660e450542cde312d28d"
 uuid = "bbf590c4-e513-4bbe-9b18-05decba2e5d8"
-version = "1.23.0"
+version = "1.25.0"
 weakdeps = ["EnzymeCore"]
 
     [deps.OrdinaryDiffEqCore.extensions]
@@ -2113,15 +1725,15 @@ weakdeps = ["EnzymeCore"]
 
 [[deps.OrdinaryDiffEqDefault]]
 deps = ["ADTypes", "DiffEqBase", "EnumX", "LinearAlgebra", "LinearSolve", "OrdinaryDiffEqBDF", "OrdinaryDiffEqCore", "OrdinaryDiffEqRosenbrock", "OrdinaryDiffEqTsit5", "OrdinaryDiffEqVerner", "PrecompileTools", "Preferences", "Reexport"]
-git-tree-sha1 = "835c06684b6ff1b8904ceae4d18cc8fe45b9a7cc"
+git-tree-sha1 = "8eeed32442874d1bdcc2192a874a73f1a9a07e31"
 uuid = "50262376-6c5a-4cf5-baba-aaf4f84d72d7"
-version = "1.3.0"
+version = "1.4.0"
 
 [[deps.OrdinaryDiffEqDifferentiation]]
 deps = ["ADTypes", "ArrayInterface", "ConcreteStructs", "ConstructionBase", "DiffEqBase", "DifferentiationInterface", "FastBroadcast", "FiniteDiff", "ForwardDiff", "FunctionWrappersWrappers", "LinearAlgebra", "LinearSolve", "OrdinaryDiffEqCore", "SciMLBase", "SciMLOperators", "SparseArrays", "SparseMatrixColorings", "StaticArrayInterface", "StaticArrays"]
-git-tree-sha1 = "6595287379a518d7eb8f02edc49a96a02396e887"
+git-tree-sha1 = "13f0d0e1acfc8055d07096925c398a21a94f29be"
 uuid = "4302a76b-040a-498a-8c04-15b101fed76b"
-version = "1.7.0"
+version = "1.8.0"
 
 [[deps.OrdinaryDiffEqExplicitRK]]
 deps = ["DiffEqBase", "FastBroadcast", "LinearAlgebra", "MuladdMacro", "OrdinaryDiffEqCore", "RecursiveArrayTools", "Reexport", "TruncatedStacktraces"]
@@ -2143,9 +1755,9 @@ version = "1.5.0"
 
 [[deps.OrdinaryDiffEqFIRK]]
 deps = ["ADTypes", "DiffEqBase", "FastBroadcast", "FastGaussQuadrature", "FastPower", "LinearAlgebra", "LinearSolve", "MuladdMacro", "OrdinaryDiffEqCore", "OrdinaryDiffEqDifferentiation", "OrdinaryDiffEqNonlinearSolve", "Polyester", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators"]
-git-tree-sha1 = "7d2c82c13a634f7400a3f398d33f1354ab38a090"
+git-tree-sha1 = "dc0e2765b946b54163b95ea8906ad47b96b66a80"
 uuid = "5960d6e9-dd7a-4743-88e7-cf307b64f125"
-version = "1.10.0"
+version = "1.11.0"
 
 [[deps.OrdinaryDiffEqFeagin]]
 deps = ["DiffEqBase", "FastBroadcast", "MuladdMacro", "OrdinaryDiffEqCore", "Polyester", "RecursiveArrayTools", "Reexport", "Static"]
@@ -2172,10 +1784,10 @@ uuid = "9f002381-b378-40b7-97a6-27a27c83f129"
 version = "1.3.0"
 
 [[deps.OrdinaryDiffEqLinear]]
-deps = ["DiffEqBase", "ExponentialUtilities", "LinearAlgebra", "OrdinaryDiffEqCore", "OrdinaryDiffEqTsit5", "OrdinaryDiffEqVerner", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators"]
-git-tree-sha1 = "0f81a77ede3da0dc714ea61e81c76b25db4ab87a"
+deps = ["DiffEqBase", "ExponentialUtilities", "LinearAlgebra", "OrdinaryDiffEqCore", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators"]
+git-tree-sha1 = "836c8c194fee92f67e4b30ffb18fadfe836c6636"
 uuid = "521117fe-8c41-49f8-b3b6-30780b3f0fb5"
-version = "1.1.0"
+version = "1.2.0"
 
 [[deps.OrdinaryDiffEqLowOrderRK]]
 deps = ["DiffEqBase", "FastBroadcast", "LinearAlgebra", "MuladdMacro", "OrdinaryDiffEqCore", "RecursiveArrayTools", "Reexport", "SciMLBase", "Static"]
@@ -2191,9 +1803,9 @@ version = "1.3.0"
 
 [[deps.OrdinaryDiffEqNonlinearSolve]]
 deps = ["ADTypes", "ArrayInterface", "DiffEqBase", "FastBroadcast", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "MuladdMacro", "NonlinearSolve", "OrdinaryDiffEqCore", "OrdinaryDiffEqDifferentiation", "PreallocationTools", "RecursiveArrayTools", "SciMLBase", "SciMLOperators", "SciMLStructures", "SimpleNonlinearSolve", "StaticArrays"]
-git-tree-sha1 = "d75cf29dea3a72bac7a5b21523ac969b71f43e96"
+git-tree-sha1 = "329ff99adc060788e1f8821c7e71f6d70b037729"
 uuid = "127b3ac7-2247-4354-8eb6-78cf4e7c58e8"
-version = "1.6.1"
+version = "1.8.0"
 
 [[deps.OrdinaryDiffEqNordsieck]]
 deps = ["DiffEqBase", "FastBroadcast", "LinearAlgebra", "MuladdMacro", "OrdinaryDiffEqCore", "OrdinaryDiffEqTsit5", "Polyester", "RecursiveArrayTools", "Reexport", "Static"]
@@ -2227,9 +1839,9 @@ version = "1.1.0"
 
 [[deps.OrdinaryDiffEqRosenbrock]]
 deps = ["ADTypes", "DiffEqBase", "DifferentiationInterface", "FastBroadcast", "FiniteDiff", "ForwardDiff", "LinearAlgebra", "LinearSolve", "MacroTools", "MuladdMacro", "OrdinaryDiffEqCore", "OrdinaryDiffEqDifferentiation", "Polyester", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "Static"]
-git-tree-sha1 = "baa4a9b4380b2fb65f1e2b4ec01d3bd019a6dcea"
+git-tree-sha1 = "a9b9aff8e740bfc09a2ea669f7fc02e867f95ab7"
 uuid = "43230ef6-c299-4910-a778-202eb28ce4ce"
-version = "1.9.0"
+version = "1.10.0"
 
 [[deps.OrdinaryDiffEqSDIRK]]
 deps = ["ADTypes", "DiffEqBase", "FastBroadcast", "LinearAlgebra", "MacroTools", "MuladdMacro", "OrdinaryDiffEqCore", "OrdinaryDiffEqDifferentiation", "OrdinaryDiffEqNonlinearSolve", "RecursiveArrayTools", "Reexport", "SciMLBase", "TruncatedStacktraces"]
@@ -2280,9 +1892,9 @@ version = "10.42.0+1"
 
 [[deps.PDMats]]
 deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse"]
-git-tree-sha1 = "0e1340b5d98971513bddaa6bbed470670cebbbfe"
+git-tree-sha1 = "f07c06228a1c670ae4c87d1276b92c7c597fdda0"
 uuid = "90014a1f-27ba-587c-ab20-58faa44d9150"
-version = "0.11.34"
+version = "0.11.35"
 
 [[deps.PackageExtensionCompat]]
 git-tree-sha1 = "fb28e33b8a95c4cee25ce296c817d89cc2e53518"
@@ -2404,10 +2016,10 @@ version = "1.40.13"
     Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [[deps.PlutoUI]]
-deps = ["AbstractPlutoDingetjes", "Base64", "Dates", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "Markdown", "Random", "Reexport", "UUIDs"]
-git-tree-sha1 = "5152abbdab6488d5eec6a01029ca6697dff4ec8f"
+deps = ["AbstractPlutoDingetjes", "Base64", "ColorTypes", "Dates", "FixedPointNumbers", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "MIMEs", "Markdown", "Random", "Reexport", "URIs", "UUIDs"]
+git-tree-sha1 = "d3de2694b52a01ce61a036f18ea9c0f61c4a9230"
 uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
-version = "0.7.23"
+version = "0.7.62"
 
 [[deps.PoissonRandom]]
 deps = ["Random"]
@@ -2435,9 +2047,9 @@ version = "0.2.4"
 
 [[deps.PreallocationTools]]
 deps = ["Adapt", "ArrayInterface", "ForwardDiff"]
-git-tree-sha1 = "4406f9a118bfcf362290d755fcb46c0c4894beae"
+git-tree-sha1 = "6d98eace73d82e47f5b16c393de198836d9f790a"
 uuid = "d236fae5-4411-538c-8e31-a6e3d9e00b46"
-version = "0.4.26"
+version = "0.4.27"
 
     [deps.PreallocationTools.extensions]
     PreallocationToolsReverseDiffExt = "ReverseDiff"
@@ -2625,9 +2237,9 @@ version = "0.1.0"
 
 [[deps.SciMLBase]]
 deps = ["ADTypes", "Accessors", "ArrayInterface", "CommonSolve", "ConstructionBase", "Distributed", "DocStringExtensions", "EnumX", "FunctionWrappersWrappers", "IteratorInterfaceExtensions", "LinearAlgebra", "Logging", "Markdown", "Moshi", "PrecompileTools", "Preferences", "Printf", "RecipesBase", "RecursiveArrayTools", "Reexport", "RuntimeGeneratedFunctions", "SciMLOperators", "SciMLStructures", "StaticArraysCore", "Statistics", "SymbolicIndexingInterface"]
-git-tree-sha1 = "70744adfa4d6875dfcb2c41749d20d73a90edd7d"
+git-tree-sha1 = "9aeb5d46899aeb8f9d42ec6836ea9fa32e6595cf"
 uuid = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
-version = "2.86.1"
+version = "2.89.0"
 
     [deps.SciMLBase.extensions]
     SciMLBaseChainRulesCoreExt = "ChainRulesCore"
@@ -2652,15 +2264,15 @@ version = "2.86.1"
 
 [[deps.SciMLJacobianOperators]]
 deps = ["ADTypes", "ArrayInterface", "ConcreteStructs", "ConstructionBase", "DifferentiationInterface", "FastClosures", "LinearAlgebra", "SciMLBase", "SciMLOperators"]
-git-tree-sha1 = "6e9d280334839fe405fdab2a1268f2969c9d3eeb"
+git-tree-sha1 = "1e2033bdf0792aa2a2f21de8e9378197f13386ec"
 uuid = "19f34311-ddf3-4b8b-af20-060888a46c0e"
-version = "0.1.3"
+version = "0.1.4"
 
 [[deps.SciMLOperators]]
 deps = ["Accessors", "ArrayInterface", "DocStringExtensions", "LinearAlgebra", "MacroTools"]
-git-tree-sha1 = "1c4b7f6c3e14e6de0af66e66b86d525cae10ecb4"
+git-tree-sha1 = "d82853c515a8d9d42c1ab493a2687a37f1e26c91"
 uuid = "c0aeaf25-5076-4817-a8d5-81caf7dfa961"
-version = "0.3.13"
+version = "0.4.0"
 weakdeps = ["SparseArrays", "StaticArraysCore"]
 
     [deps.SciMLOperators.extensions]
@@ -2707,9 +2319,9 @@ version = "1.2.0"
 
 [[deps.SimpleNonlinearSolve]]
 deps = ["ADTypes", "ArrayInterface", "BracketingNonlinearSolve", "CommonSolve", "ConcreteStructs", "DifferentiationInterface", "FastClosures", "FiniteDiff", "ForwardDiff", "LineSearch", "LinearAlgebra", "MaybeInplace", "NonlinearSolveBase", "PrecompileTools", "Reexport", "SciMLBase", "Setfield", "StaticArraysCore"]
-git-tree-sha1 = "5e45414767cf97234f90a874b9a43cda876adb32"
+git-tree-sha1 = "068c16a16834c1483c299b0e27e901599439570d"
 uuid = "727e6d20-b764-4bd8-a329-72de5adea6c7"
-version = "2.3.0"
+version = "2.4.0"
 
     [deps.SimpleNonlinearSolve.extensions]
     SimpleNonlinearSolveChainRulesCoreExt = "ChainRulesCore"
@@ -2751,9 +2363,9 @@ version = "1.11.0"
 
 [[deps.SparseConnectivityTracer]]
 deps = ["ADTypes", "DocStringExtensions", "FillArrays", "LinearAlgebra", "Random", "SparseArrays"]
-git-tree-sha1 = "cccc976f8fdd51bb3a6c3dcd9e1e7d110582e083"
+git-tree-sha1 = "fadb2d7010dd92912e5eb31a493613ad4b8c9583"
 uuid = "9f842d2f-2579-4b1d-911e-f412cf18a3f5"
-version = "0.6.17"
+version = "0.6.18"
 
     [deps.SparseConnectivityTracer.extensions]
     SparseConnectivityTracerDataInterpolationsExt = "DataInterpolations"
@@ -2771,9 +2383,9 @@ version = "0.6.17"
 
 [[deps.SparseDiffTools]]
 deps = ["ADTypes", "Adapt", "ArrayInterface", "Compat", "DataStructures", "FiniteDiff", "ForwardDiff", "Graphs", "LinearAlgebra", "PackageExtensionCompat", "Random", "Reexport", "SciMLOperators", "Setfield", "SparseArrays", "StaticArrayInterface", "StaticArrays", "UnPack", "VertexSafeGraphs"]
-git-tree-sha1 = "51a202c01ee64d223553a7013e5a00583ad9f49b"
+git-tree-sha1 = "ccbf06a08573200853b1bd06203d8ccce8449578"
 uuid = "47a9eef4-7e08-11e9-0b38-333d64bd3804"
-version = "2.25.0"
+version = "2.26.0"
 
     [deps.SparseDiffTools.extensions]
     SparseDiffToolsEnzymeExt = "Enzyme"
@@ -2815,9 +2427,9 @@ weakdeps = ["ChainRulesCore"]
 
 [[deps.StableRNGs]]
 deps = ["Random"]
-git-tree-sha1 = "83e6cce8324d49dfaf9ef059227f91ed4441a8e5"
+git-tree-sha1 = "95af145932c2ed859b63329952ce8d633719f091"
 uuid = "860ef19b-820b-49d6-a774-d7a799459cd3"
-version = "1.0.2"
+version = "1.0.3"
 
 [[deps.Static]]
 deps = ["CommonWorldInvalidations", "IfElse", "PrecompileTools"]
@@ -2873,9 +2485,9 @@ version = "1.7.0"
 
 [[deps.StatsBase]]
 deps = ["AliasTables", "DataAPI", "DataStructures", "LinearAlgebra", "LogExpFunctions", "Missings", "Printf", "Random", "SortingAlgorithms", "SparseArrays", "Statistics", "StatsAPI"]
-git-tree-sha1 = "29321314c920c26684834965ec2ce0dacc9cf8e5"
+git-tree-sha1 = "b81c5035922cc89c2d9523afc6c54be512411466"
 uuid = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
-version = "0.34.4"
+version = "0.34.5"
 
 [[deps.StatsFuns]]
 deps = ["HypergeometricFunctions", "IrrationalConstants", "LogExpFunctions", "Reexport", "Rmath", "SpecialFunctions"]
@@ -2896,9 +2508,9 @@ version = "2.5.0"
 
 [[deps.StochasticDiffEq]]
 deps = ["ADTypes", "Adapt", "ArrayInterface", "DataStructures", "DiffEqBase", "DiffEqNoiseProcess", "DocStringExtensions", "FastPower", "FiniteDiff", "ForwardDiff", "JumpProcesses", "LevyArea", "LinearAlgebra", "Logging", "MuladdMacro", "NLsolve", "OrdinaryDiffEqCore", "OrdinaryDiffEqDifferentiation", "OrdinaryDiffEqNonlinearSolve", "Random", "RandomNumbers", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators", "SparseArrays", "SparseDiffTools", "StaticArrays", "UnPack"]
-git-tree-sha1 = "fa374aac59f48d11274ce15862aecb8a144350a9"
+git-tree-sha1 = "f354a21a3272fd8ac1509da58e61dffba6925dbe"
 uuid = "789caeaf-c7a9-5a7d-9973-96adeb23e2a0"
-version = "6.76.0"
+version = "6.78.0"
 
 [[deps.StrideArraysCore]]
 deps = ["ArrayInterface", "CloseOpenIntervals", "IfElse", "LayoutPointers", "LinearAlgebra", "ManualMemory", "SIMDTypes", "Static", "StaticArrayInterface", "ThreadingUtilities"]
@@ -3321,9 +2933,9 @@ version = "1.18.0+0"
 
 [[deps.libpng_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Zlib_jll"]
-git-tree-sha1 = "068dfe202b0a05b8332f1e8e6b4080684b9c7700"
+git-tree-sha1 = "002748401f7b520273e2b506f61cab95d4701ccf"
 uuid = "b53b4c65-9356-5827-b1ea-8c7a1a84506f"
-version = "1.6.47+0"
+version = "1.6.48+0"
 
 [[deps.libvorbis_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Ogg_jll", "Pkg"]
@@ -3366,56 +2978,25 @@ uuid = "dfaa095f-4041-5dcd-9319-2fabd8486b76"
 version = "3.5.0+0"
 
 [[deps.xkbcommon_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Wayland_jll", "Wayland_protocols_jll", "Xorg_libxcb_jll", "Xorg_xkeyboard_config_jll"]
-git-tree-sha1 = "63406453ed9b33a0df95d570816d5366c92b7809"
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Wayland_jll", "Wayland_protocols_jll", "Xorg_libxcb_jll", "Xorg_xkeyboard_config_jll"]
+git-tree-sha1 = "c950ae0a3577aec97bfccf3381f66666bc416729"
 uuid = "d8fb68d0-12a3-5cfd-a85a-d49703b185fd"
-version = "1.4.1+2"
+version = "1.8.1+0"
 """
 
 # ╔═╡ Cell order:
-# ╠═ed866e82-2722-11f0-290a-79ad6e0c862c
-# ╠═104730c1-d576-4375-b75e-13123e970bdb
-# ╟─76361d5f-fac2-4420-b99b-9a24e7be3984
-# ╟─f67a7a9c-f5e4-411c-891a-db10745e01b3
-# ╟─9164f8e8-f4ca-4d84-94b1-a92054f640a2
-# ╟─27a0c2d5-58ee-4de2-bf5e-4f20e4eca98c
-# ╟─b859f319-d0f4-41f6-86fe-b1dfc0f01806
-# ╟─5dd1c35b-2a8b-4531-aa8e-305b12bafcdb
-# ╟─1def9119-468f-4bb2-9857-ea54986b36bc
-# ╟─758b8ba6-6a46-4ae5-831f-b0c1ecc83485
-# ╟─6680a825-0ead-41a0-8eef-63d36fd06c43
-# ╟─9b95787c-3858-4c7f-90e5-d7940fad378b
-# ╟─c8d97023-21f9-4b51-828f-635b71b91dbf
-# ╟─b9ad21d4-d4a4-4f20-a55c-037a62fd063c
-# ╟─13c58b0a-9434-433a-bb89-d53cbabed974
-# ╟─e84bb5da-f233-439c-9275-f264a9ffb7d1
-# ╠═43dd28c3-28ab-42e6-8723-1222455236f8
-# ╠═de4506b7-f864-41d5-90c9-6ae7025faeac
-# ╠═a13b5a74-11ed-4d70-9812-3ac3c13f2049
-# ╠═b79c1516-543e-443d-923e-c552103062c0
-# ╟─7a1b92c2-50f0-45b6-8dd9-64099baba396
-# ╠═b5d3d04d-5496-4066-a588-08b9b18aca33
-# ╟─40a935d4-c2f0-43e2-a714-103f0380f8c1
-# ╟─1081a378-e2ec-497f-8382-3ea00b27d860
-# ╠═628a7564-1dfe-461a-b552-ba49742f8946
-# ╠═7f1b2d97-39f3-4cc0-af21-72a5af1c44c5
-# ╠═5ae3a26c-dc5e-42f3-b4f2-5d9c75bed5b8
-# ╠═c25f1923-8a4e-491f-a4e6-4f3ea267d374
-# ╠═4aeea69d-cd46-47e8-bd70-bca18cd09a88
-# ╠═d47bc690-08cb-40b5-8d2f-425ad1ee5a7c
-# ╟─59bd1be4-9b20-46d2-a68f-287a57edb223
-# ╟─b0130ccd-6b36-40ff-ac8a-ae43b1ac10d0
-# ╟─4307191c-8ccc-4af9-92b6-ca5a1069fa26
-# ╠═e2b9a3b1-28f4-4556-88c9-15619b611f32
-# ╠═49475e63-f3cb-4c68-bd81-ce2aaa87a8d2
-# ╠═6efcb593-4d04-4dee-891d-880bc342c86a
-# ╠═5a00b31e-3c07-4529-9812-51c1c76d80f4
-# ╠═24c4a618-afd6-4aa3-909f-f966ae59613d
-# ╠═99a27d56-dfc4-4816-aa3b-2b1150f11bae
-# ╠═29871224-af35-4283-aa1d-ea76e030d68f
-# ╠═112c561a-224c-44e2-9524-7941e1aa305b
-# ╠═27680643-bdbb-46d9-970c-3735e44b459d
-# ╠═35c2edfe-2ef8-47cd-a73b-d894f3101db4
-# ╟─2dd090f6-561d-421c-88f9-2f19af6d92db
+# ╟─14557d3a-2f36-11f0-236e-29decfbecc3f
+# ╠═100c5f41-a4dc-42db-a668-e3825266e487
+# ╟─58705fe7-c2a5-4681-b2db-94d8ef1ce799
+# ╟─5fbe1d32-7415-4d42-932a-0850149d0fb8
+# ╟─b2c0b0cc-a96a-4436-9186-f1276802fffa
+# ╟─973aa4d8-3e07-4b47-bd94-662ff3b00823
+# ╟─a2db6e50-6405-46ea-b593-7f100861919b
+# ╟─66aabfdf-539d-4d43-a00d-63e283b03513
+# ╟─95c6fe10-5e2b-4496-8286-a011f4a0f54d
+# ╠═2885d73e-d0bf-40e1-bf21-bc81264fd977
+# ╠═11aaab40-ab34-48f5-a786-2fff5e05083c
+# ╠═a92a026a-6c58-42bc-b546-f1f088ab6260
+# ╠═318fa746-792a-4629-a13b-82ed8474a625
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
