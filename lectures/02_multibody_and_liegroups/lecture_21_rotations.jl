@@ -377,21 +377,14 @@ e0 = [1.0, 0.0, 0.0, 0.0]             # initial quaternion (no rotation)
 tspan = (0.0, 10.0)                   # simulate 10 seconds
 
 # ╔═╡ c25f1923-8a4e-491f-a4e6-4f3ea267d374
-# ╠═╡ disabled = true
-#=╠═╡
 prob = ODEProblem(quaternion_ode!, e0, tspan, ω_const)
-  ╠═╡ =#
 
 # ╔═╡ 4aeea69d-cd46-47e8-bd70-bca18cd09a88
-#=╠═╡
 sol = solve(prob, Tsit5(), dt=0.01)   # 5th-order solver with 0.01s time step
-  ╠═╡ =#
 
 # ╔═╡ d47bc690-08cb-40b5-8d2f-425ad1ee5a7c
-#=╠═╡
 plot(sol, title="Quaternion components over time", 
      label=["e₀" "e₁" "e₂" "e₃"], legend=:right)
-  ╠═╡ =#
 
 # ╔═╡ 59bd1be4-9b20-46d2-a68f-287a57edb223
 md"""
