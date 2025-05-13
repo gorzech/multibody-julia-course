@@ -145,23 +145,27 @@ md"""
 ## Generalized Coordinates
 
 - The number of coordinates equals the number of degrees of freedom (DOF).
+
+ $(embed_image("../../assets/figures/lecture_22_generalized_coordinates.png", type="png", height=300))
+
 - **Four-bar linkage** has one DOF:
-    - $q = [\phi]$
+$\boldsymbol{q} = [\phi]$
 - For any $\phi$, other positions of the linkage can be calculated:
-    - $\theta_1$
-    - $\theta_2$
-    - $\theta_3$
+ $\theta_1$, $\theta_2$, $\theta_3$
 """
 
 # ╔═╡ 11aaab40-ab34-48f5-a786-2fff5e05083c
 md"""
 
 - Using generalized coordinates to solve a system of equations:
-    - $(r^2 + l^2 + s^2 - d^2) - 2rl \cos \phi + 2ls \cos \theta_1 - 2rs \cos (\phi - \theta_1) = 0$
-    - $(r^2 + l^2 + s^2 - d^2) - 2rl \cos \phi + 2ds \cos \theta_2 = 0$
-    - $\phi + \theta_1 + \theta_2 + \theta_3 - 2\pi = 0$
-- $r, d, s$ are link lengths, $l$ is the distance AD.
-- With $\phi$, you can get $\theta_1, \theta_2, \theta_3$ and compute the position of point F.
+
+$(r^2 + l^2 + s^2 - d^2) - 2rl \cos \phi + 2ls \cos \theta_1 - 2rs \cos (\phi - \theta_1) = 0$
+$(r^2 + l^2 + s^2 - d^2) - 2rl \cos \phi + 2ds \cos \theta_2 = 0$
+$\phi + \theta_1 + \theta_2 + \theta_3 - 2\pi = 0$
+
+ $r, d, s$ are link lengths, $l$ is the distance AD.
+
+With $\phi$, you can get $\theta_1, \theta_2, \theta_3$ and compute the position of point $F$.
 """
 
 # ╔═╡ a92a026a-6c58-42bc-b546-f1f088ab6260
@@ -169,20 +173,138 @@ md"""
 ## Relative Coordinates
 
 - Selected coordinates may define the orientation of each body with respect to a nonmoving or another moving body.
+
+ $(embed_image("../../assets/figures/lecture_22_relative_coordinates.png", type="png", height=300))
+
 - **Three angles** are selected to describe these orientations:
-    - $q = [\phi_1, \phi_2, \phi_3]$
+
+$q = [\phi_1, \phi_2, \phi_3]$
+
 - These coordinates are not independent (as we have 1 DOF).
 """
 
 # ╔═╡ 318fa746-792a-4629-a13b-82ed8474a625
 md"""
-## Relative Coordinates (continued)
 
 - **Two loop equations** relating them:
-    - $r \cos \phi_1 + d \cos \phi_2 + s \cos \phi_3 - l = 0$
-    - $r \sin \phi_1 + d \sin \phi_2 + s \sin \phi_3 = 0$
+
+$r \cos \phi_1 + d \cos \phi_2 + s \cos \phi_3 - l = 0$
+$r \sin \phi_1 + d \sin \phi_2 + s \sin \phi_3 = 0$
+
 - For any $\phi_1$, those equations must be solved for $\phi_2$ and $\phi_3$.
-- After that, other information, such as the coordinates of point F, can be calculated.
+- After that, other information, such as the coordinates of point $F$, can be calculated.
+"""
+
+# ╔═╡ f9c6b9c2-cddb-445e-8e37-07436917a700
+md"""
+
+## Cartesian Coordinates
+
+- This formulation uses three coordinates per link – x and y coordinates of the center point and angle
+
+$q = [x_1, y_1, \phi_1, x_2, y_2, \phi_2, x_3, y_3, \phi_3]^\top$
+
+ $(embed_image("../../assets/figures/lecture_22_cartesian_coordinates.png", type="png", height=300))
+
+- They are dependent and we need eight algebraic equations:
+
+$x_1 - \frac{r}{2} \cos \phi_1 = 0$
+$y_1 - \frac{r}{2} \sin \phi_1 = 0$
+"""
+
+# ╔═╡ 6301d454-e5b7-41bf-bdd9-837f06ffae93
+md"""
+
+$x_1 + \frac{r}{2} \cos \phi_1 - x_2 - \frac{d}{2} \cos \phi_2 = 0$
+$y_1 + \frac{r}{2} \sin \phi_1 - y_2 - \frac{d}{2} \sin \phi_2 = 0$
+$x_2 + \frac{d}{2} \cos \phi_2 - x_3 - \frac{s}{2} \cos \phi_3 = 0$
+$y_2 + \frac{d}{2} \sin \phi_2 - y_3 - \frac{s}{2} \sin \phi_3 = 0$
+$x_3 - \frac{s}{2} \cos \phi_3 - l = 0$
+$y_3 - \frac{s}{2} \sin \phi_3 = 0$
+"""
+
+# ╔═╡ 838ff326-ac46-4c2a-89ca-802dfc9dbbe0
+md"""
+
+- For any known configuration, one of nine variables can be specified, and the remaining eight can be found.
+- All those coordinates' sets can be used to derive differential equations of motion.
+"""
+
+# ╔═╡ ef39b881-9f1b-457a-8a1e-4a1a30b46e6d
+md"""
+## Comparison of Coordinates
+
+
+|**Criteria**|**Generalized Coordinates**|**Relative Coordinates**|**Cartesian Coordinates**|
+|---|---|---|---|
+|**Number of coordinates**|Minimum|Moderate|Large|
+|**Number of differential equations**|Minimum|Moderate|Large|
+|**Number of algebraic equations**|None|Moderate|Large|
+|**Nonlinearity**|High|Moderate|Low|
+|**Derivation of Equations of Motion**|Hard|Moderately hard|Simple|
+|**Efficiency**|Efficient|Efficient|Not as efficient|
+|**Program development**|Difficult|Relatively difficult|Easy|
+
+"""
+
+# ╔═╡ 338c7224-81f7-4834-9886-56972cbeaecf
+md"""
+## Note about General-Purpose Programs
+
+Such programs perform four essential functions:
+
+1. Accept data from the user
+2. Generate equations of motion
+3. Solve them
+4. Provide results to the user
+
+- In other words, we have three phases:
+    - Input (1) (pre-processing)
+    - Analysis (2, 3) (processing)
+    - Output (4) (post-processing)
+"""
+
+# ╔═╡ 482f2676-f9d7-48b1-a6d9-9884dc4761e6
+md"""
+
+## Algebraic Vector
+
+- Vector $\vec{a}$ can be uniquely defined by its Cartesian components as:
+
+$\vec{a} = \begin{bmatrix} a_x \\ a_y \\ a_z\end{bmatrix} = [a_x, a_y, a_z]^\top$
+
+- Note that this representation depends on the coordinate system.
+
+![](https://upload.wikimedia.org/wikipedia/commons/thumb/f/fd/3D_Vector.svg/555px-3D_Vector.svg.png)
+
+- The dot product is represented as:
+
+$a^\top b = b^\top a = [b_1, b_2, b_3]\begin{bmatrix} a_1 \\ a_2 \\ a_3\end{bmatrix} = a_1 b_1 + a_2 b_2 + a_3 b_3$
+
+- Skew-symmetric matrix $\tilde{a}$ associated with a vector $a$ is defined as:
+
+$a = \begin{bmatrix} a_1 \\ a_2 \\ a_3\end{bmatrix} \rightarrow \tilde{a} = \begin{bmatrix} 0 & -a_3 & a_2 \\ a_3 & 0 & -a_1 \\ -a_2 & a_1 & 0 \end{bmatrix}$
+- A skew-symmetric matrix with a tilde can be used in the cross product:
+    - $c = \tilde{a} b = \begin{bmatrix} a_2 b_3 - a_3 b_2 \\ a_3 b_1 - a_1 b_3 \\ a_1 b_2 - a_2 b_1\end{bmatrix}$.
+"""
+
+# ╔═╡ 66994f1d-d365-44e8-bc3f-92530dc3edad
+md"""
+
+## Basic Concepts
+
+- **Rigid body** – part of the mechanism that does not change its shape during the motion
+- We will consider only **rigid bodies**
+- **Kinematic pair**, or **joint** – a combination of two links in contact. Imposes constraints on their relative movement
+- **Degrees of freedom** – number of independent quantities that unambiguously describe system location
+- **Kinematic chain** – assembly of rigid bodies connected by joints
+
+ $(embed_image("../../assets/figures/lecture_22_three_mechanisms.png", type="png", height=180))
+
+- **Rigid body**
+- **Kinematic pair**, or **joint**
+- **Degrees of freedom**
+- **Kinematic chain** 
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -2987,7 +3109,7 @@ version = "1.8.1+0"
 # ╔═╡ Cell order:
 # ╟─14557d3a-2f36-11f0-236e-29decfbecc3f
 # ╠═100c5f41-a4dc-42db-a668-e3825266e487
-# ╟─58705fe7-c2a5-4681-b2db-94d8ef1ce799
+# ╠═58705fe7-c2a5-4681-b2db-94d8ef1ce799
 # ╟─5fbe1d32-7415-4d42-932a-0850149d0fb8
 # ╟─b2c0b0cc-a96a-4436-9186-f1276802fffa
 # ╟─973aa4d8-3e07-4b47-bd94-662ff3b00823
@@ -2995,8 +3117,15 @@ version = "1.8.1+0"
 # ╟─66aabfdf-539d-4d43-a00d-63e283b03513
 # ╟─95c6fe10-5e2b-4496-8286-a011f4a0f54d
 # ╠═2885d73e-d0bf-40e1-bf21-bc81264fd977
-# ╠═11aaab40-ab34-48f5-a786-2fff5e05083c
-# ╠═a92a026a-6c58-42bc-b546-f1f088ab6260
-# ╠═318fa746-792a-4629-a13b-82ed8474a625
+# ╟─11aaab40-ab34-48f5-a786-2fff5e05083c
+# ╟─a92a026a-6c58-42bc-b546-f1f088ab6260
+# ╟─318fa746-792a-4629-a13b-82ed8474a625
+# ╟─f9c6b9c2-cddb-445e-8e37-07436917a700
+# ╟─6301d454-e5b7-41bf-bdd9-837f06ffae93
+# ╟─838ff326-ac46-4c2a-89ca-802dfc9dbbe0
+# ╟─ef39b881-9f1b-457a-8a1e-4a1a30b46e6d
+# ╟─338c7224-81f7-4834-9886-56972cbeaecf
+# ╟─482f2676-f9d7-48b1-a6d9-9884dc4761e6
+# ╟─66994f1d-d365-44e8-bc3f-92530dc3edad
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
