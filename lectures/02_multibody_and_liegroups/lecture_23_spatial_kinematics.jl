@@ -13,12 +13,23 @@ begin
 	using LaTeXStrings
 	using PlutoUI
 	using LinearAlgebra
+	using Base64
+	function embed_image(path_to_image::AbstractString; height::Integer=240, type::String="png")
+	    img_bytes = read(path_to_image)
+	    # Build a data URL: "data:image/{type};base64,{...}"
+	    data_url = "data:image/$(type);base64," * base64encode(img_bytes)
+    	attrs = (:height => height,)
+	    PlutoUI.Resource(data_url, MIME("image/$(type)"), attrs)
+	end
 end;
 
 # ╔═╡ 5c243277-0545-492c-8979-4f88c86375db
 md"""
-# Spatial Rigid Body Kinematics with Quaternions
+# Programming Multibody Systems in Julia
 
+### Lecture 6: Spatial Rigid Body Kinematics and Constraints
+
+Grzegorz Orzechowski
 """
 
 # ╔═╡ 6ce1f2d0-80ad-4a9f-a0d8-b13cc9795785
@@ -64,7 +75,8 @@ To find the global coordinates of a point $S$ that is fixed on body $i$, we tran
 $\boldsymbol{r}^S \;=\; \boldsymbol{r}_i \;+\; \boldsymbol{A}(\boldsymbol{q}_i)\,\boldsymbol{s}_i^S.$
 
 Here $\boldsymbol{A}(\boldsymbol{q}_i)$ rotates the local vector $\boldsymbol{s}_i^S$ into the global frame, and then $\boldsymbol{r}_i$ translates it to the correct global location. All vector quantities are 3-dimensional. If $\boldsymbol{q}_i$ is the identity quaternion (no rotation), then $\boldsymbol{A}(\boldsymbol{q}_i)$ becomes the identity matrix and $\boldsymbol{r}^S = \boldsymbol{r}_i + \boldsymbol{s}_i^S$ as expected.
-
+ 
+ $(embed_image("../../assets/figures/lecture_23_cartesian_coordinates.png", type="png", height=240))
 """
 
 # ╔═╡ 6e36deb3-6d4e-4bf3-b717-7c84f3357f9f
@@ -223,234 +235,342 @@ $$\Phi^{p2}(\boldsymbol{h}_i, \boldsymbol{d}_{ij}) =
 Parallel constraints are essential to describe **cylindrical**, **translational**, and **revolute** joints, where body axes or displacement vectors must remain aligned.
 """
 
-# ╔═╡ 03369b49-027b-4409-a58e-4b9ce99dbb19
+# ╔═╡ d16bfc8c-196e-4ff7-b1f2-d21568fcc6de
 md"""
+## Spherical (Ball) Joint
 
-## **Revolute Joint Constraint (3D Hinge Joint)**
+A **spherical joint** connects two bodies at a common point, allowing free rotation but no relative translation at that point.
 
-  
+The joint center $P$ has constant local coordinates in both bodies' local frames:
+-  $\boldsymbol{s}_i^P$: position of point $P$ in body $i$'s frame
+-  $\boldsymbol{s}_j^P$: position of point $P$ in body $j$'s frame
 
-A **revolute joint** (hinge) between two bodies allows one relative rotational DOF about a fixed axis, but no relative translation. In 3D, we can model a revolute joint by constraining two distinct points on the two bodies to remain coincident, thereby defining a common line (the hinge axis) about which rotation is free. For body $i$ and body $j$ connected by a revolute joint, let **two** points $A$ and $B$ be fixed on each body such that these points lie on the intended hinge axis in their respective local frames. Let $\boldsymbol{s}_i^A,; \boldsymbol{s}_i^B$ be the local position vectors of points $A$ and $B$ in body $i$ (and $\boldsymbol{s}_j^A,; \boldsymbol{s}_j^B$ for the same physical points on body $j$). The **revolute joint constraint equations** enforce that in global coordinates point $A_i$ coincides with $A_j$ and $B_i$ coincides with $B_j$:
+---
 
-  
+### Constraint Equation
 
-$\boldsymbol{C}_{\text{rev}}(\boldsymbol{x}) \;=\; \begin{bmatrix} \boldsymbol{r}_i + \boldsymbol{A}(\boldsymbol{q}_i)\,\boldsymbol{s}_i^A \;-\; \big(\boldsymbol{r}_j + \boldsymbol{A}(\boldsymbol{q}_j)\,\boldsymbol{s}_j^A\big)\\[6pt] \boldsymbol{r}_i + \boldsymbol{A}(\boldsymbol{q}_i)\,\boldsymbol{s}_i^B \;-\; \big(\boldsymbol{r}_j + \boldsymbol{A}(\boldsymbol{q}_j)\,\boldsymbol{s}j^B\big) \end{bmatrix} \;=\; \boldsymbol{0}{6\times 1}~,$
+To ensure the global coordinates of point $P$ are the same from both bodies:
 
-  
+$$\Phi^{(s,3)} =
+\boldsymbol{r}_i + \boldsymbol{A}_i \boldsymbol{s}_i^P
+- \boldsymbol{A}_j \boldsymbol{s}_j^P - \boldsymbol{r}_j = \boldsymbol{0}$$
 
-which yields 6 scalar constraint equations (two coincident points each contribute 3 equations in $x,y,z$). These constraints remove 5 relative DOF (allowing only one rotation about the line $AB$). **Interpretation:** The line through $A$ and $B$ on body $i$ must always coincide with the line through $A$ and $B$ on body $j$. This locks the two bodies together at the hinge, except for rotation about that common line .
+This constraint enforces:
 
-  
+- The **coincidence of point $P$** in space
+- **Three scalar equations**, one for each coordinate direction
 
-**Jacobian:** Let $\boldsymbol{x}$ be the vector of generalized coordinates (including $\boldsymbol{r}_i,\boldsymbol{q}i,\boldsymbol{r}j,\boldsymbol{q}j$ for these two bodies). The Jacobian of $\boldsymbol{C}{\text{rev}}$ is an $6\times (n{\text{dof}})$ matrix (here $n{\text{dof}}$ is the number of coordinates in $\boldsymbol{x}$). It can be assembled from the partial derivatives of each constraint equation. For the first point $A$ constraints (the first 3 rows of $\boldsymbol{C}_{\text{rev}}$):
+---
 
-- $\partial \boldsymbol{C}_{A}/\partial \boldsymbol{r}i = \boldsymbol{I}{3}$,  $;;\partial \boldsymbol{C}_{A}/\partial \boldsymbol{r}_j = -,\boldsymbol{I}_{3}$, because $A$’s global position appears with a $+$ sign for body $i$ and $-$ sign for body $j$. Here $\boldsymbol{I}_{3}$ is the $3\times3$ identity.
-    
-- $\partial \boldsymbol{C}_{A}/\partial \boldsymbol{q}_i =$ $\displaystyle \frac{\partial;}{\partial \boldsymbol{q}_i}!\big(\boldsymbol{A}(\boldsymbol{q}_i),\boldsymbol{s}_i^A\big)$,  and $;\partial \boldsymbol{C}_{A}/\partial \boldsymbol{q}_j = -,\displaystyle\frac{\partial;}{\partial \boldsymbol{q}_j}!\big(\boldsymbol{A}(\boldsymbol{q}_j),\boldsymbol{s}_j^A\big)$.
-    
+### Degrees of Freedom
 
-  
+- The spherical joint removes **3 translational DOF** between the bodies
+- It allows **3 rotational DOF**, meaning the bodies can freely rotate relative to each other about the joint center
 
-The derivative $\frac{\partial}{\partial \boldsymbol{q}_i}!(\boldsymbol{A}(\boldsymbol{q}_i),\boldsymbol{s}i^A)$ is a $3\times 4$ matrix (since $\boldsymbol{q}i$ has 4 components) that can be obtained by differentiating the rotation matrix expression or using the quaternion algebra approach. In practice, one can derive this by noting $d(\boldsymbol{A}\boldsymbol{s})/d\boldsymbol{q} = 2[,-,e{1} \boldsymbol{s} + e{2}(\boldsymbol{s}\times \mathbf{i}) + \cdots]$ (a known formula), or by computing each partial derivative as shown in the example above. The second point $B$ yields similar Jacobian blocks. Assembling all terms, the Jacobian $\partial \boldsymbol{C}_{\text{rev}}/\partial \boldsymbol{x}$ has the structure:
+---
 
-  
-
-\frac{\partial \boldsymbol{C}_{\text{rev}}}{\partial \boldsymbol{x}} \;=\; \begin{bmatrix} \boldsymbol{I}_3 & \partial(\boldsymbol{A}_i \boldsymbol{s}_i^A)/\partial \boldsymbol{q}_i & -\boldsymbol{I}_3 & -\,\partial(\boldsymbol{A}_j \boldsymbol{s}_j^A)/\partial \boldsymbol{q}_j\\[6pt] \boldsymbol{I}_3 & \partial(\boldsymbol{A}_i \boldsymbol{s}_i^B)/\partial \boldsymbol{q}_i & -\boldsymbol{I}_3 & -\,\partial(\boldsymbol{A}_j \boldsymbol{s}_j^B)/\partial \boldsymbol{q}_j \end{bmatrix}~,
-
-  
-
-where each $\partial(\boldsymbol{A}_k \boldsymbol{s}_k)/\partial \boldsymbol{q}_k$ is a $3\times 4$ matrix of partial derivatives for $k=i,j$. (In code, these can be computed using the known quaternion-to-DCM derivative formulas or by symbolic differentiation of $\boldsymbol{A}(\boldsymbol{q})$.)
-
+This constraint is widely used to model **ball-and-socket connections**, such as shoulder joints or spherical bearings.
 """
 
-# ╔═╡ f0b964ca-e4c6-4f66-a1ce-b65f439d912d
+# ╔═╡ e7afc9ff-31fd-4933-a125-108de8765611
 md"""
+## Universal (Hooke) Joint
 
-## **Spherical Joint Constraint (Ball-and-Socket)**
+A **universal joint** connects two bodies such that:
+- The bodies share a common point $P$ (intersection of two rotational axes)
+- Each body rotates about an axis fixed in its local frame
+- These two axes must remain **perpendicular**
 
-  
+This joint allows **rotation about two perpendicular axes**, one fixed in each body.
 
-A **spherical joint** (ball-and-socket) allows **no relative translation** between two bodies at the joint point, but **all 3 rotations** remain free. It can be seen as a special case of the revolute joint with only a single coincident point (thus no preferred axis alignment). Let one point $P$ be fixed on both body $i$ and body $j$ (e.g. the center of the ball-and-socket). Let $\boldsymbol{s}_i^P$ and $\boldsymbol{s}_j^P$ be the local coordinates of this point in each body. The **spherical joint constraint** simply enforces that the two points coincide in space:
+---
 
-  
+### Constraint Equations
 
-\boldsymbol{C}_{\text{sph}}(\boldsymbol{x}) \;=\; \boldsymbol{r}_i + \boldsymbol{A}(\boldsymbol{q}_i)\,\boldsymbol{s}_i^P \;-\; \big(\boldsymbol{r}_j + \boldsymbol{A}(\boldsymbol{q}_j)\,\boldsymbol{s}j^P\big) \;=\; \boldsymbol{0}{3\times 1}~.
+A universal joint is modeled by:
 
-  
+1. A **spherical joint** at point $P$, enforcing coincidence of joint centers:
+$$\Phi^{(s,3)} = \boldsymbol{r}_i + \boldsymbol{A}_i \boldsymbol{s}_i^P - \boldsymbol{A}_j \boldsymbol{s}_j^P - \boldsymbol{r}_j = \boldsymbol{0}$$
 
-This provides 3 scalar equations (fixing the $x,y,z$ difference), which remove 3 translational DOF between the bodies. The bodies are free to rotate arbitrarily relative to each other about the fixed point (3 relative rotational DOF remain). A spherical joint **removes 3 DOF** (the relative translations) .
+2. A **perpendicularity condition** between unit vectors $\boldsymbol{s}_i$ and $\boldsymbol{s}_j$ that represent the joint axes in each body:
+$$\Phi^{(n1,1)} = \boldsymbol{s}_i^T \boldsymbol{s}_j = 0$$
 
-  
+Together, these 4 scalar equations define the universal joint constraint.
 
-**Jacobian:** The Jacobian of $\boldsymbol{C}_{\text{sph}}$ is a $3\times (n_{\text{dof}})$ matrix. By similar reasoning as before:
+---
 
-- $\partial \boldsymbol{C}_{\text{sph}}/\partial \boldsymbol{r}i = \boldsymbol{I}{3}$, $;; \partial \boldsymbol{C}_{\text{sph}}/\partial \boldsymbol{r}_j = -,\boldsymbol{I}_{3}$.
-    
-- $\partial \boldsymbol{C}_{\text{sph}}/\partial \boldsymbol{q}_i = \displaystyle\frac{\partial(\boldsymbol{A}_i \boldsymbol{s}_i^P)}{\partial \boldsymbol{q}_i}$, $;; \partial \boldsymbol{C}_{\text{sph}}/\partial \boldsymbol{q}_j = -,\displaystyle\frac{\partial(\boldsymbol{A}_j \boldsymbol{s}_j^P)}{\partial \boldsymbol{q}_j}$.
-    
+### Degrees of Freedom
 
-  
+- The universal joint removes **4 DOF** between the two bodies:
+  - 3 translational (via spherical constraint)
+  - 1 rotational (via perpendicularity constraint)
+- Leaves **2 rotational DOF** (about each body's joint axis)
 
-So the Jacobian structure is identical to one “row block” of the revolute joint Jacobian above (since a spherical joint is essentially one coincident-point constraint). In matrix form:
+---
 
-  
-
-\frac{\partial \boldsymbol{C}_{\text{sph}}}{\partial \boldsymbol{x}} \;=\; \big[\,\boldsymbol{I}_3,\;\; \partial(\boldsymbol{A}_i \boldsymbol{s}_i^P)/\partial \boldsymbol{q}_i, \;\; -\,\boldsymbol{I}_3, \;\; -\,\partial(\boldsymbol{A}_j \boldsymbol{s}_j^P)/\partial \boldsymbol{q}_j \,\big]~.
-
-  
-
-This Jacobian will have rank 3 (assuming general configuration), enforcing the 3 independent constraints.
-
+This joint is commonly used in mechanisms where two intersecting rotational axes are needed, such as **drive shafts** or **gimbal mounts**.
 """
 
-# ╔═╡ 6c655dea-1a36-4b2e-b39d-4710a79b8541
+# ╔═╡ 478fb88f-3945-4d13-b0df-99aa7ffb1290
 md"""
+## Revolute Joint
 
-## **Translational Joint Constraint (Slider)**
+A **revolute joint** (hinge) allows two bodies to rotate about a common axis but constrains all other relative motion.
 
-  
+Any point on the joint axis has **constant local coordinates** in both bodies. This means:
 
-A **translational joint** (slider) allows **one translational DOF** between two bodies along a common axis, but **no relative rotation**. It effectively “locks” the two bodies together in orientation (no relative angular motion) while permitting sliding along a specified axis. We can construct a translational joint by imposing:
+- A **spherical constraint** enforces that point $P$ on the joint axis coincides in both bodies.
+- Two vectors $\tilde{\boldsymbol{s}}_i$ and $\tilde{\boldsymbol{s}}_j$, fixed in bodies $i$ and $j$ and aligned with the joint axis, must remain **parallel**.
 
-1. **Identical orientation** of the two bodies (no relative rotation at all).
-    
-2. **Line-of-action alignment:** one body’s reference point can move only along a line (axis) fixed in the other body.
-    
+---
 
-  
+### Constraint Equations
 
-In practice, we choose a unit vector direction (the sliding axis) fixed in each body, say $\hat{\boldsymbol{a}}_i$ in body $i$ and $\hat{\boldsymbol{a}}_j$ in body $j$, which initially coincide. In the global frame, $\boldsymbol{a}_i = \boldsymbol{A}(\boldsymbol{q}_i),\hat{\boldsymbol{a}}_i$ and $\boldsymbol{a}_j = \boldsymbol{A}(\boldsymbol{q}_j),\hat{\boldsymbol{a}}_j$ should always remain collinear (and in fact identical if no rotation is allowed). Also, the relative position of the bodies should lie along this axis.
+1. **Spherical joint constraint** at point $P$:
+$$\Phi^{(s,3)} = \boldsymbol{r}_i + \boldsymbol{A}_i \boldsymbol{s}_i^P - \boldsymbol{A}_j \boldsymbol{s}_j^P - \boldsymbol{r}_j = \boldsymbol{0}$$
 
-  
 
-**Orientation constraints:** To enforce no relative rotation, we require the orientations (all axes) to coincide. One convenient way is to align two perpendicular unit vectors attached to body $i$ with those of body $j$. For example, let $\hat{\boldsymbol{a}}_i$ be the designated axis of translation (local $z$-axis, say) and let $\hat{\boldsymbol{b}}_i$ be another orthonormal direction (local $x$-axis). Require that in global frame these align with body $j$’s corresponding axes $\hat{\boldsymbol{a}}_j$ and $\hat{\boldsymbol{b}}_j$. The constraints can be written as **axis alignment conditions**:
+2. **Parallel-1 constraint**: Enforce that $\tilde{\boldsymbol{s}}_j$ is **orthogonal** to two independent vectors $\boldsymbol{f}_i$ and $\boldsymbol{g}_i$ orthogonal to $\tilde{\boldsymbol{s}}_i$:
 
-  
+$$\Phi^{(p1,2)} = 
+\begin{bmatrix}
+\boldsymbol{f}_i^T \tilde{\boldsymbol{s}}_j \\
+\boldsymbol{g}_i^T \tilde{\boldsymbol{s}}_j
+\end{bmatrix}
+= \begin{bmatrix} 0 \\ 0 \end{bmatrix}$$
 
-\boldsymbol{C}_{\text{trans}}^{(orient)}:\quad \boldsymbol{a}_i \times \boldsymbol{a}_j = \boldsymbol{0}, \qquad \boldsymbol{b}_i \times \boldsymbol{b}_j = \boldsymbol{0}~,
 
-  
+- This ensures that $\tilde{\boldsymbol{s}}_j$ lies in the same direction as $\tilde{\boldsymbol{s}}_i$.
 
-ensuring $\boldsymbol{a}_i \parallel \boldsymbol{a}_j$ and $\boldsymbol{b}_i \parallel \boldsymbol{b}_j$. (Each cross-product being zero yields 3 equations, but each pair of aligned axes provides 2 independent constraints due to redundancy. Overall this is effectively 3 independent orientation constraints, locking the rotation completely.) In other words, we demand $\boldsymbol{A}(\boldsymbol{q}_i) = \boldsymbol{A}(\boldsymbol{q}_j)$, i.e., $\boldsymbol{q}_i = \boldsymbol{q}_j$ (same orientation).
+---
 
-  
+### Degrees of Freedom
 
-**Translational axis constraint:** Now let a point $P$ on body $i$ (with local position $\boldsymbol{s}_i^P$) be constrained to lie on body $j$’s axis line. For example, take $P$ as the origin of body $i$’s frame for simplicity ($\boldsymbol{s}_i^P=\boldsymbol{0}$). Let $\boldsymbol{r}_j$ be a point on body $j$’s axis (e.g. $r_j$ could be the origin of $j$ if its origin lies on the axis). The condition that $P_i$ lies on $j$’s $\boldsymbol{a}_j$-axis is that the vector **from** the point on $j$’s axis **to** $P_i$ is colinear with $\boldsymbol{a}_j$. If $\boldsymbol{d} = (\boldsymbol{r}_i + \boldsymbol{A}_i \boldsymbol{s}_i^P) - \boldsymbol{r}_j$ is the displacement from the reference on $j$ to point $P_i$, we require that $\boldsymbol{d}$ has no component perpendicular to $\boldsymbol{a}_j$. Equivalently, **the cross product must vanish**:
+- The revolute joint imposes **5 scalar constraints** (3 from the point coincidence, 2 from axis alignment)
+- Leaves **1 relative DOF**: rotation about the shared axis
 
-  
+---
 
-\boldsymbol{C}_{\text{trans}}^{(pos)}:\quad \big( (\boldsymbol{r}_i + \boldsymbol{A}_i \boldsymbol{s}_i^P) - \boldsymbol{r}_j \big) \;\times\; \boldsymbol{a}_j \;=\; \boldsymbol{0}~.
-
-  
-
-This yields 3 equations, of which 2 are independent (enforcing $\boldsymbol{d}$ is parallel to $\boldsymbol{a}_j$, i.e. no offset in the two perpendicular directions). These 2 constraints, together with the 3 orientation constraints above, sum to 5 independent equations total, leaving 1 DOF free (translation along the axis) .
-
-  
-
-**Jacobian:** The Jacobian of the translational joint is built from the partials of $C_{\text{trans}}^{(orient)}$ and $C_{\text{trans}}^{(pos)}$. For the orientation part: each cross-product $\boldsymbol{u}\times \boldsymbol{v}=\boldsymbol{0}$ yields terms like $\partial(\boldsymbol{u}\times \boldsymbol{v})/\partial \boldsymbol{q}_i = (\partial \boldsymbol{u}/\partial \boldsymbol{q}_i)\times \boldsymbol{v}$ (since $\boldsymbol{v}$ depends only on $q_j$) and similarly for $\partial/\partial q_j$. In practice, $\partial \boldsymbol{a}_i/\partial q_i$ and $\partial \boldsymbol{b}_i/\partial q_i$ are computed as in previous cases (each is of size $3\times 4$). The position part $C_{\text{trans}}^{(pos)}$ has a Jacobian similar to a point-on-line constraint:
-
-- $\partial/\partial \boldsymbol{r}_i: ;; (\boldsymbol{I}_3 \times \boldsymbol{a}_j)$, which represents the cross-product operation with $\boldsymbol{a}_j$ (this will effectively pick out the perpendicular components),
-    
-- $\partial/\partial \boldsymbol{r}_j: ; -(\boldsymbol{I}_3 \times \boldsymbol{a}_j)$,
-    
-- $\partial/\partial q_i: ;; (\partial \boldsymbol{r}_i/\partial q_i \times \boldsymbol{a}_j) + (\boldsymbol{I}_3 \times 0)$ (since $\boldsymbol{a}_j$ does not depend on $q_i$),
-    
-- $\partial/\partial q_j: ;; -(\boldsymbol{I}_3 \times \partial \boldsymbol{a}_j/\partial q_j)$ (since $\boldsymbol{r}_i$ term doesn’t depend on $q_j$ but $\boldsymbol{a}_j$ does).
-    
-
-  
-
-Here $(\boldsymbol{I}_3 \times \boldsymbol{a}_j)$ denotes the $3\times3$ matrix representing the linear map $ \mathbf{v} \mapsto \mathbf{v} \times \boldsymbol{a}j$. Combining all parts, the Jacobian $\partial \boldsymbol{C}{\text{trans}}/\partial \boldsymbol{x}$ will have contributions from orientation alignment (affecting $q_i,q_j$) and from the positional cross-product (affecting $r_i,r_j,q_i,q_j$ as above). In total it will be $5\times (n_{\text{dof}})$ in size, reflecting the 5 independent constraint equations.
-
+Revolute joints are key components in modeling **hinges**, **rotating arms**, and **robotic joints**.
 """
 
-# ╔═╡ 24007859-e593-4564-bbb1-86f7cf42a76b
+# ╔═╡ da0a0215-029e-452b-a36b-8c2fb0b13525
 md"""
+## Cylindrical Joint
 
-## **Cylindrical Joint Constraint**
+A **cylindrical joint** constrains two bodies to move along a **common axis**, allowing both:
+- **Translation along the axis**
+- **Rotation about the axis**
 
-  
+To define the constraint:
+- Choose two points $P_i$, $Q_i$ on body $i$ and $P_j$, $Q_j$ on body $j$
+- These points lie along the joint axis in each body
+- Vectors $\tilde{\boldsymbol{s}}_i$ and $\tilde{\boldsymbol{s}}_j$ represent the axis direction in each body
 
-A **cylindrical joint** allows **one rotation and one translation** between two bodies (e.g. a shaft that can spin and slide in a sleeve). It is essentially a _relaxed_ version of the translational joint: the two bodies share a common axis for relative motion, but **one relative rotation about that axis is free** (not constrained). To model a cylindrical joint, we impose:
+---
 
-- **Axis alignment:** the specified axis of body $i$ remains collinear with that of body $j$ at all times (so the bodies cannot tilt relative to each other). This is enforced exactly as in the translational joint with **2 orthonormality constraints**:
-    
-    \boldsymbol{C}_{\text{cyl}}^{(axis)}:\quad \boldsymbol{a}_i \times \boldsymbol{a}_j = \boldsymbol{0}~,
-    
-    ensuring $\boldsymbol{a}_i \parallel \boldsymbol{a}_j$ (two independent constraints). Here $\boldsymbol{a}_i = A(q_i)\hat{\boldsymbol{a}}_i$ and $\boldsymbol{a}_j = A(q_j)\hat{\boldsymbol{a}}_j$ are the local axis unit vectors (e.g. hinge/slide axis) expressed globally.
-    
-- **No offset (coaxial):** the two bodies’ axes must coincide spatially (not just be parallel). This means a point on one axis lies on the other axis. Similar to the slider, we ensure the distance between the two axes is zero by forcing a representative point to lie on the other’s axis. For example, let $\boldsymbol{d} = (\boldsymbol{r}_i + A(q_i)\boldsymbol{s}_i^P) - \boldsymbol{r}_j$ be the displacement from a point on $j$ (e.g. $r_j$) to a point $P$ on body $i$ that should stay on $j$’s axis. Then require:
-    
-    \boldsymbol{C}_{\text{cyl}}^{(pos)}:\quad \boldsymbol{d} \times \boldsymbol{a}_j = \boldsymbol{0}~,
-    
-    which (like before) provides 2 independent equations ensuring $\boldsymbol{d}$ has no component perpendicular to $\boldsymbol{a}_j$.
-    
+### Constraint Equations
 
-  
+The cylindrical joint requires that the vectors:
+-  $\tilde{\boldsymbol{s}}_i$ and $\tilde{\boldsymbol{s}}_j$ are **parallel**
+- A vector $\boldsymbol{d}$ connecting points on the axis remains **parallel** to $\tilde{\boldsymbol{s}}_i$
 
-Unlike the translational joint, we do **not** constrain the twist around the axis. The bodies are free to rotate relative about $\boldsymbol{a}_j$. Therefore, we do **not** impose the second orientation alignment ($\boldsymbol{b}_i$ vs $\boldsymbol{b}_j$) that was used in the translational case. This leaves one rotational DOF about $\boldsymbol{a}_j$ intact, and one translational DOF along $\boldsymbol{a}_j$ intact. Counting: axis alignment (2 eq) + positional alignment (2 eq) = 4 independent constraints, removing 4 DOF, which is consistent with a cylindrical joint allowing 2 DOF (1 spin + 1 slide) .
+This is expressed using two **dot-product constraints**:
 
-  
+1. **Parallel-1 constraint**:
+$$\Phi^{(p1,2)} = 
+\begin{bmatrix}
+\boldsymbol{f}_i^T \tilde{\boldsymbol{s}}_j \\
+\boldsymbol{g}_i^T \tilde{\boldsymbol{s}}_j
+\end{bmatrix}
+= \begin{bmatrix} 0 \\ 0 \end{bmatrix}$$
 
-**Jacobian:** The Jacobian for the cylindrical joint is similar to that of the translational joint, except we exclude the twist alignment constraints. Thus:
+2. **Parallel-2 constraint**:
+$$\Phi^{(p2,2)} =
+\begin{bmatrix}
+\boldsymbol{f}_i^T \boldsymbol{d} \\
+\boldsymbol{g}_i^T \boldsymbol{d}
+\end{bmatrix}
+= \begin{bmatrix} 0 \\ 0 \end{bmatrix}$$
 
-- The **axis alignment** part $\boldsymbol{C}_{\text{cyl}}^{(axis)}: \boldsymbol{a}_i \times \boldsymbol{a}_j = \boldsymbol{0}$ contributes orientation partials: $\partial/\partial q_i: (\partial \boldsymbol{a}_i/\partial q_i) \times \boldsymbol{a}_j$, and $\partial/\partial q_j: -,\boldsymbol{a}_i \times (\partial \boldsymbol{a}_j/\partial q_j)$ (and no dependence on $r_i, r_j$ since it’s purely orientation).
-    
-- The **positional** part $\boldsymbol{C}_{\text{cyl}}^{(pos)}: \boldsymbol{d} \times \boldsymbol{a}_j = 0$ contributes terms as described in the translational joint: partials w.r.t $r_i, r_j$ and $q_i, q_j$ similar to those for $\boldsymbol{C}_{\text{trans}}^{(pos)}$ above. (Specifically, $\partial \boldsymbol{d}/\partial r_i = \boldsymbol{I}_3$, $\partial \boldsymbol{d}/\partial r_j = -\boldsymbol{I}_3$, etc., and $\boldsymbol{a}_j$ contributes via $\partial/\partial q_j$.)
-    
+---
 
-  
+### Degrees of Freedom
 
-Combining these, the Jacobian $\partial \boldsymbol{C}_{\text{cyl}}/\partial \boldsymbol{x}$ will be a $4\times(n_{\text{dof}})$ matrix enforcing the four constraints. As expected, its nullspace corresponds to the two allowed motions (translation along $\boldsymbol{a}_j$ and rotation about $\boldsymbol{a}_j$).
+- The cylindrical joint imposes **4 scalar constraints**
+- It permits **2 relative DOF** between the bodies:
+  - Translation along the axis
+  - Rotation about the axis
 
+---
+
+Cylindrical joints are ideal to model components like **telescopic shafts**, **sliding columns**, or **actuated prismatic joints with rotational clearance**.
+"""
+
+# ╔═╡ 0138d5d6-7640-4bc1-b30a-5fbefd3d7fd3
+md"""
+## Translational (Prismatic) Joint
+
+A **translational joint** constrains two bodies to **translate along a common axis** but **prohibits any relative rotation** between them.
+
+This joint is similar to the **cylindrical joint**, but with one additional constraint to remove relative rotation about the axis.
+
+---
+
+### Constraint Equations
+
+The translational joint includes:
+
+1. **Parallel-1 constraint** (alignment of joint axes):
+$$\Phi^{(p1,2)} =
+\begin{bmatrix}
+\boldsymbol{f}_i^T \tilde{\boldsymbol{s}}_j \\
+\boldsymbol{g}_i^T \tilde{\boldsymbol{s}}_j
+\end{bmatrix}
+= \begin{bmatrix} 0 \\ 0 \end{bmatrix}$$
+
+2. **Parallel-2 constraint** (translation direction is aligned):
+$$\Phi^{(p2,2)} =
+\begin{bmatrix}
+\boldsymbol{f}_i^T \boldsymbol{d} \\
+\boldsymbol{g}_i^T \boldsymbol{d}
+\end{bmatrix}
+= \begin{bmatrix} 0 \\ 0 \end{bmatrix}$$
+
+3. **Perpendicular constraint** (no relative rotation):
+$$\Phi^{(n1,1)} = \boldsymbol{h}_i^T \boldsymbol{h}_j = 0$$
+
+This final condition enforces that body-fixed vectors $\boldsymbol{h}_i$ and $\boldsymbol{h}_j$ remain perpendicular, preventing relative rotation.
+
+---
+
+### Degrees of Freedom
+
+- The translational joint imposes **5 scalar constraints**
+- It permits **1 relative DOF** between the two bodies: **translation along the joint axis**
+
+---
+
+This joint is used to model systems like **sliders**, **pistons**, and **prismatic actuators** that allow motion along a single direction without rotation.
+"""
+
+# ╔═╡ 853ca0e1-f468-4d07-a6e8-436f1adc0957
+md"""
+## Absolute Constraints on a Body
+
+**Absolute constraints** fully determine the **position** and **orientation** of a rigid body in space. These constraints are typically used to:
+
+- Fix a reference (ground) body
+- Define initial conditions
+- Apply pose control for actuated or driven systems
+
+---
+
+### 1. Fixing the Body Origin
+
+To fix the body's origin in the global frame to position $(c_1, c_2, c_3)$:
+
+$$\Phi_x = x_i - c_1 = 0$$
+$$\Phi_y = y_i - c_2 = 0$$
+$$\Phi_z = z_i - c_3 = 0$$
+
+This constrains **3 degrees of translational freedom**.
+
+---
+
+### 2. Fixing a Point on the Body
+
+To fix a point $P_i$ attached to body $i$ at a desired global location $\boldsymbol{r}_i^0$:
+
+$$\boldsymbol{\Phi}^P(P_i) = \boldsymbol{r}_i + \boldsymbol{A}_i \boldsymbol{s}_i^{P} - \boldsymbol{r}_i^0 = \boldsymbol{0}$$
+
+-  $\boldsymbol{r}_i$: origin of body $i$  
+-  $\boldsymbol{s}_i^P$: local vector to point $P_i$ in the body frame  
+-  $\boldsymbol{A}_i$: rotation matrix from local to global coordinates  
+-  $\boldsymbol{r}_i^0$: desired global coordinates of $P_i$
+
+This also yields **3 scalar constraints**.
+
+---
+
+### 3. Fixing the Orientation (Euler Parameters)
+
+To constrain the **orientation** of the body using Euler parameters:
+
+$$\begin{aligned}
+\Phi_1 &= e_{1i} - e_{1i}^0 = 0 \\
+\Phi_2 &= e_{2i} - e_{2i}^0 = 0 \\
+\Phi_3 &= e_{3i} - e_{3i}^0 = 0
+\end{aligned}$$
+
+- Only the **vector part** of the quaternion is explicitly constrained
+- The scalar part $e_{0i}$ is constrained implicitly through the **unit norm condition** of the quaternion
+
+---
+
+### Summary
+
+- Fixing the **body origin**: 3 constraints  
+- Fixing a **point on the body**: 3 constraints  
+- Fixing **orientation**: 3 constraints  
+
+These constraints are useful for:
+- Grounding a reference body
+- Driving systems with known input motion
+- Fully locking the pose of a body in space
 """
 
 # ╔═╡ d96a3996-8199-494b-99e3-1b356ada8f03
 md"""
+## Summary of Kinematic Joints and Constraints
 
-**Summary:** The table below recaps each joint’s constraint count and interpretation:
+The table below summarizes commonly used joints in multibody dynamics, including:
 
-- _Revolute joint:_ 5 independent constraints (e.g. two coincident points) $\implies$ 1 DOF (rotation about axis) .
-    
-- _Spherical joint:_ 3 constraints (one coincident point) $\implies$ 3 DOF (all rotations free).
-    
-- _Translational joint:_ 5 constraints (no rotation + axis slide only) $\implies$ 1 DOF (translation along axis) .
-    
-- _Cylindrical joint:_ 4 constraints (axes coincide, but free twist) $\implies$ 2 DOF (rotation + translation along axis) .
-    
+- The type of motion allowed
+- The number of scalar constraint equations
+- The remaining degrees of freedom (DOF)
+- The constraint types used
 
-  
+---
 
-Each constraint’s Jacobian as derived above is ready to be used in coding exercises for constraint solver setup (e.g. forming $ \boldsymbol{C}(\boldsymbol{x})=0$ and $ \partial \boldsymbol{C}/\partial \boldsymbol{x}$ for Newton-Raphson or Lagrange multiplier solutions). Each Jacobian block involves straightforward derivatives of the form $\partial(\boldsymbol{A}(\boldsymbol{q})\boldsymbol{u})/\partial \boldsymbol{q}$, which can be coded directly from the quaternion formulas or with the help of symbolic differentiation.
-"""
+### Joint Constraint Summary
 
-# ╔═╡ a8836d14-8f86-40b0-8262-c7bbf45fdb10
+| Joint Type      | Constraints Used                              | Scalar Equations | DOF |
+|------------------|-----------------------------------------------|------------------|-----|
+| **Spherical**     | Point coincidence ($\Phi^{(s,3)}$)             | 3                | 3   |
+| **Universal**     | Spherical + perpendicular ($\Phi^{(n1,1)}$)    | 4                | 2   |
+| **Revolute**      | Spherical + parallel-1 ($\Phi^{(p1,2)}$)       | 5                | 1   |
+| **Cylindrical**   | Parallel-1 + parallel-2 ($\Phi^{(p1,2)}$, $\Phi^{(p2,2)}$) | 4                | 2   |
+| **Translational** | Cylindrical + perpendicular ($\Phi^{(n1,1)}$) | 5                | 1   |
+| **Fixed (Absolute)** | Point + orientation constraints            | 6                | 0   |
 
+---
 
-# ╔═╡ ba18b350-2fd3-11f0-2574-53bbe2752d61
-md"""
-$$\newcommand{\q}{\boldsymbol{q}}$$
-$$\newcommand{\A}{\boldsymbol{A}}$$
-"""
+### Constraint Types (Quick Reference)
 
-# ╔═╡ f6793f88-22df-4e0f-9154-9270bb62cc01
-md"""
-$\q$
-"""
+| Type                | Description                                 |
+|---------------------|---------------------------------------------|
+| $\Phi^{(s,3)}$       | Spherical (point coincidence)               |
+| $\Phi^{(n1,1)}$      | Perpendicular constraint (fixed vectors)    |
+| $\Phi^{(p1,2)}$      | Parallel between two fixed vectors          |
+| $\Phi^{(p2,2)}$      | Parallel between fixed and variable vector  |
+| Absolute Position    | Fix origin or point to global location      |
+| Orientation (Euler)  | Fix Euler parameters (usually $e_1$, $e_2$, $e_3$) |
 
-# ╔═╡ fa90da8d-b8dc-4cfa-8962-792ed8b82e39
-md"""
-$\A$
-"""
+---
 
-# ╔═╡ 73cb04ef-8698-4cf8-9776-d648b9b8595c
-md"""
-$\r$
+These constraints form the basis for modeling the **relative motion** between bodies in 3D multibody systems. They are essential for both:
+
+- **Symbolic formulations** (e.g., constraint Jacobians)
+- **Numerical simulation** (e.g., differential-algebraic solvers)
+
+Next steps: apply this knowledge to implement joints in code, simulate mechanisms, and impose driven motions.
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
+Base64 = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
 LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -472,7 +592,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "1ac016c9f17e94806de1da8ec0fdee34b34d8320"
+project_hash = "cd16a58387d7b9db936cde73e8640354d68c677c"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e2478490447631aedba0823d4d7a80b2cc8cdb32"
@@ -3250,20 +3370,17 @@ version = "1.8.1+0"
 # ╠═fb64f0ef-00ee-413f-84cb-c196fb764497
 # ╟─6ce1f2d0-80ad-4a9f-a0d8-b13cc9795785
 # ╟─bc63ddfa-c3f8-4e97-91ec-226592e41446
-# ╟─eebd1d42-6211-4b7a-9053-5aa23ef162d6
+# ╠═eebd1d42-6211-4b7a-9053-5aa23ef162d6
 # ╟─6e36deb3-6d4e-4bf3-b717-7c84f3357f9f
 # ╟─7be3784c-0c84-4e3e-ba6a-c80b17122ee5
 # ╟─36cf701b-0417-451b-bc0e-b1bf171186a5
 # ╟─3a048254-d80c-488d-a1f5-25bc7ff5f393
-# ╠═03369b49-027b-4409-a58e-4b9ce99dbb19
-# ╠═f0b964ca-e4c6-4f66-a1ce-b65f439d912d
-# ╠═6c655dea-1a36-4b2e-b39d-4710a79b8541
-# ╠═24007859-e593-4564-bbb1-86f7cf42a76b
-# ╠═d96a3996-8199-494b-99e3-1b356ada8f03
-# ╠═a8836d14-8f86-40b0-8262-c7bbf45fdb10
-# ╠═ba18b350-2fd3-11f0-2574-53bbe2752d61
-# ╠═f6793f88-22df-4e0f-9154-9270bb62cc01
-# ╠═fa90da8d-b8dc-4cfa-8962-792ed8b82e39
-# ╠═73cb04ef-8698-4cf8-9776-d648b9b8595c
+# ╟─d16bfc8c-196e-4ff7-b1f2-d21568fcc6de
+# ╟─e7afc9ff-31fd-4933-a125-108de8765611
+# ╟─478fb88f-3945-4d13-b0df-99aa7ffb1290
+# ╟─da0a0215-029e-452b-a36b-8c2fb0b13525
+# ╟─0138d5d6-7640-4bc1-b30a-5fbefd3d7fd3
+# ╟─853ca0e1-f468-4d07-a6e8-436f1adc0957
+# ╟─d96a3996-8199-494b-99e3-1b356ada8f03
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
