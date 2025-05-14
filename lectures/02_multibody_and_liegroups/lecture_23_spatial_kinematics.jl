@@ -567,6 +567,147 @@ These constraints form the basis for modeling the **relative motion** between bo
 Next steps: apply this knowledge to implement joints in code, simulate mechanisms, and impose driven motions.
 """
 
+# ╔═╡ 00014bad-ac20-4a9a-91eb-fd9162a22a3a
+md"""
+## Kinematic Analysis in Multibody Dynamics
+
+To simulate or analyze the motion of a constrained multibody system, we formulate:
+
+- **Position constraints**
+- **Velocity constraints**
+- **Acceleration constraints**
+
+---
+
+### System Overview
+
+-  $\boldsymbol{q} \in \mathbb{R}^n$: vector of generalized coordinates  
+-  $\boldsymbol{C}(\boldsymbol{q}) = \boldsymbol{0}$: system of $m$ nonlinear constraint equations  
+-  $k = n - m$: degrees of freedom  
+-  $\boldsymbol{C}^d(\boldsymbol{q}, t) = \boldsymbol{0}$: $k$ driving constraints added for solvability  
+
+These equations are solved at each time instant $t_i$ to compute $\boldsymbol{q}(t_i)$.
+
+---
+
+### Position Analysis
+
+Solve the nonlinear system:
+$$\boldsymbol{C}(\boldsymbol{q}) = \boldsymbol{0}$$
+
+Typically solved using **Newton–Raphson iteration**.
+
+---
+
+### Velocity Analysis
+
+Differentiate the constraint equations:
+$$\begin{bmatrix}
+\boldsymbol{C}_{\boldsymbol{q}} \\
+\boldsymbol{C}_{\boldsymbol{q}}^d
+\end{bmatrix}
+\dot{\boldsymbol{q}} =
+\begin{bmatrix}
+\boldsymbol{0} \\
+- \boldsymbol{C}_t^d
+\end{bmatrix}$$
+
+-  $\boldsymbol{C}_{\boldsymbol{q}}$: Jacobian of constraints w.r.t. $\boldsymbol{q}$
+-  $\boldsymbol{C}_t^d$: partial time derivative of the driving constraints
+
+---
+
+### Acceleration Analysis
+
+Differentiate again:
+
+$$\begin{bmatrix}
+\boldsymbol{C}_{\boldsymbol{q}} \\
+\boldsymbol{C}_{\boldsymbol{q}}^d
+\end{bmatrix}
+\ddot{\boldsymbol{q}} =
+\begin{bmatrix}
+- (\boldsymbol{C}_{\boldsymbol{q}} \dot{\boldsymbol{q}})_{\boldsymbol{q}} \dot{\boldsymbol{q}} \\
+- (\boldsymbol{C}_{\boldsymbol{q}}^d \dot{\boldsymbol{q}})_{\boldsymbol{q}} \dot{\boldsymbol{q}} - 2 \boldsymbol{C}_{\boldsymbol{q}t}^d \dot{\boldsymbol{q}} - \boldsymbol{C}_{tt}^d
+\end{bmatrix}$$
+
+This gives $\ddot{\boldsymbol{q}}$, needed for dynamic simulation or inverse dynamics.
+
+---
+
+Although these formulations can appear complex, often only the **position** or **velocity** levels are needed in practice, especially for motion planning or geometric constraints.
+"""
+
+# ╔═╡ 63347cb0-bd31-4711-9c41-ce49c82d8e78
+md"""
+## Example analysis
+
+ $(embed_image("../../assets/figures/lecture_23_example_analysis_planar.png", type="png", height=280))
+
+ $(embed_image("../../assets/figures/lecture_23_example_spatial_slidercrank.png", type="png", height=280))
+E. J. Haug, Computer Aided Kinematics and Dynamics of Mechanical Systems: Basic Methods. Boston: Allyn and Bacon, 1989.
+
+"""
+
+# ╔═╡ d2e458db-3986-4860-a4d2-bcd167ac1805
+md"""
+## Position Analysis – What Do We Need?
+
+To compute the configuration of a multibody system at a given time using **position analysis**, we need:
+
+---
+
+### 1. Kinematic Constraints
+
+We use constraint equations to relate body coordinates. These include:
+
+- **Basic constraint** (point + perpendicular + parallel constraints)
+- **Joints definition** (translational, rotational, cylindrical, etc.)
+- **Absolute and driving constraints** (prescribed motion as $C^d(\boldsymbol{q}, t) = 0$)
+
+Each joint contributes specific scalar constraints, as defined in previous slides.
+
+---
+
+### 2. Coordinates
+
+The system's configuration is described using:
+
+- **Translational coordinates**: $\boldsymbol{r}_i \in \mathbb{R}^3$  
+- **Rotational coordinates**: unit quaternions $\boldsymbol{e}_i \in \mathbb{R}^4$
+
+This gives a **7 DOF representation** per rigid body (plus constraints for unit norm).
+
+---
+
+### 3. Constraint Jacobians
+
+To perform Newton-Raphson iterations or compute velocities and accelerations, we need derivatives of the constraint functions:
+
+-  $\boldsymbol{C}_{\boldsymbol{q}}$: Jacobian of $\boldsymbol{C}(\boldsymbol{q})$
+- These can be obtained using:
+  - **Analytical expressions**
+  - **Automatic differentiation (AD)** using packages like `ForwardDiff.jl`
+
+---
+
+### 4. Newton-Raphson Solver
+
+- **[NLsolve.jl](https://github.com/JuliaNLSolvers/NLsolve.jl)** or a custom Newton-Raphson loop in Julia
+- This allows full control and better performance when Jacobians are known
+
+---
+
+### Summary
+
+✅ Constraints  
+✅ Coordinates  
+✅ Jacobians (by AD or analytic)  
+✅ Newton-Raphson or `NLsolve`  
+
+You now have everything needed to implement position analysis for multibody systems in Julia!
+"""
+
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
@@ -3382,5 +3523,8 @@ version = "1.8.1+0"
 # ╟─0138d5d6-7640-4bc1-b30a-5fbefd3d7fd3
 # ╟─853ca0e1-f468-4d07-a6e8-436f1adc0957
 # ╟─d96a3996-8199-494b-99e3-1b356ada8f03
+# ╟─00014bad-ac20-4a9a-91eb-fd9162a22a3a
+# ╠═63347cb0-bd31-4711-9c41-ce49c82d8e78
+# ╟─d2e458db-3986-4860-a4d2-bcd167ac1805
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
