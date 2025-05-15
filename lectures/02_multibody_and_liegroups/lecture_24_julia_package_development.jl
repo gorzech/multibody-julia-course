@@ -4,73 +4,18 @@
 using Markdown
 using InteractiveUtils
 
-# ╔═╡ aa4ec058-3012-11f0-1df6-8b2f48938ec3
+# ╔═╡ f09aec17-c235-4c1c-bf32-c9d9cd345feb
 md"""
+# Programming Multibody Systems in Julia
 
-## Reusing `ForwardDiff.jl` for Constraint Jacobians
+### Lecture 7: Julia Package Development Guide
 
-When performing position analysis in multibody systems, we often need to compute the **Jacobian** of the constraint equations $\boldsymbol{C}(\boldsymbol{q})$.
-
-Instead of recomputing from scratch each time, we can use `ForwardDiff.jl` efficiently by reusing memory.
-
----
-
-### 🔧 Why Reuse?
-
-- **Avoid memory allocations** at each Newton iteration
-- **Improve performance** significantly for larger systems
-- Reuse is essential when constraints are evaluated **repeatedly**, e.g., in:
-  - Newton–Raphson loops
-  - Velocity and acceleration analysis
-  - Sensitivity studies
-
----
-
-### ✍️ Step-by-Step
-
-1. Define your constraint function in-place (it writes into a preallocated output vector)
-
-    ```julia
-    function constraint!(C, q)
-        C[1] = q[1]^2 + q[2]^2 - 1  # Example: circular constraint
-        return C
-    end
-    ```
-
-2. Allocate output vector and Jacobian once
-
-    ```julia
-    q = [0.8, 0.6]         # Input coordinates
-    C = zeros(1)           # Output vector
-    J = zeros(1, 2)        # Jacobian matrix
-    ```
-
-3. Wrap the function for compatibility with `ForwardDiff`
-
-    ```julia
-    f = q -> constraint!(C, q)
-    ForwardDiff.jacobian!(J, f, q)
-    ```
-
-Now `J` contains $\frac{\partial \boldsymbol{C}}{\partial \boldsymbol{q}}$ — the Jacobian evaluated at `q`.
-
----
-
-### ✅ Benefits
-
-- Works with arbitrary-length constraints and coordinates
-- Supports **automatic differentiation** of complex constraint systems
-- Integrates smoothly with Newton solvers like `NLsolve.jl` or custom implementations
-
----
-
-This pattern is ideal for efficient **position**, **velocity**, and **acceleration** analysis in multibody dynamics using Pluto notebooks.
-
+Grzegorz Orzechowski
 """
 
 # ╔═╡ 58a2b3d4-2990-4599-b148-0432826b801b
 md"""
-# **Working with Julia Packages: Introduction**
+## Introduction
 
 Welcome! In this Pluto.jl slide deck, we’ll explore how to **get started with Julia packages** – from creating your own package to testing and debugging it. These slides are geared towards Julia beginners (with some numerical methods background) who have used Pluto notebooks and are ready to organize code into packages. We will cover the following topics:
 
@@ -140,19 +85,19 @@ Using `dev` registers your package in the active environment by path, so you can
 
 # ╔═╡ 833bfc7b-b5dd-44ea-8d18-c98c3f53525d
 md"""
-## **Revise.jl for Live Coding and Reloading**
+## Revise.jl for Live Coding and Reloading
 
   
 
 One of the biggest boosts to productivity in Julia development is **Revise.jl**, which automatically reloads code changes into a running session. This means you can edit your package code and **see changes without restarting Julia**.
 
-- **What Revise does:** Revise watches the files of your modules and updates function definitions on the fly whenever you save changes. For example, if you edit a function in MyPackage/src/MyPackage.jl, Revise will update the method in your running session so that calling it reflects the new code. This enables a workflow where you run your package, test something, tweak the code, and re-run without restarting Julia each time.
+- **What Revise does:** Revise watches the files of your modules and updates function definitions on the fly whenever you save changes. For example, if you edit a function in `MyPackage/src/MyPackage.jl`, Revise will update the method in your running session so that calling it reflects the new code. This enables a workflow where you run your package, test something, tweak the code, and re-run without restarting Julia each time.
     
-- **Using Revise:** Simply do using Revise at the start of your Julia session (before loading your package). If you’re working in VS Code, note that the Julia extension **loads Revise by default** in the REPL, so you often get this functionality automatically. In a Pluto notebook, you might not need Revise (since Pluto re-reacts to code changes), but for developing packages in a REPL or VS Code, it’s invaluable.
+- **Using Revise:** Simply do `using Revise` at the start of your Julia session (before loading your package). If you’re working in VS Code, note that the Julia extension **loads Revise by default** in the REPL, so you often get this functionality automatically. In a Pluto notebook, you might not need Revise (since Pluto re-reacts to code changes), but for developing packages in a REPL or VS Code, it’s invaluable.
     
-- **Limitations:** Revise can handle redefinitions of functions and most code changes, but **it cannot redefine types (structs) or constants** in a live session . This is actually a limitation of Julia itself: once a struct type is defined, you cannot change its field types or add fields without restarting. Revise will notify you if it detects an impossible change (e.g., modifying a struct). In such cases, you’ll have to stop and restart your Julia session to incorporate the change.
+- **Limitations:** Revise can handle redefinitions of functions and most code changes, but **it cannot redefine types (structs) or constants** in a live session. This is actually a limitation of Julia itself: once a `struct` type is defined, you cannot change its field types or add fields without restarting. Revise will notify you if it detects an impossible change (e.g., modifying a struct). In such cases, you’ll have to stop and restart your Julia session to incorporate the change.
     
-- **Best practices with Revise:** Load Revise at the very beginning (using Revise) so it tracks any subsequent using MyPackage or include calls. Edit your package source files with your favorite editor; when you save, Revise takes care of updating the code in the running session. This gives a live-coding feel even though Julia is compiled. Many Julia developers keep a session open for days using Revise to avoid recompiling everything repeatedly.
+- **Best practices with Revise:** Load Revise at the very beginning (`using Revise`) so it tracks any subsequent `using MyPackage` or `include` calls. Edit your package source files with your favorite editor; when you save, Revise takes care of updating the code in the running session. This gives a live-coding feel even though Julia is compiled. Many Julia developers keep a session open for days using Revise to avoid recompiling everything repeatedly.
     
 - **Note:** Since you can’t change types on the fly, plan your data structures ahead (or see next slide for some strategies). But for function logic, Revise covers you – you can iteratively improve and test your code quickly.
     
@@ -166,20 +111,17 @@ md"""
 
 Defining your own structs (custom types) is central to Julia, but it comes with a caveat: you **cannot redefine a struct in the same session**. Here are some tips for working with structs during development:
 
-- **Immutability vs Mutability:** By default, a struct in Julia is immutable (fields can’t be changed after construction, which is good for performance). You can use mutable struct if you need to change field values of an instance. However, **neither can be redefined completely without restarting** the session. Design your struct with the fields it needs from the start.
+- **Immutability vs Mutability:** By default, a `struct` in Julia is immutable (fields can’t be changed after construction, which is good for performance). You can use `mutable struct` if you need to change field values of an instance. However, **neither can be redefined completely without restarting** the session. Design your struct with the fields it needs from the start.
     
-- **Plan your type design:** Think about the data and operations you’ll need. If you realize you forgot a field or used a wrong type, you’ll have to either make a new type or restart and redefine. For example, if you defined struct Particle; x::Float64; v::Float64; end but you need an acceleration field, you can’t just add it on the fly – you must make a new definition (or restart Julia). Revise will throw an error if it detects a struct definition change .
+- **Plan your type design:** Think about the data and operations you’ll need. If you realize you forgot a field or used a wrong type, you’ll have to either make a new type or restart and redefine. For example, if you defined `struct Particle; x::Float64; v::Float64; end` but you need an acceleration field, you can’t just add it on the fly – you must make a new definition (or restart Julia). Revise will throw an error if it detects a struct definition change.
     
-- **Workarounds for development:** During early prototyping, some developers use tricks to avoid restarts. One strategy is to use **placeholder types** like NamedTuples or dictionaries for quick prototyping of data fields, then convert to a formal struct when things stabilize . Another common trick is to define your struct with a temporary name and update it (e.g., define StructName1, then later redefine as StructName2 and update any references), essentially versioning the type name . This is a bit tedious, and often it’s simpler to restart your Julia session after a major type change. The key point is that changing a type’s definition is a big deal in Julia’s compiled world.
+- **Workarounds for development:** During early prototyping, some developers use tricks to avoid restarts. One strategy is to use **placeholder types** like NamedTuples or dictionaries for quick prototyping of data fields, then convert to a formal struct when things stabilize. Another common trick is to define your struct with a temporary name and update it (e.g., define `StructName1`, then later redefine as `StructName2` and update any references), essentially versioning the type name. This is a bit tedious, and often it’s simpler to restart your Julia session after a major type change. The key point is that changing a type’s definition is a big deal in Julia’s compiled world.
     
 - **Define minimal fields:** Only store what you absolutely need in the struct’s fields (for instance, avoid including redundant data that can be computed from other fields). This will reduce how often you feel the need to change the type later. Additional computed properties can often be provided via functions instead of stored fields.
     
 - **Use constructors for flexibility:** You can provide custom inner or outer constructors for your struct to accept different input forms. This way, if the way you construct the object changes, you might adjust a constructor without changing the struct fields themselves.
     
-- **Mutable vs Immutable performance:** Immutable structs are generally faster and better for most purposes (they can be stack-allocated and inlined by the compiler). Use mutable struct only if you truly need to modify the fields (e.g., for algorithmic reasons or performance in a tight loop where changing an object in-place is needed). Even with a mutable struct, you **still cannot add or remove fields** at runtime; “mutable” only means you can change field values, not the type’s definition.
-    
-
-  
+- **Mutable vs Immutable performance:** Immutable structs are generally faster and better for most purposes (they can be stack-allocated and inlined by the compiler). Use `mutable struct` only if you truly need to modify the fields (e.g., for algorithmic reasons or performance in a tight loop where changing an object in-place is needed). Even with a `mutable struct`, you **still cannot add or remove fields** at runtime; “mutable” only means you can change field values, not the type’s definition.
 
 Remember, this limitation is only about the development phase. Once your types are settled, you likely won’t be redefining them anyway. It’s a small upfront design consideration for a big gain in performance and clarity in Julia code.
 
@@ -189,14 +131,12 @@ Remember, this limitation is only about the development phase. Once your types a
 md"""
 ## Module and Export Conventions
 
-  
-
 Julia packages are just modules (namespaces) with some extra file structure. Here’s how to organize your package module and use exports effectively:
 
-- **Module setup:** In src/MyPackage.jl, you’ll typically have:
+- **Module setup:** In `src/MyPackage.jl`, you’ll typically have:
     
 
-```
+```julia
 module MyPackage
 # ... import or using statements for dependencies ...
 
@@ -217,13 +157,13 @@ foo(b::Bar) = 2b.x + b.y  # example function
 end # module
 ```
 
-- When you do using MyPackage, Julia will execute this file and bring the module into scope. The module ... end block defines a global namespace for your package.
+- When you do `using MyPackage`, Julia will execute this file and bring the module into scope. The `module ... end` block defines a global namespace for your package.
     
-- **Exports:** The export keyword inside a module declares which names (functions, types, constants) should be exported, i.e., made available to users of your package without needing the MyPackage. prefix. For example, if you export foo, Bar, a user can just do using MyPackage; foo(x) instead of MyPackage.foo(x). **Only export your public API** – the functions and types you expect users to call directly. Keep internal helper functions or intermediate names un-exported (users can still access them via MyPackage.func if needed, but they won’t clutter the namespace on using MyPackage).
+- **Exports:** The `export` keyword inside a module declares which names (functions, types, constants) should be exported, i.e., made available to users of your package without needing the `MyPackage`. prefix. For example, if you `export foo, Bar`, a user can just do `using MyPackage; foo(x)` instead of `MyPackage.foo(x)`. **Only export your public API** – the functions and types you expect users to call directly. Keep internal helper functions or intermediate names un-exported (users can still access them via `MyPackage.func` if needed, but they won’t clutter the namespace on `using MyPackage`).
     
-- **Including multiple source files:** As your package grows, you might split code into multiple files for organization (as hinted with include("utilities.jl"), etc.). These included files should not have their own module declarations (they exist within the main module). It’s common to have one top-level module (named after your package) and include other .jl files that contribute to that module. For example, you might have src/MyPackage.jl that includes src/somefeature.jl, etc., all under module MyPackage ... end.
+- **Including multiple source files:** As your package grows, you might split code into multiple files for organization (as hinted with `include("utilities.jl")`, etc.). These included files should not have their own module declarations (they exist within the main module). It’s common to have one top-level module (named after your package) and include other `.jl` files that contribute to that module. For example, you might have `src/MyPackage.jl` that includes `src/somefeature.jl`, etc., all under `module MyPackage ... end`.
     
-- **Module naming:** By convention, the module name matches the package name and is in CamelCase (e.g., package MyPackage.jl contains module MyPackage). Also, source file names typically match the module (with the .jl extension).
+- **Module naming:** By convention, the module name matches the package name and is in CamelCase (e.g., package `MyPackage.jl` contains module `MyPackage`). Also, source file names typically match the module (with the `.jl` extension).
     
 - **Project structure recap:** A Julia package has a layout like:
     
@@ -237,12 +177,9 @@ MyPackage/       (directory)
       runtests.jl    (test script, if you have tests)
 ```
 
-- The [deps] in Project.toml lists package dependencies; when you Pkg.add things in the package’s env, this file updates. The UUID in Project.toml uniquely identifies your package (generated by Pkg.generate). Julia uses it to avoid name conflicts.
+- The `[deps]` in `Project.toml` lists package dependencies; when you `Pkg.add` things in the package’s env, this file updates. The UUID in `Project.toml` uniquely identifies your package (generated by `Pkg.generate`). Julia uses it to avoid name conflicts.
     
-- **Import vs using:** Inside your module, if you rely on other packages, you can use using SomeDependency to bring its exports in, or import SomeDependency to bring it in without exports. Use whichever is appropriate (if you only need a few names, you might do import X: name1, name2). Be mindful of extending functions from other modules (use import for the function before extending via new methods).
-    
-
-  
+- **Import vs using:** Inside your module, if you rely on other packages, you can use `using SomeDependency` to bring its exports in, or `import SomeDependency` to bring it in without exports. Use whichever is appropriate (if you only need a few names, you might do `import X: name1, name2`). Be mindful of extending functions from other modules (use `import` for the function before extending via new methods).
 
 In summary, treat the module as the encapsulation of your package’s code. Use exports to provide a clean interface, and keep everything else internal to avoid namespace pollution for users.
 
@@ -255,12 +192,12 @@ md"""
 
 Testing is crucial, even for small projects. Julia’s built-in **Test** standard library makes it easy to write and run tests:
 
-- **Test environment setup:** Ensure that Test is listed as a dependency in your package. When you generated the package, a test directory with a runtests.jl might be created (depending on Julia version). If not, create test/runtests.jl. Also add Test to your package’s environment (e.g., Pkg.add("Test") in the package environment) – in modern Julia, generating a package often includes Test by default in the Project.toml [extras] and creates a test file.
+- **Test environment setup:** Ensure that `Test` is listed as a dependency in your package. When you generated the package, a `test` directory with a `runtests.jl` might be created (depending on Julia version). If not, create `test/runtests.jl`. Also `add Test` to your package’s environment (e.g., `Pkg.add("Test")` in the package environment) – in modern Julia, generating a package often includes `Test` by default in the `Project.toml` `[extras]` and creates a test file.
     
-- **Writing tests:** In test/runtests.jl, start by using MyPackage and using Test. Then you can define test sets. For example:
+- **Writing tests:** In `test/runtests.jl`, start by `using MyPackage` and `using Test`. Then you can define test sets. For example:
     
 
-```
+```julia
 # test/runtests.jl
 using MyPackage, Test
 
@@ -276,27 +213,27 @@ using MyPackage, Test
 end
 ```
 
-- Here we use @test for checking conditions (each will report pass/fail) and @testset to group related tests with a label. There are also macros like @test_throws (to verify that calling a function throws a certain exception), @testsets can be nested, etc.
+- Here we use `@test` for checking conditions (each will report pass/fail) and `@testset` to group related tests with a label. There are also macros like `@test_throws` (to verify that calling a function throws a certain exception), `@testsets` can be nested, etc.
     
 - **Running tests:** To run your package’s tests, you have a few options:
     
-    - **Pkg REPL:** Activate the package (or just be in the main environment if you did dev) and do pkg> test MyPackage. This will load test/runtests.jl and execute it. You will see a summary of test results (e.g., how many passed) .
+    - **Pkg REPL:** Activate the package (or just be in the main environment if you did `dev`) and do `pkg> test MyPackage`. This will load `test/runtests.jl` and execute it. You will see a summary of test results (e.g., how many passed) .
         
-    - **Programmatically:** In a Julia session, you can do using Pkg; Pkg.test("MyPackage").
+    - **Programmatically:** In a Julia session, you can do using `Pkg; Pkg.test("MyPackage")`.
         
-    - **VS Code test explorer:** If you’re using VS Code, the Julia extension might show a “test” icon or allow you to run tests from the UI (it discovers tests by looking at the test folder).
+    - **VS Code test explorer:** If you’re using VS Code, the Julia extension might show a “test” icon or allow you to run tests from the UI (it discovers tests by looking at the `test` folder).
         
-    - **From Pluto:** Pluto is not typically used to run package tests, but you could in theory include using Pkg; Pkg.test("MyPackage") in a Pluto cell (though it’s more common to run tests via REPL or CI).
+    - **From Pluto:** Pluto is not typically used to run package tests, but you could in theory include `using Pkg; Pkg.test("MyPackage")` in a Pluto cell (though it’s more common to run tests via REPL or CI).
         
     
-- **Continuous Integration (CI):** If your students eventually put code on GitHub, they can set up GitHub Actions to run Pkg.test on each push, which is great practice. For now, running tests locally is fine.
+- **Continuous Integration (CI):** If your students eventually put code on GitHub, they can set up GitHub Actions to run `Pkg.test` on each push, which is great practice. For now, running tests locally is fine.
     
 - **Why test?** Writing tests ensures your package works as expected and helps catch regressions when you modify code. It also provides usage examples for anyone reading the tests. Encourage students to test both typical cases and edge cases (e.g., what if input is negative, zero, NaN, etc., depending on context).
     
 
   
 
-Remember to include using Test in your test script. The Test stdlib provides many tools for writing robust tests (like nearly-equal comparisons with ≈, or @testset setup/teardown functionality), which they can explore as needed .
+Remember to include `using Test` in your test script. The Test stdlib provides many tools for writing robust tests (like nearly-equal comparisons with ≈, or @testset setup/teardown functionality), which they can explore as needed .
 
 """
 
@@ -731,17 +668,17 @@ project_hash = "da39a3ee5e6b4b0d3255bfef95601890afd80709"
 """
 
 # ╔═╡ Cell order:
-# ╟─aa4ec058-3012-11f0-1df6-8b2f48938ec3
+# ╟─f09aec17-c235-4c1c-bf32-c9d9cd345feb
 # ╟─58a2b3d4-2990-4599-b148-0432826b801b
 # ╟─f5887bab-576a-4991-a077-58413e7f3a5f
 # ╟─833bfc7b-b5dd-44ea-8d18-c98c3f53525d
 # ╟─5481a651-d77b-4966-911f-3ff2bbdf050a
 # ╟─c5aa9dd2-aacd-4e39-aceb-693679b03ed8
-# ╠═9fb6a51c-f183-49f4-b584-083d2391c631
-# ╠═a5560aa7-e985-4504-9534-8c71fae525c4
+# ╟─9fb6a51c-f183-49f4-b584-083d2391c631
+# ╟─a5560aa7-e985-4504-9534-8c71fae525c4
 # ╠═16482ac0-83ec-4253-ac08-2c3a182ba86a
 # ╠═99b50fd7-bf78-4e8b-b5f8-ce8d7291fc87
-# ╠═cbf450ac-911f-4ec2-82fc-a47237dec16b
+# ╟─cbf450ac-911f-4ec2-82fc-a47237dec16b
 # ╠═c0d16ea3-8965-42dd-8c5c-452656a80846
 # ╠═2070d6c6-a89a-40eb-b39a-efdbea46402f
 # ╟─00000000-0000-0000-0000-000000000001

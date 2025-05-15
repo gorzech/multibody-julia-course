@@ -708,6 +708,70 @@ To perform Newton-Raphson iterations or compute velocities and accelerations, we
 You now have everything needed to implement position analysis for multibody systems in Julia!
 """
 
+# ╔═╡ 09a60112-eb72-466e-9bf6-2403b0f2e9aa
+md"""
+
+## Reusing `ForwardDiff.jl` for Constraint Jacobians
+
+When performing position analysis in multibody systems, we often need to compute the **Jacobian** of the constraint equations $\boldsymbol{C}(\boldsymbol{q})$.
+
+Instead of recomputing from scratch each time, we can use `ForwardDiff.jl` efficiently by reusing memory.
+
+---
+
+### 🔧 Why Reuse?
+
+- **Avoid memory allocations** at each Newton iteration
+- **Improve performance** significantly for larger systems
+- Reuse is essential when constraints are evaluated **repeatedly**, e.g., in:
+  - Newton–Raphson loops
+  - Velocity and acceleration analysis
+  - Sensitivity studies
+
+---
+
+### ✍️ Step-by-Step
+
+1. Define your constraint function in-place (it writes into a preallocated output vector)
+
+    ```julia
+    function constraint!(C, q)
+        C[1] = q[1]^2 + q[2]^2 - 1  # Example: circular constraint
+        return C
+    end
+    ```
+
+2. Allocate output vector and Jacobian once
+
+    ```julia
+    q = [0.8, 0.6]         # Input coordinates
+    C = zeros(1)           # Output vector
+    J = zeros(1, 2)        # Jacobian matrix
+    ```
+
+3. Wrap the function for compatibility with `ForwardDiff`
+
+    ```julia
+    f = q -> constraint!(C, q)
+    ForwardDiff.jacobian!(J, f, q)
+    ```
+
+Now `J` contains $\frac{\partial \boldsymbol{C}}{\partial \boldsymbol{q}}$ — the Jacobian evaluated at `q`.
+
+---
+
+### ✅ Benefits
+
+- Works with arbitrary-length constraints and coordinates
+- Supports **automatic differentiation** of complex constraint systems
+- Integrates smoothly with Newton solvers like `NLsolve.jl` or custom implementations
+
+---
+
+This pattern is ideal for efficient **position**, **velocity**, and **acceleration** analysis in multibody dynamics using Pluto notebooks.
+
+"""
+
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
@@ -3507,7 +3571,7 @@ version = "1.8.1+0"
 """
 
 # ╔═╡ Cell order:
-# ╠═5c243277-0545-492c-8979-4f88c86375db
+# ╟─5c243277-0545-492c-8979-4f88c86375db
 # ╠═fb64f0ef-00ee-413f-84cb-c196fb764497
 # ╟─6ce1f2d0-80ad-4a9f-a0d8-b13cc9795785
 # ╟─bc63ddfa-c3f8-4e97-91ec-226592e41446
@@ -3524,7 +3588,8 @@ version = "1.8.1+0"
 # ╟─853ca0e1-f468-4d07-a6e8-436f1adc0957
 # ╟─d96a3996-8199-494b-99e3-1b356ada8f03
 # ╟─00014bad-ac20-4a9a-91eb-fd9162a22a3a
-# ╠═63347cb0-bd31-4711-9c41-ce49c82d8e78
+# ╟─63347cb0-bd31-4711-9c41-ce49c82d8e78
 # ╟─d2e458db-3986-4860-a4d2-bcd167ac1805
+# ╟─09a60112-eb72-466e-9bf6-2403b0f2e9aa
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
