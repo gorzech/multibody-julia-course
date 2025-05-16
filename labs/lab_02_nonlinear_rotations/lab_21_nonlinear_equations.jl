@@ -22,6 +22,15 @@ begin
 	end
 end;
 
+# ╔═╡ 71418c74-874b-4578-ad24-5f4ac1edc621
+md"""
+# Programming Multibody Systems in Julia
+
+### Lab 3: Nonlinear Euqtions, Kinematics, ODEs
+
+Grzegorz Orzechowski
+"""
+
 # ╔═╡ 5d3d363b-0003-4dc8-abad-15a730c4ae89
 md"""
 ## G.1 NewtonSolver.jl Package
@@ -311,6 +320,21 @@ Now use your derived system to compare the behavior of two numerical integration
 
 - Use the calculated Jacobian with those solvers.
 
+"""
+
+# ╔═╡ 83bc57ab-111f-448b-8f64-f4c517fb84ab
+md"""
+## My Reflection After Todays Classes
+
+Please include a short written reflection (max ~200 words) on:
+ - What went well
+ - What you found challenging
+ - What you’d do differently next time
+"""
+
+# ╔═╡ 4d0af671-c15e-4135-8793-09ca65b91fb3
+md"""
+Your reflection goes here... 
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -2986,6 +3010,7 @@ version = "1.8.1+0"
 """
 
 # ╔═╡ Cell order:
+# ╟─71418c74-874b-4578-ad24-5f4ac1edc621
 # ╠═db5ba318-c13c-41a5-b99b-7babb253c6c2
 # ╟─5d3d363b-0003-4dc8-abad-15a730c4ae89
 # ╟─47951112-017c-4eb5-ac10-ef490ee63d11
@@ -2995,5 +3020,7 @@ version = "1.8.1+0"
 # ╟─9145a5b3-3a9d-4aae-b5bf-7075555b30b5
 # ╟─863e24b9-0a43-4e04-b7ea-303081ad24d5
 # ╟─3a6218a2-d98f-4f11-a8d4-8e382fcd929b
+# ╟─83bc57ab-111f-448b-8f64-f4c517fb84ab
+# ╠═4d0af671-c15e-4135-8793-09ca65b91fb3
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
