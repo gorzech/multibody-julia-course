@@ -22,9 +22,88 @@ begin
 	end
 end;
 
+# ╔═╡ 5d3d363b-0003-4dc8-abad-15a730c4ae89
+md"""
+## G.1 NewtonSolver.jl Package
+
+1. Following the **Toy Project Idea: Newton’s Method Solver** from `lecture_24` and **Newton-Raphson’s Method** from `lecture_13` create the NewtonSolver.jl package. 
+
+2. Export function `newton_system` and include available tests. Check if everything works by running `test NewtonSolver` in the REPL package mode.
+
+3. Write an overload of the `newton_system` that does not require a Jacobian. _Hint_: Use ForwardDiff.jl or similar and follow hints from lectures to avoid multiple allocations.
+
+"""
+
+# ╔═╡ 47951112-017c-4eb5-ac10-ef490ee63d11
+md"""
+
+## G.2 Write a Unit Test for NewtonSolver.jl
+
+Your task is to verify the correctness of the Newton method implemented in the `NewtonSolver.jl` package by writing a new standalone unit test file.
+
+---
+
+### Instructions
+
+- Choose a simple algebraic equation and perform two iterations of Newton’s method manually.
+- Use this result to define an appropriate tolerance for verifying correctness.
+- Use `NewtonSolver.jl` to compute the result under the same conditions.
+- Compare the computed result with the expected one using `@test`.
+
+---
+
+### Test Structure
+
+- Named your test `"Newton method two-step validation"`.
+- Place your test in the file:
+
+`test/test_Newton.jl`
+
+- Check if new test is executed.
+"""
+
+# ╔═╡ 226cffc0-2b20-4c06-9403-892d16bff2a6
+md"""
+
+## **✅ How to Use a Local Dev Package in Pluto**
+
+1. **In your Julia REPL**, develop the package:
+    
+
+```julia
+using Pkg
+Pkg.develop(path="path/to/your/NewtonSolver")
+```
+
+Or use `dev path/to/your/NewtonSolver` in package mode.
+
+This adds it to the current environment (e.g., ~/PlutoNotebooks). 
+
+2. **In Pluto**, activate the notebook environment:
+    
+
+```julia
+### Pluto cell ###
+begin
+	import Pkg
+	Pkg.activate(@__DIR__)
+	Pkg.instantiate()
+end
+```
+
+3. **Then just use your package** as normal:
+    
+
+```julia
+using NewtonSolver
+```
+
+If you’re using a project-specific environment (recommended), the package will remain available to all notebooks in that directory.
+"""
+
 # ╔═╡ d4a1e5e6-a011-4b27-bca9-da7779dec972
 md"""
-## Hands-on 2 -- Slider-crank mechanism
+## H.1 Slider-crank mechanism
 
 - Having $a = OA$, $b = AB$, and $d = OB$: 
 $$\mathbf{x} = \begin{bmatrix} \theta \\ d \end{bmatrix} $$ 
@@ -40,6 +119,198 @@ Solve $\mathbf{f}(\mathbf{x}) = \mathbf{0}$ for $\mathbf{x}$ for given $\phi$.
 - Remember to use proper code indent, comments, and meaningful variable and file names.
 
 $(embed_image("../../assets/figures/lecture_13_slider_crank_example.png", type="png", height=300))
+"""
+
+# ╔═╡ 2b744566-e5cd-42e9-a247-c157b910954b
+md"""
+## H.2: Solve a Nonlinear Equation for a Vibrating Beam
+
+We analyze the vibration of a **clamped-free beam** using a well-known nonlinear equation:
+
+$$\cosh \beta \cos \beta = -1$$
+
+This equation determines the **mode shape constants** $\beta_n$ of the beam.
+
+---
+
+### (a) Plot the Nonlinear Equation
+
+- Define the function $f(\beta) = \cosh \beta \cos \beta + 1$
+- Plot $f(\beta)$ over the interval $\beta \in [0, 20]$
+
+#### Hint 💡
+The amplitude of $f(\beta)$ increases rapidly with $\beta$, making visualization difficult.  
+To improve the plot, use a **damped version** of the function:
+
+$$g(\beta) = e^{-\beta} f(\beta)$$
+
+This scaling does not affect the root locations but makes the graph easier to interpret. **Plot** $g(\beta)$ **instead** to observe the zero crossings more clearly.
+
+---
+
+### (b) Compute the First Three Frequencies
+
+**Use a single call to the `newton_system` function.**
+
+Once $\beta_n$ roots are found, compute corresponding frequencies using:
+
+$$\beta^4 = \omega^2 \frac{\rho A}{EI}$$
+
+Use the following beam parameters:
+
+- Width $b = 25$ mm, height $h = 8$ mm
+- Density $\rho = 7850 \ \mathrm{kg/m^3}$, Young’s modulus $E = 2 \cdot 10^{11}$ Pa
+- Cross-sectional area: $A = b h$
+- Moment of inertia: $I = \frac{b h^3}{12}$
+
+---
+
+### Goal
+
+Use `NewtonSolver.jl` to:
+
+- Identify three smallest positive $\beta_n$ values
+- Compute the corresponding natural frequencies $\omega_n$
+
+📌 *This problem models real-world structural vibration and demonstrates nonlinear root-finding applied to mechanical systems.*
+"""
+
+# ╔═╡ 9145a5b3-3a9d-4aae-b5bf-7075555b30b5
+md"""
+## I.1 ODE Solvers Package with Common Interface
+
+Your task is to implement a collection of one-step ODE integration methods in Julia as a **new package**. You will build and test several numerical solvers, including both explicit and implicit methods.
+
+---
+
+### 🧩 Methods to Implement
+
+Include the following solvers:
+
+- **Forward Euler (FE)**
+- **Explicit (Improved) Euler / Euler-Cromer (EC)**
+- **Heun’s method**
+- **Runge-Kutta 4th order (RK4)**
+- **Backward Euler (BE)** — implemented using **Newton–Raphson**
+
+Use the equation for BE:
+
+$$\boldsymbol{u}^{n+1} = \boldsymbol{u}^n + \Delta t \, \boldsymbol{f}(t_{n+1}, \boldsymbol{u}^{n+1})$$
+
+---
+
+### 🧪 Requirements
+
+1. **Create a new Julia package** using `PkgTemplates` or `Pkg.generate` (e.g. `ODESolvers.jl`)
+2. Define a **common function interface** for all solvers, e.g.:
+
+    ```julia
+    step!(integrator::YourMethod, u, t, dt, f)
+    ```
+
+3. Use your previously developed `NewtonSolver.jl` for solving the nonlinear equation in the BE method.
+
+4. Write **unit tests** for each method using examples from the lectures or notes. Tests should check:
+
+    - Accuracy on simple linear ODEs
+    - Interface consistency
+
+---
+
+### 📦 Project Layout
+
+```
+ODESolvers.jl/
+
+├── src/
+│   ├── ODESolvers.jl
+│   ├── methods/
+│   │   ├── euler.jl
+│   │   ├── heun.jl
+│   │   ├── rk4.jl
+│   │   ├── backward_euler.jl
+├── test/
+│   ├── runtests.jl
+│   ├── test_FE.jl
+│   ├── test_BE.jl
+…
+```
+
+### ✅ Final Checks
+
+- Run your full test suite with:
+```julia
+  ] test ODESolvers
+```
+
+- Make sure everything runs without warnings or errors.
+"""
+
+# ╔═╡ 863e24b9-0a43-4e04-b7ea-303081ad24d5
+md"""
+## J.1: Symbolic Derivation of Equations of Motion
+
+You are asked to derive the equations of motion of a mechanical system using symbolic computation.
+
+ $(embed_image("../../assets/figures/lab_21_2dof_system.png", type="png", height=300))
+
+---
+
+### 1️⃣ Define System Energies
+
+- Choose generalized coordinates $\boldsymbol{q}$ and their time derivatives $\dot{\boldsymbol{q}}$
+- Define the **kinetic energy** $T(\boldsymbol{q}, \dot{\boldsymbol{q}})$
+- Define the **potential energy** $V(\boldsymbol{q})$
+- Define a **dissipative function** $\mathcal{D}(\boldsymbol{q}, \dot{\boldsymbol{q}})$
+
+---
+
+### 2️⃣ Derive the Equations of Motion
+
+- Use the **Euler–Lagrange equations**:
+  $$\frac{d}{dt} \left( \frac{\partial \mathcal{L}}{\partial \dot{\boldsymbol{q}}} \right) - \frac{\partial \mathcal{L}}{\partial \boldsymbol{q}} + \frac{\partial \mathcal{D}}{\partial \dot{\boldsymbol{q}}} = \boldsymbol{0}$$
+
+  where $\mathcal{L} = T - V$ is the Lagrangian.
+
+- Use `Symbolics.jl` to compute the symbolic form of the equations
+
+---
+
+### 3️⃣ Compute the Jacobian Symbolically
+
+- Express the first-order system as $\dot{\boldsymbol{u}} = \boldsymbol{f}(t, \boldsymbol{u})$
+- Use `Symbolics.jl` to compute:
+  $$\boldsymbol{J} = \frac{\partial \boldsymbol{f}}{\partial \boldsymbol{u}}$$
+
+You will use these equations and the Jacobian in the next part of the assignment.
+"""
+
+# ╔═╡ 3a6218a2-d98f-4f11-a8d4-8e382fcd929b
+md"""
+## J.2: Numerical Integration and Comparison
+
+Now use your derived system to compare the behavior of two numerical integration approaches.
+
+---
+
+### 1️⃣ Solve Using Backward Euler (BE)
+
+- Use your previously implemented BE method
+- Solve the system using **Newton–Raphson** and the symbolic Jacobian
+- Plot the solution
+
+---
+
+### 2️⃣ Solve Using Julia’s Stiff ODE Solver
+
+- Use `DifferentialEquations.jl` to solve the system with a stiff solver:
+
+```julia
+  solve(prob, Rodas5())  # or Rosenbrock23()
+```
+
+- Use the calculated Jacobian with those solvers.
+
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -2716,6 +2987,13 @@ version = "1.8.1+0"
 
 # ╔═╡ Cell order:
 # ╠═db5ba318-c13c-41a5-b99b-7babb253c6c2
+# ╟─5d3d363b-0003-4dc8-abad-15a730c4ae89
+# ╟─47951112-017c-4eb5-ac10-ef490ee63d11
+# ╟─226cffc0-2b20-4c06-9403-892d16bff2a6
 # ╟─d4a1e5e6-a011-4b27-bca9-da7779dec972
+# ╟─2b744566-e5cd-42e9-a247-c157b910954b
+# ╟─9145a5b3-3a9d-4aae-b5bf-7075555b30b5
+# ╟─863e24b9-0a43-4e04-b7ea-303081ad24d5
+# ╟─3a6218a2-d98f-4f11-a8d4-8e382fcd929b
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

@@ -188,7 +188,7 @@ In summary, treat the module as the encapsulation of your package’s code. Use 
 # ╔═╡ 9fb6a51c-f183-49f4-b584-083d2391c631
 md"""
 
-## **Testing Your Package with Test.jl**
+## Testing Your Package with Test.jl
 
 Testing is crucial, even for small projects. Julia’s built-in **Test** standard library makes it easy to write and run tests:
 
@@ -240,7 +240,7 @@ Remember to include `using Test` in your test script. The Test stdlib provides m
 # ╔═╡ a5560aa7-e985-4504-9534-8c71fae525c4
 md"""
 
-## **Debugging in VS Code**
+## Debugging in VS Code
 
   
 
@@ -272,7 +272,7 @@ Encourage students to use the debugger to step through their code, especially if
 # ╔═╡ 16482ac0-83ec-4253-ac08-2c3a182ba86a
 md"""
 
-## **Using VS Code with Julia**
+## Using VS Code with Julia
 
   
 
@@ -304,7 +304,7 @@ In summary, VS Code with the Julia plugin provides a robust environment for codi
 # ╔═╡ 99b50fd7-bf78-4e8b-b5f8-ce8d7291fc87
 md"""
 
-## **StaticArrays.jl for Small Fixed-Size Matrices/Vectors**
+## StaticArrays.jl for Small Fixed-Size Matrices/Vectors
 
   
 
@@ -324,7 +324,7 @@ When working with linear algebra or geometry in Julia, one common scenario is de
 - **Using StaticArrays:** First, add the package (Pkg.add("StaticArrays")) and using StaticArrays. You can create a static array with the @SVector or @SMatrix macros for convenience, or by calling the type constructors. For example:
     
 
-```
+```julia
 using StaticArrays
 v = @SVector [1.0, 2.0, 3.0]         # SVector{3,Float64}
 w = @SVector [2.0, 1.0, 0.0]         # another 3-element static vector
@@ -340,7 +340,6 @@ detM = det(M)                        # StaticArrays defines linear algebra for S
 - **Example scenario:** In a physics simulation with a few bodies, using SVector{3,Float64} for positions and velocities can drastically cut down on allocations and improve speed. Or for a Newton’s method Jacobian in 2 variables, using an SMatrix{2,2} could make each iteration faster by avoiding creating temporary heap arrays for Jacobians.
     
 
-  
 
 In our upcoming toy project example, we’ll highlight where StaticArrays could be applied for efficiency. But even if students don’t use StaticArrays immediately, it’s good to know about this tool as they start writing performance-sensitive Julia code involving small vector/matrix math.
 
@@ -349,13 +348,11 @@ In our upcoming toy project example, we’ll highlight where StaticArrays could 
 # ╔═╡ cbf450ac-911f-4ec2-82fc-a47237dec16b
 md"""
 
-## **Toy Project Idea: Newton’s Method Solver**
-
-  
+## Toy Project Idea: Newton’s Method Solver
 
 Now that we’ve covered the toolbox, let’s apply it in a small project. One suggested toy project is to implement a **basic nonlinear equation solver using Newton’s method**. This can solidify concepts like module structure, using external packages (for possibly linear algebra or StaticArrays), and writing tests. The idea:
 
-- **What to build:** A Julia package (let’s call it NewtonSolver.jl) that provides a function to find roots of a nonlinear equation or system using Newton’s method. Newton’s method is an iterative algorithm to solve f(x) = 0 by linearizing f around a guess and iteratively improving that guess: x_{new} = x - J(f)^{-1} * f(x) (where J is the Jacobian matrix for multivariate f, or derivative for single-variable case).
+- **What to build:** A Julia package (let’s call it NewtonSolver.jl) that provides a function to find roots of a nonlinear equation or system using Newton’s method. Newton’s method is an iterative algorithm to solve f(x) = 0 by linearizing f around a guess and iteratively improving that guess: $x_{new} = x - J(f)^{-1} * f(x)$ (where J is the Jacobian matrix for multivariate f, or derivative for single-variable case).
     
 - **Scope:** For simplicity, the solver can assume the user provides the function $f$ and its Jacobian $J$. This avoids implementing automatic differentiation or finite differencing (which is possible but beyond a basic intro). We can handle both the scalar case (f: ℝ -> ℝ) and small vector case (f: ℝ^n -> ℝ^n). This is a good use case for StaticArrays if n is small, since each iteration might involve inverting a small Jacobian matrix.
     
@@ -392,7 +389,7 @@ Now that we’ve covered the toolbox, let’s apply it in a small project. One s
 # ╔═╡ c0d16ea3-8965-42dd-8c5c-452656a80846
 md"""
 
-## **Example Package: NewtonSolver.jl (Outline & Code)**
+## Example Package: NewtonSolver.jl (Outline & Code)
 
   
 
@@ -409,7 +406,7 @@ NewtonSolver/              ← Package directory
 
 Now, key parts of the source and test files:
 
-```
+```julia
 # src/NewtonSolver.jl
 module NewtonSolver
 export newton_solve
@@ -459,7 +456,7 @@ A few notes on this implementation:
 
 Now, the testing file:
 
-```
+```julia
 # test/runtests.jl
 using NewtonSolver
 using Test
@@ -676,10 +673,10 @@ project_hash = "da39a3ee5e6b4b0d3255bfef95601890afd80709"
 # ╟─c5aa9dd2-aacd-4e39-aceb-693679b03ed8
 # ╟─9fb6a51c-f183-49f4-b584-083d2391c631
 # ╟─a5560aa7-e985-4504-9534-8c71fae525c4
-# ╠═16482ac0-83ec-4253-ac08-2c3a182ba86a
-# ╠═99b50fd7-bf78-4e8b-b5f8-ce8d7291fc87
+# ╟─16482ac0-83ec-4253-ac08-2c3a182ba86a
+# ╟─99b50fd7-bf78-4e8b-b5f8-ce8d7291fc87
 # ╟─cbf450ac-911f-4ec2-82fc-a47237dec16b
-# ╠═c0d16ea3-8965-42dd-8c5c-452656a80846
+# ╟─c0d16ea3-8965-42dd-8c5c-452656a80846
 # ╠═2070d6c6-a89a-40eb-b39a-efdbea46402f
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
