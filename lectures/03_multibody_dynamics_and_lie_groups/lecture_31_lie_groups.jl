@@ -16,7 +16,7 @@ macro bind(def, element)
     #! format: on
 end
 
-# ╔═╡ 104730c1-d576-4375-b75e-13123e970bdb
+# ╔═╡ ea28a805-1c6d-4d96-b661-4b60a592eed9
 begin
 	using DifferentialEquations
 	import PlotlyJS
@@ -24,243 +24,544 @@ begin
 	using LaTeXStrings
 	using PlutoUI
 	using LinearAlgebra
+	using BenchmarkTools
+	plotlyjs()
 end;
 
-# ╔═╡ ed866e82-2722-11f0-290a-79ad6e0c862c
+# ╔═╡ ebbb9fef-322e-4243-a3f1-ccb7ede44dc8
+using StaticArrays
+
+# ╔═╡ bd11828d-81ca-42d9-850c-f54422335b5e
 md"""
 # Programming Multibody Systems in Julia
 
-### Lecture 4: Rigid Body Rotations and Quaternions
+### Lecture 8: Lie-Group Integrators for Rigid Body Rotation in Multibody Dynamics
+
+**Preserving Rotation Manifold Structure in Numerical Integration**
 
 Grzegorz Orzechowski
 """
 
-# ╔═╡ 76361d5f-fac2-4420-b99b-9a24e7be3984
+# ╔═╡ 7d381c3f-c221-4f1f-9fea-be99dac678f5
 md"""
-## Euler Parameters: Definition & Geometric Meaning
 
-Euler parameters are a four-parameter description of a 3D rotation (also called **Euler–Rodrigues parameters**). They correspond to an **axis–angle** representation of a rotation. Given a rotation by angle φ about a unit axis **n**, we define:
+## Outline
 
--  $e₀ = \cos(φ/2)$ (scalar component)
+1. **Motivation:** Why special integrators are needed for rotations (manifold drift and constraints).
     
--  $\boldsymbol{e} = [e₁, e₂, e₃]^\top = \boldsymbol{n} · \sin(φ/2)$ (vector component).
+2. **Mathematical Foundations:** Rotation as a Lie group (SO(3), quaternions) and Lie algebra concepts.
     
-    These parameters thus encode the rotation angle and axis: $e₀$ represents the “amount” of rotation (via half-angle), while $e₁, e₂, e₃$ point along the rotation axis scaled by $\sin(φ/2)$. Geometrically, any 3D rotation can be described by some axis and angle (Euler’s rotation theorem), and Euler parameters are a convenient numerical representation of that rotation. Notably, the four parameters $(e_0, e_1, e_2, e_3)$ can be viewed as the components of a **quaternion** representing the orientation.
+3. **Exponential & Log Maps:** Moving between the Lie algebra and the rotation group.
     
-"""
-
-# ╔═╡ f67a7a9c-f5e4-411c-891a-db10745e01b3
-md"""
-Rotation axis component $u_x$
-"""
-
-# ╔═╡ 9164f8e8-f4ca-4d84-94b1-a92054f640a2
-@bind ux Slider(-1.0:0.1:1.0, default=0.5, show_value=true)
-
-# ╔═╡ 27a0c2d5-58ee-4de2-bf5e-4f20e4eca98c
-md"""
-Rotation axis component $u_y$
-"""
-
-# ╔═╡ b859f319-d0f4-41f6-86fe-b1dfc0f01806
-@bind uy Slider(-1.0:0.1:1.0, default=0.5, show_value=true)
-
-# ╔═╡ 5dd1c35b-2a8b-4531-aa8e-305b12bafcdb
-md"""
-Rotation axis component $u_z$
-"""
-
-# ╔═╡ 1def9119-468f-4bb2-9857-ea54986b36bc
-@bind uz Slider(-1.0:0.1:1.0, default=0.2, show_value=true)
-
-# ╔═╡ 758b8ba6-6a46-4ae5-831f-b0c1ecc83485
-md"""
-Rotation angle $\theta$ (°)
-"""
-
-# ╔═╡ 6680a825-0ead-41a0-8eef-63d36fd06c43
-@bind θ  Slider(0:5:360,      default=45,  show_value=true)
-
-# ╔═╡ 9b95787c-3858-4c7f-90e5-d7940fad378b
-### Pluto.jl cell ###
-begin
-    # using PlotlyJS          # ] add PlotlyJS
-    plotlyjs()               # 3D rotations feel smoother
-
-    # 2) Normalize axis
-    u = normalize([ux, uy, uz])
-
-    # 3) Build the quaternion (Euler parameters)
-    th = θ * π/180
-    q0 = cos(th/2)
-    qv = sin(th/2) * u              # vector part
-    # for clarity:
-    q1, q2, q3 = qv
-
-    # 4) Convert quaternion to rotation matrix R
-    R = [
-	    q0^2 + q1^2 - q2^2 - q3^2   2*(q1*q2 - q0*q3)       2*(q1*q3 + q0*q2);
-	    2*(q2*q1 + q0*q3)           q0^2 - q1^2 + q2^2 - q3^2 2*(q2*q3 - q0*q1);
-	    2*(q3*q1 - q0*q2)           2*(q3*q2 + q0*q1)       q0^2 - q1^2 - q2^2 + q3^2]
-
-    # 5) Original vector and its rotated image
-    v0 = [1.0, 0.0, 0.0]
-    v1 = R * v0
-
-    # 6) Build a translucent unit‐sphere
-    ϕ = range(0, 2π; length=40)
-    θs = range(0, π; length=20)
-    xs = [sin(t)*cos(p) for t in θs, p in ϕ]
-    ys = [sin(t)*sin(p) for t in θs, p in ϕ]
-    zs = [cos(t)        for t in θs, p in ϕ]
-
-    # 7) Plot!
-    # now use `plot` with seriestype=:surface`
-    plt = plot(
-      xs, ys, zs;
-      seriestype  = :surface,
-      opacity     = 0.2,
-      color       = :gray,
-      showscale   = false,
-      legend      = false,
-      xlabel      = "x",
-      ylabel      = "y",
-      zlabel      = "z"
-    )
-    # original vector in blue
-    plot!(plt, [0,v0[1]], [0,v0[2]], [0,v0[3]]; lw=4, color=:blue)
-    scatter!(plt, [v0[1]], [v0[2]], [v0[3]]; marker=(6,:blue))
-
-    # rotated vector in red
-    plot!(plt, [0,v1[1]], [0,v1[2]], [0,v1[3]]; lw=4, color=:red)
-    scatter!(plt, [v1[1]], [v1[2]], [v1[3]]; marker=(6,:red))
-
-    # nice axes limits & labels
-    xlims!(-1,1); ylims!(-1,1); zlims!(-1,1)
-
-    # 8) Show quaternion components
-    annotate!(
-      plt,
-      (-0.9, 0.9, 0.9,
-       text("q = [$(round(q0,digits=3)), $(round(q1,digits=3)), $(round(q2,digits=3)), $(round(q3,digits=3))]", :green))
-    )
-
-    plt
-end
-
-# ╔═╡ c8d97023-21f9-4b51-828f-635b71b91dbf
-md"""
-
-## Euler Parameters and Unit Quaternions
-
-Euler parameters are essentially **unit quaternions** – quaternions of unit length used to represent rotations. A quaternion can be written as 
-
-$\boldsymbol{q} = e_0 + e_1 \mathbf{i} + e_2 \mathbf{j} + e_3 \mathbf{k}$
-
-(with $e_0$ scalar part, and $[e_1,e_2,e_3]$ as the vector part). For a valid rotation, these parameters satisfy a normalization constraint:
-
-$e_0^2 + e_1^2 + e_2^2 + e_3^2 = 1,$
-
-ensuring only three degrees of freedom (the rotation axis and angle). This unit-length condition arises because an arbitrary rotation in 3D has just three independent parameters (the fourth quaternion component is determined by the first three). In practice, Euler parameters provide a **singularity-free** orientation description (unlike Euler angles, they have no gimbal lock) and can smoothly cover all possible orientations on the 3D unit sphere (S³).
+4. **Lie-Group Integration Concepts:** Geodesic updates via group operations vs. classical integrators.
+    
+5. **Lie-Group RK4 Algorithm:** Step-by-step rundown preserving $SO(3)$ structure (using quaternions).
+    
+6. **Implementation Details:** Practical considerations in a programming context (Pluto/Julia).
+    
+7. **Applications in Multibody Dynamics:** Benefits of structure preservation for multi-rigid-body simulations.
+    
+8. **Numerical Examples:** Comparing classical vs. Lie-group integrators on free and forced rotations.
+    
+9. **Conclusions & References.**
+    
 
 """
 
-# ╔═╡ b9ad21d4-d4a4-4f20-a55c-037a62fd063c
+# ╔═╡ 4b028cb5-5ca3-4499-91ec-e65c71138874
 md"""
 
-## Orientation Representation in Rigid Body Dynamics
+## Motivation
 
   
 
-Unit quaternions (Euler parameters) are widely used to represent the orientation (attitude) of rigid bodies in dynamics simulations. They offer several advantages over traditional Euler angles or rotation matrices:
+In rigid-body dynamics (e.g. spacecraft attitude or multibody simulations), the orientation is typically represented on the **rotation group** $SO(3)$ (often via unit quaternions). A major challenge with standard numerical integrators (like explicit Runge–Kutta methods) is that they treat the state as a vector in $\mathbb{R}^n$ and can **drift off the manifold** that represents valid orientations. For example, integrating quaternion kinematics with a classical RK4 may not strictly preserve the unit-norm constraint ($|q|=1$), causing the quaternion to deviate from $S^3$ (the unit sphere in $\mathbb{R}^4$) over time. In practice, engineers often resort to ad-hoc **normalization or projection** steps (renormalizing the quaternion or orthonormalizing a rotation matrix) to drag the solution back to the valid rotation manifold. However, this “fix” can introduce small errors and distort the physics over long simulations . In short, **standard integrators do not inherently respect the geometry of rotational motion**, motivating integrators that work _on the Lie group itself_. The goal is to develop integration schemes that “live on the group” – preserving orthonormality or unit norm by construction – thus eliminating the need for brute-force constraint corrections mid-simulation. This is especially crucial for long-term simulations where accumulated drift or repeated renormalization can degrade accuracy .
 
-- **No Gimbal Lock:** Quaternions do not suffer from gimbal lock singularities that Euler angles have.
-    
-- **Stable Composition:** Rotations compose by quaternion multiplication, which is computationally faster and more numerically stable than composing rotation matrices.
-    
-- **Easy Axis-Angle Extraction:** One can readily recover the rotation axis and angle from a unit quaternion.
-    
-- **Interpolation:** Quaternions enable smooth interpolation between orientations, useful for animations or continuous motion.
-    
-    Because of these benefits, almost all modern spacecraft attitude representations, robotics simulations, and game engines use unit quaternions for orientation. In rigid body dynamics code, Euler parameters are treated as part of the state vector to track orientation, with the constraint $e_0^2+e_1^2+e_2^2+e_3^2=1$ enforced either by choice of coordinates or by normalization.
-    
+  
+
+**Lie group integrators** address this by leveraging the mathematical structure of the rotation group. Instead of updating orientations via vector-space addition (which is only approximately valid for small rotations), these methods perform updates via group operations (like quaternion multiplication or matrix exponentials). By doing so, the numerical solution remains on the manifold at every step, preserving the **geometric constraints exactly** (up to machine precision). As a result, the integrator maintains the special structure (orthonormality of rotation matrices or unit length of quaternions) automatically. An expert succinctly noted that normalization is essentially a _“kludge to drag the quaternion back to the unit 3-sphere”_, and the fundamental reason quaternions drift off is that using a standard Euler or RK step on the quaternion is _“in a sense invalid mathematically: The unit quaternions are a group, not an algebra.”_ The recommended cure: _“Do it right (e.g., Lie group integration techniques) and the quaternion will stay on the manifold.”_ . In other words, by integrating within the Lie group framework, we respect the non-Euclidean geometry of rotation and keep the solution physical without artificial corrections . This is invaluable for multibody dynamics, where orientation constraints and conservation laws (like angular momentum direction) are critical for realistic behavior over time.
+
 
 """
 
-# ╔═╡ 13c58b0a-9434-433a-bb89-d53cbabed974
-md"""
-## What is a Rotation Matrix?
-
-A **rotation matrix** is a $3 \times 3$ orthogonal matrix with determinant $+1$ that represents a proper rotation in 3D space. It transforms coordinates of vectors from one frame (e.g., body frame) to another (e.g., world frame) while preserving vector norms and angles.
-
-Mathematically, a matrix $\boldsymbol{A} \in \mathbb{R}^{3 \times 3}$ is a **rotation matrix** if it satisfies:
-
-- Orthogonality: $\boldsymbol{A}^\top \boldsymbol{A} = \boldsymbol{I}$
-    
-- Unit determinant: $\det(\boldsymbol{A}) = +1$
-
-These conditions imply that $\boldsymbol{A}$ preserves lengths and angles during transformation:
-
-$$\|\boldsymbol{A} \boldsymbol{v}\| = \|\boldsymbol{v}\|, \quad \text{and} \quad (\boldsymbol{A} \boldsymbol{u})^\top (\boldsymbol{A} \boldsymbol{v}) = \boldsymbol{u}^\top \boldsymbol{v}$$
-
-A rotation matrix rotates a vector $\boldsymbol{v}$ expressed in one frame into another:
-
-$$\boldsymbol{v}_{\text{world}} = \boldsymbol{A} \cdot \boldsymbol{v}_{\text{body}}$$
-
-Each column of $\boldsymbol{A}$ corresponds to the unit vectors of the rotated body axes expressed in world coordinates.
-
-For example, a rotation of angle $\theta$ about the $z$-axis is represented by:
-
-$$\boldsymbol{A}_z(\theta) = \begin{bmatrix} \cos\theta & -\sin\theta & 0 \\ \sin\theta & \cos\theta & 0 \\ 0 & 0 & 1 \end{bmatrix}$$
-
-Rotation matrices can be composed by matrix multiplication, and are often derived from axis-angle, Euler angles, or quaternions (Euler parameters).
-
-In multibody dynamics, rotation matrices are used to:
-
-- Transform forces and velocities between coordinate frames
-    
-- Construct constraint equations
-    
-- Visualize orientation of rigid bodies
-    
-"""
-
-# ╔═╡ e84bb5da-f233-439c-9275-f264a9ffb7d1
+# ╔═╡ eff5884d-e9c6-4f90-9958-76d5969ed7e3
 md"""
 
-## Rotation Matrix from Euler Parameters
+## Mathematical Foundations: Rotations as a Lie Group
 
-In multibody dynamics, the rotation matrix $\boldsymbol{A}(\boldsymbol{q}) \in \mathbb{R}^{3 \times 3}$ from Euler parameters is often split into two matrices $\boldsymbol{L}(\boldsymbol{q})$ and $\boldsymbol{R}(\boldsymbol{q})$ such that:
+  
 
-$\boldsymbol{A}(\boldsymbol{q}) = \boldsymbol{L}(\boldsymbol{q})^\top \boldsymbol{R}(\boldsymbol{q})$
+Rigid body rotations form a smooth manifold with a group structure – specifically the **Special Orthogonal Group** $SO(3)$, consisting of all $3\times3$ orthogonal matrices with determinant 1. In practical computations, we often use **unit quaternions** (also called Euler parameters) to represent rotations. Unit quaternions (elements of $S^3 \subset \mathbb{R}^4$) are a double-cover of $SO(3)$, meaning each rotation in 3D corresponds to two antipodal points on the unit 3-sphere. Under quaternion multiplication (Hamilton’s product), unit quaternions form a group isomorphic to $SU(2)$, which in turn is a double-cover of $SO(3)$. This group of unit quaternions is a **Lie group**: it’s a smooth manifold where the group operations (here, quaternion multiplication and inversion) are smooth maps. The associated **Lie algebra** of $SO(3)$ (denoted $\mathfrak{so}(3)$) can be identified with $\mathbb{R}^3$ (the space of 3-dimensional angular velocity vectors) with the cross-product as the algebra’s bracket operation. Intuitively, the Lie algebra corresponds to the **tangent space** of the group at the identity (for $SO(3)$, think of small rotation vectors). In the quaternion setting, the Lie algebra of $S^3$ (or $SU(2)$) corresponds to the set of _purely imaginary quaternions_ (those with zero scalar part), which can be identified with $\mathbb{R}^3$ as well. Thus, there’s a one-to-one correspondence between a 3-vector (an axis-angle representation scaled by angle) and a “direction” of rotation on the group.
 
-Here, $\boldsymbol{L}(\boldsymbol{q})$ and $\boldsymbol{R}(\boldsymbol{q})$ are **3×4 matrices** that depend linearly on the Euler parameters $\boldsymbol{q} = [e_0, e_1, e_2, e_3]^\top$, and this formulation is very useful in deriving kinematic and dynamic equations, particularly when computing angular velocities or Jacobians.
+  
 
-The matrices $\boldsymbol{L}(\boldsymbol{q})$ and $\boldsymbol{R}(\boldsymbol{q})$ are defined as:
+Key point: This Lie group structure provides a natural way to move between a rotation (group element) and a **rotation increment** (algebra element). Instead of describing an update in orientation by adding a small vector to Euler angles or quaternion components (which is flawed for anything but infinitesimal steps), we describe it via rotating by a small rotation vector on $SO(3)$. Lie theory provides smooth maps to convert back and forth: the **exponential map** and its inverse, the **logarithm map**.
 
-$\boldsymbol{L}(\boldsymbol{q}) = \begin{bmatrix} -e_1 & e_0 & -e_3 & e_2 \\ -e_2 & e_3 & e_0 & -e_1 \\ -e_3 & -e_2 & e_1 & e_0 \end{bmatrix}$
-
-$\boldsymbol{R}(\boldsymbol{q}) = \begin{bmatrix} -e_1 & e_0 & e_3 & -e_2 \\ -e_2 & -e_3 & e_0 & e_1 \\ -e_3 & e_2 & -e_1 & e_0 \end{bmatrix}$
-
-  These are **linear in** $\boldsymbol{q}$ and appear often when computing rotational kinematics (e.g., angular velocity as a linear function of quaternion rates).
-
-This form is particularly advantageous when:
-
-- Deriving analytical expressions (e.g., for Jacobians).
-    
-- Coupling with quaternion rate equations: $\dot{\boldsymbol{q}} = \frac{1}{2} \boldsymbol{E}(\boldsymbol{q})^\top \boldsymbol{\omega}$, where $\boldsymbol{E}(\boldsymbol{q}) = \boldsymbol{L}(\boldsymbol{q})$ or $\boldsymbol{R}(\boldsymbol{q})$.
-    
-- Expressing virtual rotations and variations in the principle of virtual work.
-
-The rotation matrix $\boldsymbol{A}$ corresponding to quaternion $\boldsymbol{q}$ can be written explicitly as:
-
-$\boldsymbol{A}(\boldsymbol{q}) = \begin{bmatrix} e_0^2 + e_1^2 - e_2^2 - e_3^2 & 2(e_1 e_2 + e_0 e_3) & 2(e_1 e_3 - e_0 e_2) \\ 2(e_1 e_2 - e_0 e_3) & e_0^2 - e_1^2 + e_2^2 - e_3^2 & 2(e_2 e_3 + e_0 e_1) \\ 2(e_1 e_3 + e_0 e_2) & 2(e_2 e_3 - e_0 e_1) & e_0^2 - e_1^2 - e_2^2 + e_3^2 \end{bmatrix}$
-
-This matrix satisfies $\boldsymbol{A}^\top \boldsymbol{A} = \boldsymbol{I}$ and $\det(\boldsymbol{A}) = 1$ provided that $\boldsymbol{q}^\top \boldsymbol{q} = 1$ (i.e., $\boldsymbol{q}$ is a unit quaternion).
 
 """
 
-# ╔═╡ 43dd28c3-28ab-42e6-8723-1222455236f8
+# ╔═╡ fa80e68c-9848-4cb3-8309-a19569b5bef3
+md"""
+
+## Exponential and Logarithm Maps on $SO(3)$ (and $S^3$)
+
+- **Exponential Map ($\exp$):** The exponential map $\exp: \mathfrak{so}(3)\to SO(3)$ takes an element of the Lie algebra (a 3D rotation vector) and returns a group element (a rotation matrix or equivalent quaternion). For rotation groups, $\exp$ essentially corresponds to the Rodrigues formula for converting an axis–angle representation into a rotation. If we represent a small rotation by a vector $u \in \mathbb{R}^3$, where the direction of $u$ is the axis of rotation and $|u|$ is the rotation angle in radians, then:
+    
+    $$\exp(u) = \Big(\cos|u|,; \frac{u}{|u|}\sin|u|\Big),$$
+    
+    when using unit quaternions to represent the rotation . Here we’ve written the resulting quaternion $q = (q_0, q_v)$ as a scalar–vector pair: $q_0 = \cos\theta$ (with $\theta = |u|$) and $q_v = (u/|u|)\sin\theta$. In more geometric terms, $\exp(u)$ produces a rotation about axis $u/|u|$ by angle $|u|$. For small $u$, $\exp(u) \approx (1, u)$ to first order, meaning a tiny rotation is almost the identity plus the small vector part. This map gives a **chart at the identity** of the group – it allows us to go from a small algebra element to a nearby group element.
+    
+- **Logarithm Map ($\log$):** The inverse $\log: SO(3)\to \mathfrak{so}(3)$ (or $S^3\setminus{-1}\to \mathbb{R}^3$ for quaternions, excluding the antipodal -1 which corresponds to a 2π rotation) takes a rotation (quaternion) and returns the algebra element (rotation vector) that generates it. For a given unit quaternion $q = (\cos\theta,; v\sin\theta)$ – where $\theta$ is the rotation angle and $v$ is the unit vector axis – the log map yields:
+    
+    $$\log(q) = \frac{\theta}{\sin\theta} , v, \quad \text{assuming } q = (\cos\theta,; v\sin\theta) \text{ with } 0 < \theta < \pi.$$
+    
+    In other words, $\log(q)$ produces a 3-vector of length $\theta$ in the direction $v$. Intuitively, it extracts the axis-angle parameters from the quaternion. These $\exp$ and $\log$ maps let us move back and forth between the curved manifold $SO(3)$ (or $S^3$ for quaternions) and a flat $\mathbb{R}^3$ representation of rotations. They are the mathematical tools by which we can update orientations through algebra increments while staying on the manifold.
+    
+- **Why we need exp/log in integration:** In a Lie-group integrator, we will compute updates in the Lie algebra (e.g. an “increment” rotation vector) and then use $\exp$ to map that increment to a rotation/quaternion that can be applied to the current orientation. Conversely, sometimes we need $\log$ to compute the algebra element corresponding to a difference between two orientations (for example, in higher-order integrator stages). The exp/log maps ensure we handle rotations properly, especially for large steps: rather than adding orientation errors in a Euclidean sense, we compose rotations. This avoids singularities of other parametrizations (like Euler angles) and respects the topology of $SO(3)$.
+    
+
+"""
+
+# ╔═╡ aa85bdb3-6133-403b-a8d0-0426f4aced56
+md"""
+
+## Differential of the Exponential (dexp) and Its Inverse
+
+  
+
+When integrating on a manifold, especially with higher-order Runge–Kutta, we often need the **differential of the exponential map**, denoted $\mathrm{dexp}$. This arises because when we take multiple stages (like midpoint evaluations in RK4), we perturb the system and need to interpret those perturbations on the manifold. The **tangent** of the exponential map at a given algebra element $u$, $\mathrm{dexp}_u: \mathfrak{so}(3)\to \mathfrak{so}(3)$, maps an “infinitesimal” increment in the algebra to the corresponding **infinitesimal change on the group** when starting from $\exp(u)$. More practically, its **inverse** $\mathrm{dexp}^{-1}_u$ tells us how to map a small difference on the group back to the algebra. In Lie-group integrators, $\mathrm{dexp}^{-1}$ is used to properly combine increments.
+
+  
+
+For example, consider we have an orientation $q$ and we perturb it by a small rotation $\delta q = q^{-1} q_{\text{new}}$ (in group terms). To incorporate this perturbation as an algebra increment, we use $\Delta u = \log(\delta q)$. However, if $\delta q$ is obtained after already moving by some $u$ (i.e. we are not at the identity), we should technically use $\mathrm{dexp}^{-1}_u(\delta)$ to account for curvature (this corrects the increment as measured in the local tangent frame at $u$ back to the original algebra coordinates at identity). The $\mathrm{dexp}$ operator has a known series expansion for small $u$:
+
+  
+
+$$\mathrm{dexp}^{-1}_u(v) = v - \tfrac{1}{2}[u, v] + \tfrac{1}{12}[u,[u,v]] - \cdots,$$
+
+  
+
+or in inverse form (for $\mathrm{dexp}^{-1}$) one often uses a closed-form involving $|u| \cot(|u|/2)$ etc., but in implementation it’s common to use the series for stability when $|u|$ is very small . In our context (rotation in $\mathbb{R}^3$), $[u,v] = u \times v$ (the cross product). So $\mathrm{dexp}^{-1}$ provides a correction when combining rotations in non-commuting, curved space.
+
+  
+
+**In simpler terms:** whenever we want to add a rotation increment $\Delta u$ to a current rotation described by $u_i$ (in RK intermediate stages), we use $\mathrm{dexp}^{-1}_{u_i}$ to find the equivalent Lie algebra vector that produces the needed change on the manifold. This ensures consistency across different tangent spaces. Many implementations have an invdexp function that computes this efficiently. If time step sizes are small, $\mathrm{dexp}^{-1}$ is near identity, but for larger steps or higher accuracy, it’s important to include to avoid slight errors in orientation (especially in long simulations, these small errors could accumulate if neglected).
+
+
+"""
+
+# ╔═╡ 8b38ad57-aad6-44ba-a58c-c86f0148171d
+md"""
+
+## Left-Trivialization and Geodesic Updates on the Group
+
+  
+
+A concept that underpins Lie-group integration schemes is using **left-trivialization** of the tangent spaces. On a Lie group $G$, **left multiplication** by an element $g$, $L_g(h) = g,h$, is a smooth map that essentially “transports” points on the group by left-composing with $g$. This map also induces a mapping of tangent vectors: it identifies the tangent space at identity (the Lie algebra) with the tangent space at $g$. In practical terms, if we have a rotation $q_k$ at time step $k$, and we want to apply an incremental rotation $\exp(\Delta u)$ to get the next orientation, we do a left-multiply:
+
+  
+
+$$q_{k+1} = q_k ,\exp(\Delta u).$$
+
+  
+
+This operation is sometimes called **left geodesic transport (LGT)** or simply a _group update_. It means we take the current orientation $q_k$ and “step forward along a geodesic” on the manifold by the amount $\Delta u$. The result $q_{k+1}$ stays on $S^3$ (or $SO(3)$) because it’s just a multiplication of two unit quaternions/rotations (thus automatically unit-length and orthonormal). Geometrically, we’re moving along the manifold itself rather than stepping out of it.
+
+  
+
+In contrast, a classical integrator would update via addition: $y_{k+1} = y_k + \text{(something)}$ in $\mathbb{R}^n$, which for rotation states is not appropriate. The Lie-group approach uses the group operation (here multiplication) in place of addition for the rotational part of the state. This **exactly preserves the constraints** by construction. In our quaternion example, if $q_k$ is unit-length and we form $q_{k+1}=q_k \exp(\Delta u)$, then $q_{k+1}$ is guaranteed to be unit-length (because the exponential of a pure imaginary quaternion yields a unit quaternion). This is why no normalization is needed at any step – the integrator “lives” on the group.
+
+  
+
+To clarify, this left-trivialized update is applied to the orientation part of the state, while the rest of the state (like angular velocity or other translational coordinates) can still be updated in the usual way. Essentially, we separate the _Lie group part_ of the state (orientation) from the _vector space part_ of the state (e.g. angular velocity, which lies in $\mathbb{R}^3$ and can be updated additively). By doing so, we treat each component with the correct geometry.
+
+
+"""
+
+# ╔═╡ 22821300-1e2b-4599-8adf-7afa076d198f
+md"""
+
+## Classical vs. Lie-Group Integrators (Conceptual Comparison)
+
+  
+
+Before diving into the specific algorithm, let’s contrast a classical RK4 integrator with a Lie-group RK4 integrator for a rigid body’s attitude, to see how they differ in form:
+
+|**Feature**|**Classical RK4 (standard)**|**Lie-Group RK4 (structure-preserving)**|
+|---|---|---|
+|State update|$y_{k+1} = y_k + \sum_{i} b_i,k_i$ (direct addition in $\mathbb{R}^n$)|$q_{k+1} = q_k ,\exp!\Big(\sum_i b_i,\Delta u_i\Big)$ (rotation update via group multiplication)  plus $ \omega_{k+1} = \omega_k + \sum_i b_i,k_i^{(\omega)}$ for angular velocity|
+|Increment type|Additive increments in a vector space (state space $\mathbb{R}^7$ for quaternion + ang. vel)|Additive increments in the Lie algebra ($\mathfrak{so}(3)$ for rotation, standard $\mathbb{R}^3$ for velocity) which are then applied multiplicatively on the group|
+|Constraint drift|Possible drift off manifold (requires normalization or constraint enforcement)|**No drift** – stays on $SO(3)$ or $S^3$ exactly, maintaining unit norm and orthonormality by construction|
+|Local error handling|Direct differences in state variables|Uses $\mathrm{dexp}^{-1}$ to map group differences to algebra (for intermediate stage corrections)|
+
+In summary, the classical method treats the orientation coordinates just like any other variable (which can violate the $SO(3)$ structure), whereas the Lie-group method treats the orientation via its Lie algebra so that rotations are properly **composed** rather than added. The outcome is that the Lie-group RK4, despite having the same order of accuracy as classical RK4, **enforces the rotation constraint exactly** at every step. This yields improved long-term fidelity for orientation problems – no accumulation of norm error or loss of orthogonality . Moreover, this often allows larger step sizes without instability in orientation, since the integrator won’t produce non-physical orientations (for instance, a quaternion won’t drift towards the zero vector or a rotation matrix won’t lose orthonormality).
+
+
+"""
+
+# ╔═╡ 72875630-28b8-4f22-a805-8f86d356fc3c
+md"""
+
+## Lie-Group RK4 Algorithm for Rigid Body Rotation
+
+  
+
+Let’s outline the Lie-group RK4 algorithm specifically for a rigid body’s rotational equations, using unit quaternions for orientation and angular velocity $\omega$ in the body frame as the state. The state at time $t_k$ is $y_k = (q_k, \omega_k)$, where $q_k$ is a unit quaternion and $\omega_k \in \mathbb{R}^3$. The ODE is given by the rigid body dynamics: $\dot q = \tfrac{1}{2}\Omega(q),\omega$ (quaternion kinematics, with $\Omega(q)$ a suitable matrix or quaternion multiplication operator) and $\dot\omega = I^{-1}\big( T(t) - \omega \times (I\omega)\big)$ (Euler’s equation for rotational motion, with $I$ inertia matrix and $T$ external torque). The Lie-group RK4 proceeds as follows (comparing to classical RK4 stages):
+
+1. **Stage 1:** Compute $k_1 = f(y_k)$, the time derivative at the starting state $(q_k,\omega_k)$. This yields $k_1 = (\dot q_k, \dot\omega_k)$. From this, extract the angular velocity $\omega_k$ (which is part of the state) and the angular acceleration $,\dot\omega_k$. For the quaternion part, we don’t directly use $\dot q_k$ for updating (because we will update via group multiplication). Instead, define an **algebra increment** for this stage:
+    
+    $$\Delta u_1 = h,\omega_k,$$
+    
+    where $h$ is the time step. Here $\omega_k$ (a 3-vector) is treated as an element of $\mathfrak{so}(3)$ – essentially the “rotation” over the full step if $\omega$ stayed constant. $\Delta u_1$ is like the Euler step’s change in orientation expressed as a rotation vector (angle = $|\omega_k|h$ about $\omega_k/|\omega_k|$ axis).
+    
+    Now _update the group element halfway_: we compute a provisional quaternion at the half-step using left transport:
+    
+    $$q_{(k,1/2)} = q_k ,\exp!\Big(\frac{1}{2}\Delta u_1\Big).$$
+    
+    This $q_{(k,1/2)}$ is the orientation at the midpoint if $\omega$ were constant at its initial value over half the step. Also update angular velocity linearly: $\omega_{(k,1/2)} = \omega_k + \frac{1}{2}h,\dot\omega_k$ (this part is the same as classical RK4).
+    
+2. **Stage 2:** Now evaluate the ODE at the midpoint: $k_2 = f\big(q_{(k,1/2)}, \omega_{(k,1/2)}\big)$ at time $t_k + h/2$. This gives $(\dot q_{(k,1/2)}, \dot\omega_{(k,1/2)})$. We again convert the quaternion change to an algebra increment. We first get the _actual_ quaternion increment from $q_k$ to $q_{(k,1/2)}$, which in our formulation was $\exp(0.5\Delta u_1)$. However, because $\omega$ changed, we can’t just double that for a full step. Instead, we compute:
+    
+    $$\Delta u_2 = h;\mathrm{dexp}^{-1}_{(,0.5\Delta u_1,)}\big(\omega_{(k,1/2)}\big).$$
+    
+    This formula encapsulates: take the $\omega$ at the midpoint, which gives the naive half-step rotation $0.5h,\omega_{(k,1/2)}$; then use $\mathrm{dexp}^{-1}$ to adjust this increment from the midpoint frame back to the reference frame. In practice, an implementation might directly compute $\Delta u_2$ via the series or closed-form using $\omega_{(k,1/2)}$ and $\Delta u_1$. The result $\Delta u_2$ is a 3-vector representing the effective rotation over the interval, mapped appropriately.
+    
+    Now update the quaternion to the full midpoint (which in RK4 would actually be at the same half step, conceptually):
+    
+    $$q_{(k,1/2)}’ = q_k ,\exp!\Big(\frac{1}{2}\Delta u_2\Big),$$
+    
+    (in practice $q_{(k,1/2)}’$ may equal $q_{(k,1/2)}$ if our $\Delta u_2$ was computed self-consistently – but think of $\Delta u_2$ as possibly corrected by curvature). Update $\omega$ again: $\omega_{(k,1/2)}’ = \omega_k + \frac{1}{2}h,\dot\omega_{(k,1/2)}$.
+    
+3. **Stage 3:** We repeat a similar process. Compute $k_3 = f(q_{(k,1/2)}’, \omega_{(k,1/2)}’)$ at $t_k + h/2$. From $k_3$ (specifically the angular velocity in it), compute
+    
+    $$\Delta u_3 = h;\mathrm{dexp}^{-1}_{(,0.5\Delta u_2,)}\big(\omega_{(k,1/2)}’\big).$$
+    
+    This is analogous to stage 2: mapping the midpoint increment back. Then update a provisional quaternion at full step using this:
+    
+    $$q_{(k+1)}^{\text{(temp)}} = q_k ,\exp(\Delta u_3),$$
+    
+    and provisional angular velocity $\omega_{(k+1)}^{\text{(temp)}} = \omega_k + h,\dot\omega_{(k,1/2)}’$ (this would actually be using $k_3$ info fully, which is analogous to the classical RK4 step 4 prep).
+    
+4. **Stage 4:** Evaluate $k_4 = f(q_{(k+1)}^{\text{(temp)}},,\omega_{(k+1)}^{\text{(temp)}})$ at the full step $t_k + h$. Now we have the four slope estimates $k_1, k_2, k_3, k_4$ (with their associated $\omega$ values and implied $\Delta u_i$ increments for the rotation).
+    
+5. **Combination (RK4 weighted sum):** Finally, we combine the increments. For the rotation, we take a weighted combination of the algebra increments:
+    
+    $$\Delta u_{\text{combo}} = \frac{1}{6}\big(\Delta u_1 + 2,\Delta u_2 + 2,\Delta u_3 + \Delta u_4\big).$$
+    
+    Here $\Delta u_4$ would be $h, \mathrm{dexp}^{-1}_{(\Delta u_3)}(\omega_{(k+1)}^{\text{(temp)}})$ obtained similarly from stage 4. This $\Delta u_{\text{combo}}$ is our best estimate of the total rotation (in the body frame) over the interval $[t_k, t_{k+1}]$. We then update the quaternion with this full increment via left multiplication:
+    
+    $$q_{k+1} = q_k ,\exp(\Delta u_{\text{combo}}).$$
+    
+    Meanwhile, the angular velocity is updated with the usual RK4 weighted sum in $\mathbb{R}^3$:
+    
+    $$\omega_{k+1} = \omega_k + \frac{h}{6}\big(k_1^{(\omega)} + 2k_2^{(\omega)} + 2k_3^{(\omega)} + k_4^{(\omega)}\big),$$
+    
+    where $k_i^{(\omega)}$ denotes the $\dot\omega$ component from stage $i$. (This update is identical to classical RK4 for the $\omega$ part since $\omega$ is an $\mathbb{R}^3$ vector coordinate.)
+    
+
+  
+
+In essence, the Lie-group RK4 algorithm modifies the quaternion update step of RK4 by inserting the exponential map at the right places and using $\mathrm{dexp}^{-1}$ to handle the non-commutativity of rotations during the intermediate stages . The final result is that $q_{k+1}$ is obtained by multiplying $q_k$ with a quaternion increment – ensuring $|q_{k+1}|=1$ automatically – rather than by adding a vector to $q_k$. Aside from these changes, the algorithm’s structure parallels classical RK4. This particular method is sometimes referred to as a **Crouch–Grossman 4th-order method** in the literature , after the researchers who developed early Lie-group integrators, or simply “Lie-group RK4.”
+
+
+"""
+
+# ╔═╡ 0e33080f-7b5c-4734-89c8-bd491780d6ae
+md"""
+
+## Implementation Notes (Pluto.jl / Julia specifics)
+
+  
+
+Implementing a Lie-group integrator in code (e.g. in Julia for a Pluto notebook) requires careful handling of the different parts of the state. Here are some practical notes for an efficient implementation targeting a programming-oriented course:
+
+- We typically represent the state as a combined vector u = [q; ω] of length 7 (4 for quaternion, 3 for angular velocity). In Julia, one can use a StaticVector (from StaticArrays.jl) for small fixed-size vectors like quaternions to get performance benefits . The derivative function f!(du, u, p, t) should be written to treat u[1:4] as the quaternion and u[5:7] as angular velocity, producing corresponding derivatives (as in the rigid_body! function of the notebook).
+    
+- One straightforward approach is to write a custom integrator function (as was done in the Pluto notebook) that takes a time span and initial state and manually loops to perform RK4 steps. Within this loop, you can have a flag (e.g. is_lie) to switch between classical updates and Lie-group updates . For is_lie=true, you implement the steps as described: use LGT (left geodesic transport) to update quaternions with partial increments and use an invdexp function to compute $\mathrm{dexp}^{-1}for combining increments [oai_citation:15‡file-fvpc6mw1xxmqxgc7sjpqpv](file://file-FvpC6mW1xxmQxGc7SjPqPv#:~:text=,dt%20end) [oai_citation:16‡file-fvpc6mw1xxmqxgc7sjpqpv](file://file-FvpC6mW1xxmQxGc7SjPqPv#:~:text=f%21,SVector%28k2%5B5%5D%2Ck2%5B6%5D%2Ck2%5B7%5D%29%20end). Foris_lie=false`, you just do the usual Euler updates inside RK4 (as a baseline).
+    
+- **Quaternion math:** You need routines to handle quaternion exponentials and log (or directly the incremental updates). In practice, since $\Delta u$ is a small 3-vector, one can compute $\exp(\Delta u)$ by the formulas above (or using a series expansion if $|\Delta u|$ is tiny to avoid numerical issues). The Pluto notebook code likely included a function LGT(q, Δu) which returns q * exp(Δu) – effectively updating the quaternion . The invdexp(w, Δ) likely implements $\mathrm{dexp}^{-1}_Δ(w)$, mapping an $\omega$ vector from one stage back to an equivalent algebra increment . These can be implemented using either the series given or closed-form: for example, $\mathrm{dexp}^{-1}_u(v) = v - \frac{1}{2}u \times v + \dots$.
+    
+- It is often wise to **normalize the quaternion occasionally as a safety check** – not because the integrator fails to preserve it (it should preserve to numerical precision), but to guard against any numerical round-off accumulation in very long runs. In a correct Lie-group integrator, $|q|$ will stay extremely close to 1 (deviations on the order of machine epsilon, e.g. $10^{-16}$). A conditional normalization (e.g., if norm drifts below a threshold like $10^{-12}$ from 1) can be added just to avoid any potential creeping error due to floating point rounding. In our Julia code, we could set normalize_quaternions=true to enforce this (the provided RigidBodyParams had such a flag).
+    
+- **Performance considerations:** Because these calculations happen at every time step, and especially in multibody simulations (with many bodies), efficiency matters. Pre-allocating arrays for $k_1, k_2, k_3, k_4$ and reusing them avoids excessive memory allocation . Static arrays, as mentioned, give stack allocation and unrolled operations for small vectors. Also, computing the matrix or formula for $\mathrm{dexp}^{-1}$ has a small overhead; if performance is critical and the time step is small, some implementations might approximate $\mathrm{dexp}^{-1} \approx \text{Id}$ (identity) for very small $\Delta u$ to save computation, but one should be careful with stability. In our educational code, clarity and correctness are prioritized, but it’s good for students to see that we _do_ manage memory and compute carefully for speed.
+    
+- **Code structure in Pluto:** Pluto notebooks mix markdown and Julia code cells. The lecture notebook likely defines the rigid_body! ODE function (computing $(\dot q, \dot \omega)$), then defines the custom integrator as above, then demonstrates it on examples. The markdown sections are used to explain theory (which we are expanding on here). Keeping a clear separation between explanation and code is useful: for instance, present the algorithm in pseudocode or descriptive math (like we did) in a Markdown cell, then below it have the actual Julia implementation for the students to inspect/run. This reinforces the learning by connecting math with code.
+    
+- **Verifying correctness:** One should test that the integrator indeed preserves $|q|=1$. In code, after integration, one can check maximum(abs.(sum(Y[:,1:4].^2, dims=2) .- 1)) to see the max deviation of quaternion norm from 1 over the trajectory – it should be near machine epsilon for the Lie-group method. If any larger drift is observed, that signals a bug in the implementation of the group update or $\mathrm{dexp}^{-1}`.
+    
+
+"""
+
+# ╔═╡ deaaf630-cb40-4dd0-af94-ba19df1bbc1d
+md"""
+
+## Application to Multibody Dynamics
+
+  
+
+The benefits of Lie-group integration become even more pronounced in **multibody dynamical systems** – systems of multiple rigid bodies connected by joints (e.g. robotic arms, vehicles with moving parts, cluster of satellites, etc.). In such systems, each body’s orientation lives on $SO(3)$, and the overall state space is a product of several $SO(3)$ rotations (along with possibly translations $\mathbb{R}^3$ for positions of center of mass, etc.). Using integrators that preserve the rotation structure for each body means that the **geometric constraints of each body’s orientation are maintained**, which in turn helps maintain the consistency of joint constraints between bodies.
+
+  
+
+Consider a robotic arm with multiple rotary joints: if the integrator slightly violates the orthonormality of a link’s orientation, that error can translate into joint misalignment or constraint violation down the chain (usually small, but in long simulations or with many steps it could accumulate). Typically, simulation software might periodically re-orthonormalize the rotation matrices or use Lagrange multiplier stabilization for constraints. A Lie-group integrator obviates the need for such fixes on the orientation side, because each rotation is updated by exact rotation operations. The links remain properly oriented on $SO(3)$, so the relative orientation constraints at joints remain purely rotational without drift.
+
+  
+
+Another scenario is free-flying multibody systems (like a collection of satellites or debris in space, each tumbling freely). If one integrates each body’s attitude with a Lie-group method, each one preserves its angular momentum direction more faithfully and keeps unit quaternion representation. This is important when coupling rotation with translation or orbital dynamics – you don’t want spurious changes in attitude due to numerical error to feed back into other parts of the simulation.
+
+  
+
+For **mechanical system energy or momentum preservation**: while Lie-group integrators (in the form we discuss) are not necessarily symplectic or energy-preserving by themselves, they can be combined with variational integrator frameworks to also conserve momenta. Even the basic Lie-group RK4 tends to give better long-term behavior for quantities like angular momentum. In an unconstrained rigid body (no external torque), the direction of angular momentum in space is an invariant. A classical integrator might slowly drift from this (especially if renormalizations introduce tiny inconsistencies), whereas a Lie-group integrator will at least keep the orientation consistent with a rotation about a fixed axis (since it follows the exact geodesic on the rotation manifold for free rotation). In more complex multibody simulations, preserving the group structure can prevent artificial energy loss or gain associated with constraint violations.
+
+  
+
+**Example – double pendulum:** Imagine a double pendulum simulated with quaternions for each link’s orientation. A classical integrator might need to enforce that each quaternion remains unit length and that the two links remain connected at the joint (requiring constraint stabilization). A Lie-group integrator ensures each link’s quaternion is unit-length at all times. One still needs to handle the joint constraint (which might be handled by constraint forces or coordinates), but at least the orientations themselves won’t drift into non-physical states. This improves the stability of constraint solver and avoids one source of error. Recent research in computational mechanics has indeed looked at Lie-group integrators specifically for multibody systems, finding that they improve reliability of simulations . In fact, Celledoni et al. (2021) discuss various ways to apply Lie group integrators to mechanical systems and report better accuracy and stability for rotations without needing to resort to local coordinate patches or constraints for the rotations.
+
+  
+
+In summary, for **multibody dynamics applications**, using Lie-group integrators for rotational degrees of freedom means:
+
+- Each rigid body’s orientation is always a valid rotation matrix/quaternion, so no normalization step interrupts the physics (important for preserving the smoothness of simulation).
+    
+- Long simulations (e.g., simulating the orbit and attitude of a satellite over days) don’t suffer from cumulative drift in attitude . This is crucial in, say, spacecraft orbit-attitude coupling simulations or high-fidelity robotics simulations where you might simulate many seconds at a high frequency.
+    
+- The integrator can often tolerate larger time steps for the rotational motion without becoming unstable or inaccurate, compared to a classical method that might produce large errors unless small steps (with frequent renormalization) are used . This can be an efficiency win in multibody simulation, where rotational dynamics might have fast frequencies – being able to take a somewhat larger step while maintaining stability is beneficial.
+    
+- Perhaps most importantly, the approach scales to any number of bodies: you simply integrate each body’s orientation with a Lie-group method. The complexity added is only in handling each body’s own local exponential/log computations, which is quite manageable and parallelizable. Each body’s rotation update is independent (except as coupled by joint forces/torques which enter the $\omega$ dynamics, but that doesn’t break the method – it just changes $f(y)$ inputs).
+    
+
+"""
+
+# ╔═╡ 80954e65-0359-4804-abc9-8b04a108cf2a
+md"""
+
+## Numerical Examples & Performance
+
+  
+
+Let’s solidify the understanding with a couple of example scenarios (as was done in the Pluto lecture) and examine how the Lie-group integrator performs versus a classical approach:
+
+- **Test 1: Free rigid-body rotation (torque-free motion).** This is a classic case where the exact motion is a steady rotation at constant angular momentum. We use an inertia matrix that is not spherical (so the rotation has a non-trivial behavior due to Euler’s equations – demonstrating the intermediate axis instability). The initial angular velocity is set such that the body is mostly spinning about the second principal axis with a small perturbation. Physically, for a free top, the rotation should follow a great-circle on $S^3$ (or equivalently, the orientation should change as if the body’s rotation axis precesses if it’s not aligned with a principal axis). We simulate this with both the classical RK4 (with no quaternion normalization during the integration) and the Lie-group RK4.
+    
+    As expected, the Lie-group RK4 conserves the quaternion norm to machine precision at all times, while the classical RK4’s quaternion gradually drifts from unit length. The figure below illustrates the **quaternion norm constraint violation** over time for the two methods. The orange curve shows $|q|^2 - 1$ for a classical RK4 integrator (which was allowed to run without renormalizing the quaternion), and we see it deviate on the order of $10^{-5}$ after a moderate simulation time. The Lie-group integrator’s constraint violation (not visible in the plot because it remains at zero) stays essentially zero — the quaternion norm remains exactly 1 within floating-point precision (the line for it coincides with the horizontal axis). The plot highlights how the classical method’s error grows in time (each “step” of error correlating with the dynamics of the intermediate axis flip, which stresses the integrator), whereas the Lie-group method produces no drift at all. This confirms that the Lie-group scheme **perfectly preserves the rotation manifold**. Importantly, the physical motion (e.g., the body flipping periodically due to the intermediate axis instability) is captured equally well by both integrators in terms of angular velocity evolution, but the Lie-group method does so without ever producing an invalid quaternion. If we had not monitored this, the classical integrator’s $q$ would need a correction; with Lie-group RK4, no corrections are needed – we could integrate for hours of simulated time and the attitude would remain a proper rotation.
+    
+- **Test 2: Forced rotation with damping.** In this scenario, we add an external torque (say, a periodic or step torque) and possibly a damping term, to see how the integrators cope when $\omega$ is changing non-trivially. Both integrators will produce qualitatively correct results for the motion. However, again the Lie-group method keeps the orientation on track. If damping is present, the energy will dissipate and the motion will slow – but throughout, the Lie-group integrator won’t introduce any fictitious energy or errors from re-normalization. A subtle point: if one were to normalize a quaternion every step in a classical integrator, that act of normalization can slightly alter the effective energy or momentum (it’s a non-physical operation that can inject or remove tiny amounts of angular momentum). Over many steps, these tiny differences can accumulate or bias the solution. The Lie-group integrator avoids this issue.
+    
+- **Accuracy vs. classical:** Aside from constraint preservation, we should ask: does the Lie-group RK4 give the same accuracy (in the usual sense of local/truncation error) as classical RK4? Yes – in fact it is an **O($h^4$)** method as well. For smooth dynamics, both will converge to the true solution as $h\to 0$. However, one interesting observation in literature is that for a given step size, a Lie-group integrator can often be _more accurate_ in practice than a same-order classical integrator when measuring error in orientation. This is because some of the error modes of the classical method manifest as distortion of the orientation (norm drift, etc.), whereas the Lie-group method’s errors stay within the manifold. For example, Andrle & Crassidis (2012) found that a 4th-order Crouch–Grossman method (Lie-group) yielded better accuracy than standard RK4 for attitude propagation, especially at larger step sizes . Our own experiments can verify this: one can compare the orientation obtained by both methods to a high-precision reference solution or an analytic solution (for simple cases like torque-free motion where an analytic solution is known). Typically, the Lie-group integrator’s orientation error grows slower over time.
+    
+- **Performance considerations:** We might worry that the Lie-group method is more computationally intensive per step (due to exp/log calculations). Indeed, each RK4 step involves a few extra 3×3 operations (for cross products and maybe a few trig functions for exp). In our Pluto implementation, we can benchmark the custom integrator with BenchmarkTools.jl. Results show that the Lie-group RK4 is only marginally slower than classical RK4 per step – the overhead of computing $\exp$ and $\mathrm{dexp}^{-1}$ is small for 3D rotations. And since one can often take equal or larger time steps for the same accuracy, the overall efficiency can be comparable or even better. For example, with a step size $h=0.001$ s over a 10 s simulation, the Lie-group RK4 might take ~0.002 seconds of CPU time vs ~0.0018 seconds for classical (just an illustrative number), which is a very modest cost for the gain in stability. As computers are fast and 3D rotations are low-dimensional, using Lie-group methods in multi-body simulation is usually well worth the slight extra computation.
+    
+
+"""
+
+# ╔═╡ 2112053e-5b4e-48d0-8bfa-a79213c82682
+md"""
+
+## Conclusions & References
+
+
+In conclusion, **Lie-group integrators** (like the Lie-group RK4 demonstrated here) provide a powerful way to integrate rigid body rotations in a way that inherently **preserves the geometric structure** of the configuration space. By operating directly on the rotation group $SO(3)$ (via unit quaternions or rotation matrices and their Lie algebra), these methods keep orientations valid and constraints satisfied without fiddling with normalization. This leads to improved long-term fidelity of simulations – orientations don’t “drift” and require no ad-hoc corrections, which means the physical behavior (especially in complex multibody scenarios) is captured more accurately over time . We saw that the Lie-group RK4 is essentially a **straightforward extension of classical RK4**, where additions are replaced by exponential map updates and intermediate steps use the logarithmic map’s differential to ensure consistency . The algorithm fits nicely into a programming context (as shown with Julia code), and the extra effort in implementation is offset by the benefits in stability.
+
+  
+
+For postgraduate mechanical engineering students, mastering these Lie-group techniques is valuable, as it equips you to simulate rotational dynamics (and other motion on manifolds) with higher reliability – an important skill for research in robotics, vehicle dynamics, aerospace, and any field involving 3D rotations. As problems and simulations grow more complex (think of simulating an entire spacecraft with moving parts, or a robotic swarm with coupled orientations), using integrators that respect the problem’s geometry can be the difference between a simulation that stays stable for real-time durations vs. one that slowly falls apart due to numerical issues.
+
+  
+
+**References:** (for further reading on Lie-group integrators and geometric integration)
+
+- Celledoni, E. & Owren, B. (2003). _“Lie–Group Methods for Rigid Body Dynamics and Time Integration on Manifolds.”_ (Computer Methods in Applied Mechanics and Engineering, 192) – foundational paper on applying Lie group integrators to rigid body mechanics.
+    
+- Iserles, A. et al. (2000). _“Lie-Group Integrators for Numerical Solution of Differential Equations.”_ (Foundations of Computational Mathematics) – a comprehensive look at Lie-group integrators theory.
+    
+- Hairer, E., Lubich, C., & Wanner, G. (2006). _“Geometric Numerical Integration: Structure-Preserving Algorithms for Ordinary Differential Equations.”_ – textbook covering many geometric integrators (see chapter on Lie-group methods).
+    
+- Andrle, M.S. & Crassidis, J.L. (2012). _“Geometric Integration of Quaternions.”_ – study focusing on quaternion norm preservation using Lie-group (Crouch–Grossman) methods .
+    
+- Stackoverflow discussion: _“Quaternion and normalization”_ – particularly insightful comments by D. Hammen on why Lie-group integration obviates constant normalization .
+"""
+
+# ╔═╡ f496faba-26b6-46e7-b99a-87b10cded17d
+md"""
+## Outline
+
+**Outline:**
+1. Motivation  
+2. Quaternions & Lie groups  
+3. Exp/log maps and dexp  
+4. Left-geodesic transport  
+5. Lie-group RK4 algorithm  
+6. Implementation notes  
+7. Numerical examples  
+8. Conclusions  
+
+"""
+
+# ╔═╡ 216a70e5-c63f-4902-bf34-a31efd3ff212
+md"""
+
+## Motivation
+
+- Standard integrators (e.g. classical RK4) can drift off the manifold (e.g. quaternion norm $≠1$).  
+- For rigid-body attitude, orthonormality & unit-norm constraints are critical.  
+- **Goal:** build an RK4 that “lives on the group” and exactly preserves the quaternion norm.  
+
+"""
+
+# ╔═╡ 5ea07fdd-4f27-44c0-848d-2ed51cdc2dc6
+md"""
+
+## Quaternions as a Lie Group
+
+- **Unit quaternions** $S^3$ ≅ double cover of $SO(3)$.  
+- Group operation: quaternion multiplication.  
+- Lie algebra: purely vector quaternions $\mathfrak{so}(3)\cong\mathbb{R}^3$.  
+- Chart at identity via the exponential map.  
+
+"""
+
+# ╔═╡ 8dbb4851-9400-4156-a1b4-543f06393fb7
+md"""
+
+## Exponential & Logarithm Maps
+
+- **Exp map** $\exp:\mathbb{R}^3\to S^3$:  
+  $$\exp(u)
+    =\Bigl(\cos\|u\|,\;\frac{u}{\|u\|}\,\sin\|u\|\Bigr).$$  
+- **Log map** $\log:S^3\setminus\{-1\}\to\mathbb{R}^3$:  
+  $$\log(q)
+    =\frac{\theta}{\sin\theta}\,v,
+    \quad
+    q=(\cos\theta,\;v\sin\theta).$$  
+- These let us move “back and forth” between group and algebra.  
+
+"""
+
+# ╔═╡ 9513c6b0-a4b9-4c07-9d28-e0c2f70756e2
+md"""
+
+## Differential of the Exponential (dexp)
+
+- The **dexp** operator maps algebra increments to tangent-space increments on the group.  
+- $d\exp_u$: differential of $\exp$ at $u\in\mathbb{R}^3$.  
+- Its inverse, $\mathrm{dexp}^{-1}$, corrects for curvature when adding increments.  
+- Series expansion for small $\|u\|$ vs. closed form for general $\|u\|$.  
+
+"""
+
+# ╔═╡ 7e0672c6-0988-4819-8056-c55b7d3b6506
+md"""
+
+## Left-Trivialization & Geodesic Transport
+
+- On a Lie group $G$, left-translation $L_g(h)=gh$ identifies tangent spaces.  
+- **Left Geodesic Transport (LGT):**  
+  $$q_{k+1} = q_k \,\exp\bigl(\Delta u\bigr)$$  
+  applies algebra increment $\Delta u$ in the body frame.  
+- Guarantees updated quaternion remains on $S^3$.  
+
+"""
+
+# ╔═╡ 568b9a52-f31e-4354-bfa2-65395573304b
+md"""
+
+## Classical RK4 vs Lie-Group RK4
+
+| Feature             | Classical RK4                             | Lie-Group RK4                                               |
+|---------------------|-------------------------------------------|-------------------------------------------------------------|
+| Stage update        | $y_{k+1}=y_k+\sum b_i\,k_i$               | $q_{k+1}=q_k\,\exp\!\bigl(\sum b_i\,\Delta u_i\bigr)$       |
+| Additive increments | in $\mathbb{R}^n$                         | in Lie algebra $\mathfrak{g}$                               |
+| Constraint drift    | possible                                  | eliminated                                                  |
+
+"""
+
+# ╔═╡ a57b8725-c2d0-4331-980e-6bd712f9b18c
+md"""
+
+## Lie-Group RK4 Algorithm
+
+1. **Compute** $k_1 = f(y_k)$.  Split into $\omega$ and $\dot\omega$.  
+2. **$\Delta u_1 = h\,\omega$**, update group:  
+   $$q_2 = q_1\,\exp\!\bigl(\tfrac12\,\Delta u_1\bigr).$$  
+3. **Compute** $k_2$ at midpoint; get $\Delta u_2$ via $\mathrm{dexp}^{-1}$.  
+4. **Repeat** for $k_3$ and $k_4$.  
+5. **Combine:**  
+   $$\Delta u 
+     = \tfrac16\bigl(\Delta u_1 + 2\Delta u_2 + 2\Delta u_3 + \Delta u_4\bigr),
+     \quad
+     q_{n+1} = q_n\,\exp(\Delta u),
+     \quad
+     \omega_{n+1} = \omega_n + \tfrac16\bigl(k_1^\omega + 2k_2^\omega + 2k_3^\omega + k_4^\omega\bigr).$$  
+
+"""
+
+# ╔═╡ 0b2cd6bf-f6dd-486b-aaac-181cdad82488
+md"""
+
+## Derivation of $\Delta u$ Using $\mathrm{dexp}^{-1}$
+
+- At stages 2 & 3, map the “difference” back into the algebra:  
+  $$\Delta u_i = \mathrm{dexp}^{-1}_{u_i}\!\bigl(\text{increment}\bigr).$$  
+- Series vs. closed-form:  
+  $$\mathrm{dexp}^{-1}_u(v)
+    = v + \tfrac12\,[u,v] + \tfrac1{12}\,[u,[u,v]] + \dots$$  
+
+"""
+
+# ╔═╡ 61329fe5-39d0-45e7-8031-ebdc36515deb
+md"""
+
+## Implementation Notes
+
+- Use **StaticArrays** for fixed-size performance (quaternions & $\omega$).  
+- Pre-allocate stage buffers `k1, k2, k3, k4`.  
+- Optionally normalize quaternion each step for safety.  
+- Function signature: `f!(du,u,p,t)` + custom RK4 loop.  
+- State vector length = 7 ($q\in\mathbb{R}^4$, $\omega\in\mathbb{R}^3$).  
+
+"""
+
+# ╔═╡ 6bd7d23a-dc72-4d6a-a6e3-447efbc4a4a5
+md"""
+
+## Numerical Examples & Performance
+
+- **Test 1:** Free rigid-body rotation (no torque) → exact geodesic on $S^3$.  
+- **Test 2:** Forced rotation with damping.  
+- Metrics:
+  - **Constraint violation:** $\|q\| - 1$ over time.  
+  - **Error** vs. classical RK4 for attitude.  
+  - **Timing** using `BenchmarkTools.jl`.  
+
+"""
+
+# ╔═╡ 42305c2a-bafa-4ed4-adb1-87d3a9804e7c
+md"""
+
+## Conclusions & References
+
+- Lie-group integrators maintain structure & improve long-term fidelity.  
+- RK4 with $\mathrm{dexp}^{-1}$ & LGT is a straightforward extension of classical RK4.  
+
+**References:**
+- Celledoni et al., “Lie–Group Methods for Rigid Body Dynamics”  
+- Iserles et al., “Lie-Group Integrators”  
+- Hairer, Lubich & Wanner, “Geometric Numerical Integration”  
+"""
+
+# ╔═╡ b6831ab7-4912-44a6-ba6d-e6848934f1eb
+md"""
+Code taken from `lecture_21`
+"""
+
+# ╔═╡ b5885b8b-c3fd-4caa-a4f8-fabb3ff3a90c
+@kwdef struct RigidBodyParams
+    I::Matrix{Float64}          # 3×3 inertia matrix
+    T::Function                 # T(t): torque function returning 3×1 vector
+	normalize_quaternions::Bool = false
+end
+
+# ╔═╡ e321a03c-da0d-429c-8cc6-d76f8fcc92e4
 function L_matrix(q)
     e0, e1, e2, e3 = q
     return [
@@ -270,24 +571,7 @@ function L_matrix(q)
     ]
 end
 
-# ╔═╡ de4506b7-f864-41d5-90c9-6ae7025faeac
-function R_matrix(q)
-    e0, e1, e2, e3 = q
-    return [
-        -e1   e0   e3  -e2;
-        -e2  -e3   e0   e1;
-        -e3   e2  -e1   e0
-    ]
-end
-
-# ╔═╡ a13b5a74-11ed-4d70-9812-3ac3c13f2049
-function rotation_matrix_LR(q)
-    L = L_matrix(q)
-    R = R_matrix(q)
-    return R * transpose(L)
-end
-
-# ╔═╡ b79c1516-543e-443d-923e-c552103062c0
+# ╔═╡ d098022c-9592-4ec1-9b52-7caf03c38e75
 # Compute 3x3 rotation matrix from Euler parameters (unit quaternion)
 function rotation_matrix_from_quat(q)
     e0, e1, e2, e3 = q  # unpack quaternion components
@@ -298,178 +582,8 @@ function rotation_matrix_from_quat(q)
     ]
 end
 
-
-# ╔═╡ 7a1b92c2-50f0-45b6-8dd9-64099baba396
-md"""
-
-## Quaternion Kinematics (Euler Parameter ODE)
-
-To update the orientation over time, we integrate the **quaternion kinematic equation**. If the rigid body has an angular velocity $\boldsymbol{\omega} = [ωₓ, ω_y, ω_z]^\top$ (in body-fixed coordinates), we first define a **pure quaternion** from the angular velocity:
-
-$\boldsymbol{w} = \begin{bmatrix} 0 \\ \boldsymbol{\omega} \end{bmatrix} = [0, \omega_x, \omega_y, \omega_z]^\top$
-
-The quaternion differential equation is:
-
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{q} \otimes \boldsymbol{w} \quad \text{(if } \boldsymbol{\omega} \text{ is in the body frame)}$
-
-or alternatively,
-
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{w} \otimes \boldsymbol{q} \quad \text{(if } \boldsymbol{\omega} \text{ is in the world frame)}$
-
-Here, $\otimes$ denotes quaternion multiplication.
-
-We will assume that $\boldsymbol{\omega}$ is expressed in the rotating body frame. Those formulas means the quaternion’s rate of change is half the quaternion-product of itself with the angular velocity (conceptually analogous to $\dot{\theta} = \omega$ in 2D rotation). Expanding the quaternion product gives a system of first-order ODEs for the Euler parameters:
-
-$\dot e_0 = -\tfrac{1}{2}(e_1 \omega_x + e_2 \omega_y + e_3 \omega_z),$
-
-$\dot e_1 = \;\;\tfrac{1}{2}(e_0 \omega_x + e_2 \omega_z - e_3 \omega_y), \quad \text{(and cyclic perms for }\dot e_2,\dot e_3).$
-
-We implement this in Julia for use with **DifferentialEquations.jl**:
-
-"""
-# ODE function defining quaternion dynamics given angular velocity ω(t)
-
-# ╔═╡ b5d3d04d-5496-4066-a588-08b9b18aca33
-function quaternion_ode!(dq, q, p, t)
-    # q = (e0, e1, e2, e3) is the state (orientation quaternion)
-    e0, e1, e2, e3 = q        # unpack current quaternion
-    ω = p                     # angular velocity (passed as parameter)
-    ωx, ωy, ωz = ω            # components of angular velocity in body frame
-    # Compute dq/dt = 0.5 * q * (0, ω):
-    dq[1] = -0.5 * (e1*ωx + e2*ωy + e3*ωz)                    # dot e0 
-    dq[2] =  0.5 * ( e0*ωx + e2*ωz - e3*ωy )                  # dot e1
-    dq[3] =  0.5 * ( e0*ωy + e3*ωx - e1*ωz )                  # dot e2
-    dq[4] =  0.5 * ( e0*ωz + e1*ωy - e2*ωx )                  # dot e3
-end
-
-# ╔═╡ 40a935d4-c2f0-43e2-a714-103f0380f8c1
-md"""
-
-This function computes $\dot{\boldsymbol{q}}$ for any given quaternion $\boldsymbol{q}$ and angular velocity $\boldsymbol{ω}$. In essence, it continuously “spins” the quaternion according to $\boldsymbol{ω}$.
-
-"""
-
-# ╔═╡ 1081a378-e2ec-497f-8382-3ea00b27d860
-md"""
-
-## Numerical Integration Example
-
-Using the above ODE, we can simulate the orientation over time. We set up an ODE problem with an initial orientation and a given angular velocity, then solve it with a standard integrator:
-
-"""
-
-# ╔═╡ 628a7564-1dfe-461a-b552-ba49742f8946
-ω_const = [0.0, 0.0, 1.0]    # constant angular velocity about z-axis (1 rad/s)
-
-# ╔═╡ 7f1b2d97-39f3-4cc0-af21-72a5af1c44c5
-e0 = [1.0, 0.0, 0.0, 0.0]             # initial quaternion (no rotation)
-
-# ╔═╡ 5ae3a26c-dc5e-42f3-b4f2-5d9c75bed5b8
-tspan = (0.0, 10.0)                   # simulate 10 seconds
-
-# ╔═╡ c25f1923-8a4e-491f-a4e6-4f3ea267d374
-prob = ODEProblem(quaternion_ode!, e0, tspan, ω_const)
-
-# ╔═╡ 4aeea69d-cd46-47e8-bd70-bca18cd09a88
-sol = solve(prob, Tsit5(), dt=0.01)   # 5th-order solver with 0.01s time step
-
-# ╔═╡ d47bc690-08cb-40b5-8d2f-425ad1ee5a7c
-plot(sol, title="Quaternion components over time", 
-     label=["e₀" "e₁" "e₂" "e₃"], legend=:right)
-
-# ╔═╡ 59bd1be4-9b20-46d2-a68f-287a57edb223
-md"""
-
-This integrates $\dot{\boldsymbol{q}} = \frac{1}{2} \boldsymbol{q} \otimes \boldsymbol{w}$ over 0–10 s. The result `sol(t)` gives the quaternion at time `t`. We can plot each component to verify the behavior. For a constant rotation about the z-axis, $e_0$ will decrease from 1 toward 0 (as the rotation angle increases to 180°), $e_3$ (the component along z-axis) will increase, while $e_1, e_2$ remain zero (since the rotation axis has no x or y component). In all cases, the solution quaternions stay on the unit sphere, as expected.
-
-"""
-
-# ╔═╡ b0130ccd-6b36-40ff-ac8a-ae43b1ac10d0
-md"""
-
-## Quaternion Kinematics in Multibody Dynamics
-
-To describe how the orientation of a rigid body evolves in time, we use the **quaternion kinematic equation**. This relates the time derivative of the orientation quaternion $\boldsymbol{q}(t) = [e_0, e_1, e_2, e_3]^\top$ to the body’s angular velocity $\boldsymbol{\omega} \in \mathbb{R}^3$.
-
-As you recall, the quaternion differential equation is:
-
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{q} \otimes \boldsymbol{w} \quad \text{(if } \boldsymbol{\omega} \text{ is in the body frame)}$
-
-or alternatively,
-
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{w} \otimes \boldsymbol{q} \quad \text{(if } \boldsymbol{\omega} \text{ is in the world frame)}$
-
-To express this as a matrix-vector product, we define matrices $\boldsymbol{L}(\boldsymbol{q})$ and $\boldsymbol{R}(\boldsymbol{q})$, both linear in $\boldsymbol{q}$, such that:
-
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{L}(\boldsymbol{q})^\top \, \boldsymbol{\omega} \quad \text{(body-frame angular velocity)}$
-
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{R}(\boldsymbol{q})^\top \, \boldsymbol{\omega} \quad \text{(world-frame angular velocity)}$
-
-In **multibody dynamics**, we typically express $\boldsymbol{\omega}$ in the **body frame**, so the standard kinematic equation becomes:
-
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{L}(\boldsymbol{q})^\top \, \boldsymbol{\omega}$
-
-  
-
-This form is numerically efficient and avoids singularities, making it ideal for time integration in simulation.
-
-"""
-
-# ╔═╡ 4307191c-8ccc-4af9-92b6-ca5a1069fa26
-md"""
-## Rigid Body Rotation with Quaternions
-
-
-In multibody dynamics, the orientation of a rigid body is represented by a **unit quaternion** (Euler parameters)
-
-$\boldsymbol{q}(t) = [e_0, e_1, e_2, e_3]^\top$
-
-
-Its time evolution is governed by:
-
-- The **angular velocity** $\boldsymbol{\omega}(t) = [\omega_x, \omega_y, \omega_z]^\top$ in the **body-fixed frame**
-    
-- The **inertia matrix** $\boldsymbol{I} \in \mathbb{R}^{3 \times 3}$, constant in the body frame
-    
-- The **applied torque** $\boldsymbol{T}(t) \in \mathbb{R}^3$, expressed in the body frame
-    
-### Kinematic Equation (Quaternion Rate)
-
-  
-
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{L}(\boldsymbol{q})^\top \, \boldsymbol{\omega}$
-
-where $\boldsymbol{L}(\boldsymbol{q}) \in \mathbb{R}^{3 \times 4}$ is defined as:
-
-$\boldsymbol{L}(\boldsymbol{q}) = \begin{bmatrix} -e_1 & e_0 & -e_3 & e_2 \\ -e_2 & e_3 & e_0 & -e_1 \\ -e_3 & -e_2 & e_1 & e_0 \end{bmatrix}$
-
-  
-### Dynamic Equation (Euler’s Equations of Motion)
-
-$\boldsymbol{I} \, \dot{\boldsymbol{\omega}} + \boldsymbol{\omega} \times (\boldsymbol{I} \boldsymbol{\omega}) = \boldsymbol{T}(t)$
-
-
-These two equations together define the rigid body’s rotational motion.
-
-This formulation is:
-
-- **Minimal**: no extra rotation matrices needed
-    
-- **Stable**: quaternions avoid singularities
-    
-- **Extensible**: integrates cleanly into multibody systems where bodies have both translation and rotation
-    
-
-
-Make sure to normalize $\boldsymbol{q}(t)$ after integration steps to maintain unit norm:
-
-$\boldsymbol{q} \leftarrow \frac{\boldsymbol{q}}{\|\boldsymbol{q}\|}$
-
-
-"""
-
-# ╔═╡ e2b9a3b1-28f4-4556-88c9-15619b611f32
-function rigid_body!(du, u, p, t)
+# ╔═╡ f8ab6415-f637-4136-afbc-a606605d98df
+function rigid_body!(du, u, p::RigidBodyParams, t)
     # State vector: u = [q; ω] where
     #   q = orientation quaternion (4,)
     #   ω = angular velocity in body frame (3,)
@@ -485,6 +599,9 @@ function rigid_body!(du, u, p, t)
     T = p.T(t)      # External torque in body frame, may depend on time
 
     # Quaternion kinematics
+	if p.normalize_quaternions
+		q ./= norm(q)
+	end
     L = L_matrix(q)
     dq[:] = 0.5 * transpose(L) * ω
 
@@ -493,105 +610,365 @@ function rigid_body!(du, u, p, t)
     dω[:] = I \ (T - cross(ω, Iω))  # Equivalent to inv(I)*(T - ω × (Iω))
 end
 
-# ╔═╡ 49475e63-f3cb-4c68-bd81-ce2aaa87a8d2
-struct RigidBodyParams
-    I::Matrix{Float64}          # 3×3 inertia matrix
-    T::Function                 # T(t): torque function returning 3×1 vector
-end
+# ╔═╡ f9738195-675f-49f4-9524-d5de7de9ff0e
+md"""
+## Experiment with free-floating top
 
-# ╔═╡ 6efcb593-4d04-4dee-891d-880bc342c86a
+Free floating top shows an interesting behaviour when it's moments of inertia are quite different. The rotation along the axis of largest and smallest inertias are stable. However, rotation along the middle value of inertia is unstable and top have a tendency to flip it's orientation periodically. 
+
+This phenomenon is also known as [Tennis racket theorem](https://en.wikipedia.org/wiki/Tennis_racket_theorem)
+
+Let's check this.
+"""
+
+# ╔═╡ 18526569-4745-48c1-920a-c61d84725305
+I_top = Diagonal([0.1, 1.0, 10.0])
+
+# ╔═╡ 41b943a9-33ef-495d-83c3-9f7a30a0368e
+p_top = RigidBodyParams(I = I_top, T = t -> [0, 0, 0], normalize_quaternions=false) # no external torque
+
+# ╔═╡ ec29187e-aa14-4297-a3a7-c83128f730e4
 # Initial conditions
 begin
-	q0_ = [1.0, 0.0, 0.0, 0.0]
-	ω0_ = [0.1, 0.2, 0.3]
-	u0_rb = [q0_; ω0_]
+	q0_top = [1.0, 0.0, 0.0, 0.0]
+	ω0_top = [1e-3, 1.0, 0.0] # we need some small disturbance
+	u0_top = [q0_top; ω0_top]
 end
 
-# ╔═╡ 5a00b31e-3c07-4529-9812-51c1c76d80f4
-tspan_rb = (0.0, 10.0)
+# ╔═╡ ff9bb4b4-72f3-483e-bf7d-94d11c28c4c8
+tspan_top = (0.0, 20.0)
 
-# ╔═╡ 24c4a618-afd6-4aa3-909f-f966ae59613d
-# Time-varying torque function: returns a 3D vector in body frame
-function torque_vector(t)
-    return [0.0, 0.0, sin(t)]  # example: sinusoidal torque about z-axis
-end
+# ╔═╡ 10b61807-2d35-4121-83ea-dd23ee04ec66
+prob_top = ODEProblem(rigid_body!, u0_top, tspan_top, p_top)
 
-# ╔═╡ 99a27d56-dfc4-4816-aa3b-2b1150f11bae
-# Example: diagonal inertia tensor (e.g., uniform box or sphere)
-I = Diagonal([1.0, 2.0, 3.0]) #|> Matrix  # must be a full matrix
+# ╔═╡ 090e9ea8-ab41-408e-be3b-ea557a1f536e
+sol_top = solve(prob_top)
 
-# ╔═╡ 29871224-af35-4283-aa1d-ea76e030d68f
-p = RigidBodyParams(I, t -> torque_vector(t))      # inertia + time-varying torque
+# ╔═╡ d1885b23-7589-4ffe-9848-f5735ca4c68f
+plot(sol_top, idxs=(0,5), xlabel="Time", ylabel="ωₓ", label="ωₓ")
 
-# ╔═╡ 112c561a-224c-44e2-9524-7941e1aa305b
-prob_rb = ODEProblem(rigid_body!, u0_rb, tspan_rb, p)
+# ╔═╡ ce0cb420-8bd6-4b2d-8782-c24bcef0ff3f
+plot(sol_top, idxs=(0,6), xlabel="Time", ylabel="ω_y", label="ω_y")
 
-# ╔═╡ 27680643-bdbb-46d9-970c-3735e44b459d
-sol_rb = solve(prob_rb)
+# ╔═╡ fb1bdaf1-8ac4-4248-83fa-818373c9cf70
+plot(sol_top, idxs=(0,7), xlabel="Time", ylabel="ω_z", label="ω_z")
 
-# ╔═╡ 35c2edfe-2ef8-47cd-a73b-d894f3101db4
-plot(sol_rb, idxs=(0,5), xlabel="Time", ylabel="ωₓ", label="ωₓ")
-
-# ╔═╡ 2dd090f6-561d-421c-88f9-2f19af6d92db
+# ╔═╡ 0c5739ce-44c7-4daf-a570-411167b9945f
 md"""
-
-## Toward a Multibody Dynamics Codebase
-
-The code and concepts presented can be extended and reused in a general multibody simulation framework.
-
-Key points and definitions:
-
-- **Angular velocity** $\boldsymbol{\omega}$
-    
-    A 3D vector representing the rotational speed and axis of a rigid body, typically expressed in the **body-fixed frame**. It is related to the time derivative of the orientation quaternion $\boldsymbol{q}(t)$ via the kinematic equation:
-    
-$\dot{\boldsymbol{q}} = \frac{1}{2} \, \boldsymbol{E}(\boldsymbol{q})^\top \, \boldsymbol{\omega}$
-    
-where $\boldsymbol{E}(\boldsymbol{q}) \in \mathbb{R}^{3 \times 4}$ is a matrix linear in $\boldsymbol{q}$. $\boldsymbol{L}(\boldsymbol{q})$ or $\boldsymbol{R}(\boldsymbol{q})$.
-    
-- **Inertia matrix** $\boldsymbol{I}$
-    
-    A symmetric, positive-definite $3 \times 3$ matrix that encodes the body’s mass distribution about its center of mass. In the **body-fixed frame**, the rigid body’s rotational equation of motion is:
-    
-$\boldsymbol{I} \, \dot{\boldsymbol{\omega}} + \boldsymbol{\omega} \times (\boldsymbol{I} \boldsymbol{\omega}) = \boldsymbol{T}$
-    
-where $\boldsymbol{T}$ is the external torque applied to the body.
-       
-- **Quaternion normalization**
-    
-    To prevent drift from roundoff error during integration, it’s good practice to **renormalize** $\boldsymbol{q} \leftarrow \boldsymbol{q} / \|\boldsymbol{q}\|$ occasionally.
-    
-- **L(q), R(q) matrices**
-    
-    Use the linear structure of the rotation matrix:
-    
-$\boldsymbol{A}(\boldsymbol{q}) = \boldsymbol{L}(\boldsymbol{q})^\top \boldsymbol{R}(\boldsymbol{q})$
-    
-to derive angular velocity and rotation equations analytically and efficiently.
-    
-- **Extending to multibody systems**
-    
-    Combine each body’s state (position, orientation, velocity) into a global state vector. Your Euler-parameter-based orientation model integrates naturally with translational motion and constraints.
-   
-
+How well the Euler parameters constraint is met?
 """
+
+# ╔═╡ 97c661ab-97cd-4cef-9c9d-5eecb3d4dbf3
+#[norm(u[1:4])^2 - 1 for (u, t) in tuples(sol_top)]
+plot(sol_top.t, [norm(u[1:4])^2 - 1 for (u, t) in tuples(sol_top)], xlabel="Time", ylabel="Constraint", label="")
+
+# ╔═╡ d708f8e4-5a62-4eba-91b9-2d7b9dbe3589
+md"""
+## Lets try to animate our "rocket"
+"""
+
+# ╔═╡ fc6f154d-9f05-4d03-a897-12dab03fe818
+function plot_frame(R::AbstractMatrix; len=1.0)
+    origin = [0.0, 0.0, 0.0]
+
+    # Axis directions
+    x = R[:,1] * len
+    y = R[:,2] * len
+    z = R[:,3] * len
+
+    # Base plot
+    plt = plot(; legend = true, size=(600, 600),
+        xlims = (-1.5, 1.5), ylims = (-1.5, 1.5), zlims = (-1.5, 1.5),
+        aspect_ratio = :equal, camera = (30, 30))
+
+    # Plot frame axes
+    plot!(plt, [0, x[1]], [0, x[2]], [0, x[3]], label="x-axis", lw=4, c=:red)
+    plot!(plt, [0, y[1]], [0, y[2]], [0, y[3]], label="y-axis", lw=4, c=:green)
+    plot!(plt, [0, z[1]], [0, z[2]], [0, z[3]], label="z-axis", lw=4, c=:blue)
+
+    # Ellipsoid representing inertia shape
+    u = range(0, 2π; length=40)
+    v = range(0, π; length=20)
+    U, V = [u[i] for i in 1:length(u), j in 1:length(v)], [v[j] for i in 1:length(u), j in 1:length(v)]
+
+    # Principal axes scaled by inertia ellipsoid (semi-axis lengths)
+    a, b, c = 0.3 * (1 ./ sqrt.([0.1, 1.0, 10.0]))  # scale factor for display
+    X = a .* sin.(V) .* cos.(U)
+    Y = b .* sin.(V) .* sin.(U)
+    Z = c .* cos.(V)
+
+    # Rotate ellipsoid using R
+    points = [R * [X[i, j]; Y[i, j]; Z[i, j]] for i in 1:size(X,1), j in 1:size(X,2)]
+    Xr = [p[1] for p in points]
+    Yr = [p[2] for p in points]
+    Zr = [p[3] for p in points]
+
+    # Plot ellipsoid surface
+    surface!(plt, reshape(Xr, size(X)), reshape(Yr, size(Y)), reshape(Zr, size(Z)),
+    	color = :gray, opacity = 0.5, label = "", colorbar = false)
+
+    return plt
+end
+
+# ╔═╡ 57da86a0-5ae4-4533-aaf4-5b623a948a46
+@bind t Slider(sol_top.t[1]:0.01:sol_top.t[end], show_value = true)
+
+# ╔═╡ 8b60eee1-3539-4d34-949a-b582d361d20d
+begin
+	q = sol_top(t)[1:4]
+	q ./= norm(q)
+	R2 = rotation_matrix_from_quat(q)
+	plot_frame(R2)
+end
+
+# ╔═╡ e064f06a-73fa-4131-b6fd-b351a8bbc397
+md"""
+## Check LieGroup integrator
+"""
+
+# ╔═╡ ed79c331-150f-4021-8f03-661d09748d0a
+skew(u::SVector{3,T}) where T = @SMatrix [
+  zero(T)  -u[3]  u[2];
+  u[3]   zero(T) -u[1];
+ -u[2]    u[1]  zero(T)
+]
+
+# ╔═╡ 30ae3cc1-ce03-4f69-89d7-274e444d855a
+
+
+# ╔═╡ 31902baa-d167-48d9-bbd6-aa98a3811e9e
+function quat_mult(q1::SVector{4,T}, q2::SVector{4,T}) where T
+  s = q1[1]*q2[1] - dot(q1[2:4], q2[2:4])
+  v = q1[1]*q2[2:4] .+ q2[1]*q1[2:4] .+ cross(q1[2:4], q2[2:4])
+  return SVector(s, v...)
+end
+
+# ╔═╡ 2eb46e08-6206-430f-a2ab-939ab3935136
+function LGT(q::SVector{4,T}, u::SVector{3,T}) where T
+  ϕ = 0.5*norm(u)
+  if ϕ < 1e-2
+    c = 1 - ϕ^2/6 + ϕ^4/120 - ϕ^6/5040
+    Δq = SVector(cos(ϕ), ((0.5*c).*u)...)
+  else
+    Δq = SVector(cos(ϕ), ((0.5*sin(ϕ)/ϕ).*u)...)
+  end
+  return quat_mult(q, Δq)
+end
+
+# ╔═╡ b9c856fd-966a-46af-8591-23434b5be1c0
+function invdexp(w::SVector{3,T}, k::SVector{3,T}) where T
+  ϕ = norm(k)
+  K  = skew(k);  K2 = K*K
+  coeff = ϕ<1e-2 ?
+    (1/12 + ϕ^2/720 + ϕ^4/30240 + ϕ^6/1209600) :
+    (1 - (ϕ/2)*cot(ϕ/2)) / ϕ^2
+  return w .+ 0.5*(K*w) .+ coeff*(K2*w)
+end
+
+# ╔═╡ bfa63b6f-1b7b-4326-a4ed-a86636164297
+"""
+    custom_rk4(
+      f!, tspan::StepRangeLen, y0::Vector{T}, p;
+      is_lie::Bool=false
+    ) -> (t, F)
+
+If `is_lie` is `false`, does classical additive RK4 on all components.
+If `is_lie` is `true`, treats `u[1:4]` as a unit‐quat `q` and `u[5:7]` as ω,
+updating `q` via LGT+invdexp and ω additively.
+
+`f!(du,u,p,t)` must fill `du .= u'`.
+"""
+function custom_rk4(
+    f!, tspan::StepRangeLen, y0::Vector{T}, p;
+    is_lie::Bool=false
+) where T
+    n  = length(tspan)
+    dt = step(tspan)
+    m  = length(y0)
+
+    F    = zeros(T, m, n)
+    F[:,1] .= y0
+
+    k1 = similar(y0);  k2 = similar(y0)
+    k3 = similar(y0);  k4 = similar(y0)
+    temp = similar(y0)
+
+    for (i, ti) in enumerate(tspan[1:end-1])
+        yi = @view F[:,i]
+        # unpack current q & ω if needed
+        qi = is_lie ? SVector{4,T}(yi[1:4]) : nothing
+        wi = is_lie ? SVector{3,T}(yi[5:7]) : nothing
+
+        # Stage 1
+        f!(k1, yi, p, ti)
+        if is_lie
+            Δq1 = dt * wi
+            Δw1 = dt * SVector(k1[5],k1[6],k1[7])
+        else
+            Δq1 = dt * SVector(k1[1],k1[2],k1[3],k1[4])
+            Δw1 = dt * SVector(k1[5],k1[6],k1[7])
+        end
+
+        # Stage 2 prep
+        if is_lie
+            q2 = LGT(qi, Δq1/2)
+            w2 = wi .+ Δw1/2
+            temp .= vcat(q2, w2)
+        else
+            temp .= yi .+ 0.5 .* k1 .* dt
+        end
+
+        # Stage 2
+        f!(k2, temp, p, ti + dt/2)
+        if is_lie
+            Δq2 = dt * invdexp(w2, Δq1/2)
+            Δw2 = dt * SVector(k2[5],k2[6],k2[7])
+        else
+            Δq2 = dt * SVector(k2[1],k2[2],k2[3],k2[4])
+            Δw2 = dt * SVector(k2[5],k2[6],k2[7])
+        end
+
+        # Stage 3 prep
+        if is_lie
+            q3 = LGT(qi, Δq2/2)
+            w3 = wi .+ Δw2/2
+            temp .= vcat(q3, w3)
+        else
+            temp .= yi .+ 0.5 .* k2 .* dt
+        end
+
+        # Stage 3
+        f!(k3, temp, p, ti + dt/2)
+        if is_lie
+            Δq3 = dt * invdexp(w3, Δq2/2)
+            Δw3 = dt * SVector(k3[5],k3[6],k3[7])
+        else
+            Δq3 = dt * SVector(k3[1],k3[2],k3[3],k3[4])
+            Δw3 = dt * SVector(k3[5],k3[6],k3[7])
+        end
+
+        # Stage 4 prep
+        if is_lie
+            q4 = LGT(qi, Δq3)
+            w4 = wi .+ Δw3
+            temp .= vcat(q4, w4)
+        else
+            temp .= yi .+ k3 .* dt
+        end
+
+        # Stage 4
+        f!(k4, temp, p, ti + dt)
+        if is_lie
+            Δq4 = dt * invdexp(w4, Δq3)
+            Δw4 = dt * SVector(k4[5],k4[6],k4[7])
+        else
+            Δq4 = dt * SVector(k4[1],k4[2],k4[3],k4[4])
+            Δw4 = dt * SVector(k4[5],k4[6],k4[7])
+        end
+
+        # combine
+        if is_lie
+            total_Δq = (Δq1 .+ 2Δq2 .+ 2Δq3 .+ Δq4) ./ 6
+            qn = LGT(qi, total_Δq)
+            wn = wi .+ (Δw1 .+ 2Δw2 .+ 2Δw3 .+ Δw4) ./ 6
+            F[:,i+1] .= vcat(qn, wn)
+        else
+            F[:,i+1] .= yi .+ (k1 .+ 2k2 .+ 2k3 .+ k4) .* (dt/6)
+        end
+    end
+
+    return collect(tspan), transpose(F)
+end
+
+# ╔═╡ f867a1fd-197c-47f9-bb92-e2ac7dfc4510
+custom_rk4_classical(f!, tspan, y0, p) =
+  custom_rk4(f!, tspan, y0, p; is_lie=false)
+
+# ╔═╡ d7807d6e-11ee-4455-b3f6-afd0b3693cea
+custom_rk4_lie(f!, tspan, y0, p) =
+  custom_rk4(f!, tspan, y0, p; is_lie=true)
+
+# ╔═╡ 835ade1a-bc9c-4f8a-aa81-ae841982bd15
+t_top, Y_top = custom_rk4_lie(rigid_body!, 0.0:0.1:20.0, u0_top, p_top)
+
+# ╔═╡ dc1f5e4c-8d7a-4084-a4f6-94a918d83a2f
+plot(t_top, Y_top[:, 5], xlabel="Time", ylabel="ωₓ", label="ωₓ")
+
+# ╔═╡ d5477121-51b5-4066-abba-394fd5f7776f
+plot(t_top, Y_top[:, 6], xlabel="Time", ylabel="ω_y", label="ω_y")
+
+# ╔═╡ 9ecab244-828f-4810-b91c-1c0b14e0d9a9
+plot(t_top, Y_top[:, 7], xlabel="Time", ylabel="ω_z", label="ω_z")
+
+# ╔═╡ 9915bfc0-c67f-455c-baf3-76703021fb02
+plot(t_top, [norm(u[1:4])^2 - 1 for u in eachrow(Y_top)], xlabel="Time", ylabel="Constraint", label="")
+
+# ╔═╡ 02fb5535-29b3-4bdc-9c74-3b0ce0790df7
+md"""
+### The same, but with simple rk4
+"""
+
+# ╔═╡ e996a200-d5a1-47da-94ba-50939f8e8307
+t_top_s, Y_top_s = custom_rk4_classical(rigid_body!, 0.0:0.1:20.0, u0_top, p_top)
+
+# ╔═╡ b1938b6f-3151-4825-9f01-33f56dc801c4
+plot(t_top_s, Y_top_s[:, 5], xlabel="Time", ylabel="ωₓ", label="ωₓ")
+
+# ╔═╡ 2fba6169-6742-4425-8e85-aaa777a65f0e
+plot(t_top_s, Y_top_s[:, 6], xlabel="Time", ylabel="ω_y", label="ω_y")
+
+# ╔═╡ a87c1210-6980-4e04-8f0d-a4ee2a6bff4f
+plot(t_top_s, Y_top_s[:, 7], xlabel="Time", ylabel="ω_z", label="ω_z")
+
+# ╔═╡ db51f4f4-3023-415f-b53d-825cb45ff503
+plot(t_top_s, [norm(u[1:4])^2 - 1 for u in eachrow(Y_top_s)], xlabel="Time", ylabel="Constraint", label="")
+
+# ╔═╡ d03973b8-e049-4395-ad63-ea78ae5b7150
+md"""
+## Benchmark two versions of our RK4's
+"""
+
+# ╔═╡ 914061d1-3fd9-4dfd-9e94-302d83ef052d
+t_span_bench = 0.0:0.001:10.0
+
+# ╔═╡ b49c4dc7-1e53-4221-9961-eca75ca43c5f
+begin
+	t1, F1 = custom_rk4_lie(rigid_body!, t_span_bench, u0_top, p_top)
+	t2, F2 = custom_rk4_classical(rigid_body!, t_span_bench, u0_top, p_top)
+end
+
+# ╔═╡ d96733bf-abe6-4973-b1e9-a1da3d6d4863
+begin
+	println("Lie-group RK4:")
+	@btime custom_rk4_lie($rigid_body!, $t_span_bench, $u0_top, $p_top)
+end
+
+# ╔═╡ 5b823e56-0966-4dc7-802b-79906989167d
+begin
+	println("Classical RK4:")
+	@btime custom_rk4_classical($rigid_body!, $t_span_bench, $u0_top, $p_top)
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
 LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 PlotlyJS = "f0f68f2c-4968-5e81-91da-67840de0976a"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [compat]
+BenchmarkTools = "~1.3.2"
 DifferentialEquations = "~7.16.1"
 LaTeXStrings = "~1.4.0"
 PlotlyJS = "~0.18.16"
 Plots = "~1.40.13"
-PlutoUI = "~0.7.23"
+PlutoUI = "~0.7.62"
+StaticArrays = "~1.9.13"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -600,7 +977,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "7b2294641530d8fb1d50c43c84456e04cfc80de3"
+project_hash = "fa256541718a67ef14c5c429652edb078a24ad5f"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e2478490447631aedba0823d4d7a80b2cc8cdb32"
@@ -678,9 +1055,9 @@ version = "0.4.0"
 
 [[deps.ArrayInterface]]
 deps = ["Adapt", "LinearAlgebra"]
-git-tree-sha1 = "017fcb757f8e921fb44ee063a7aafe5f89b86dd1"
+git-tree-sha1 = "bebb10cd3f0796dd1429ba61e43990ba391186e9"
 uuid = "4fba245c-0d91-5ea0-9b3e-6abc04ee57a9"
-version = "7.18.0"
+version = "7.18.1"
 
     [deps.ArrayInterface.extensions]
     ArrayInterfaceBandedMatricesExt = "BandedMatrices"
@@ -746,6 +1123,12 @@ version = "1.9.4"
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 version = "1.11.0"
 
+[[deps.BenchmarkTools]]
+deps = ["JSON", "Logging", "Printf", "Profile", "Statistics", "UUIDs"]
+git-tree-sha1 = "d9a9701b899b30332bbcb3e1679c41cce81fb0e8"
+uuid = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+version = "1.3.2"
+
 [[deps.BitFlags]]
 git-tree-sha1 = "0691e34b3bb8be9307330f88d1a3c3f25466c24d"
 uuid = "d1d4a3ce-64b1-5f1a-9ba4-7e7e69966f35"
@@ -764,10 +1147,10 @@ uuid = "ad839575-38b3-5650-b840-f874b8c74a25"
 version = "0.12.9"
 
 [[deps.BoundaryValueDiffEq]]
-deps = ["ADTypes", "ArrayInterface", "BoundaryValueDiffEqAscher", "BoundaryValueDiffEqCore", "BoundaryValueDiffEqFIRK", "BoundaryValueDiffEqMIRK", "BoundaryValueDiffEqMIRKN", "BoundaryValueDiffEqShooting", "DiffEqBase", "FastClosures", "ForwardDiff", "LinearAlgebra", "Reexport", "SciMLBase"]
-git-tree-sha1 = "e3829b5aa0cb49348956c81b927b5edf64cdf6bf"
+deps = ["ADTypes", "BoundaryValueDiffEqAscher", "BoundaryValueDiffEqCore", "BoundaryValueDiffEqFIRK", "BoundaryValueDiffEqMIRK", "BoundaryValueDiffEqMIRKN", "BoundaryValueDiffEqShooting", "DiffEqBase", "FastClosures", "ForwardDiff", "LinearAlgebra", "Reexport", "SciMLBase"]
+git-tree-sha1 = "ca42053e5c1f2c1ec52111a2ab3e5a0908d9276d"
 uuid = "764a87c0-6b3e-53db-9096-fe964310641d"
-version = "5.16.0"
+version = "5.16.1"
 
     [deps.BoundaryValueDiffEq.extensions]
     BoundaryValueDiffEqODEInterfaceExt = "ODEInterface"
@@ -776,40 +1159,40 @@ version = "5.16.0"
     ODEInterface = "54ca160b-1b9f-5127-a996-1867f4bc2a2c"
 
 [[deps.BoundaryValueDiffEqAscher]]
-deps = ["ADTypes", "AlmostBlockDiagonals", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
-git-tree-sha1 = "a3ed69c1c0249a53622bd4435384c4e76ac547d9"
+deps = ["ADTypes", "AlmostBlockDiagonals", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastClosures", "ForwardDiff", "LinearAlgebra", "PreallocationTools", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield"]
+git-tree-sha1 = "61fbc62e8277c4d540e1e1954962ec2fdfca5965"
 uuid = "7227322d-7511-4e07-9247-ad6ff830280e"
-version = "1.5.0"
+version = "1.5.1"
 
 [[deps.BoundaryValueDiffEqCore]]
-deps = ["ADTypes", "Adapt", "ArrayInterface", "ConcreteStructs", "DiffEqBase", "ForwardDiff", "LineSearch", "LinearAlgebra", "LinearSolve", "Logging", "NonlinearSolveFirstOrder", "PreallocationTools", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays", "SparseConnectivityTracer", "SparseMatrixColorings"]
-git-tree-sha1 = "832ade257129d0c222a53b66e2d7e6f5d937ae34"
+deps = ["ADTypes", "Adapt", "ArrayInterface", "ConcreteStructs", "DiffEqBase", "ForwardDiff", "LineSearch", "LinearAlgebra", "Logging", "NonlinearSolveFirstOrder", "PreallocationTools", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays", "SparseConnectivityTracer", "SparseMatrixColorings"]
+git-tree-sha1 = "8278c1ff5aa1875e9167d2da8c419f5b8362a171"
 uuid = "56b672f2-a5fe-4263-ab2d-da677488eb3a"
-version = "1.8.0"
+version = "1.8.1"
 
 [[deps.BoundaryValueDiffEqFIRK]]
-deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
-git-tree-sha1 = "a92feb2cbb12c6c9adc4d3c4e7427709e9477540"
+deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
+git-tree-sha1 = "5030e5ef731082893f744272dc592978dd6fae7c"
 uuid = "85d9eb09-370e-4000-bb32-543851f73618"
-version = "1.6.0"
+version = "1.6.1"
 
 [[deps.BoundaryValueDiffEqMIRK]]
-deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
-git-tree-sha1 = "4cd74dc128326804f780ad6e18ec4886279293de"
+deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
+git-tree-sha1 = "c02fa2e95ccffe1dc7a4acb602c25740dfa8bfdf"
 uuid = "1a22d4ce-7765-49ea-b6f2-13c8438986a6"
-version = "1.6.0"
+version = "1.6.1"
 
 [[deps.BoundaryValueDiffEqMIRKN]]
-deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
-git-tree-sha1 = "0db565e02c9784e254325b616a8dd6c0dfec7403"
+deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
+git-tree-sha1 = "3f5635756bcffa7aa522e6dd61da39bbbe0cd3df"
 uuid = "9255f1d6-53bf-473e-b6bd-23f1ff009da4"
-version = "1.5.0"
+version = "1.5.1"
 
 [[deps.BoundaryValueDiffEqShooting]]
-deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
-git-tree-sha1 = "7429a95010c57e67bd10e52dd3f276db4d2abdeb"
+deps = ["ADTypes", "ArrayInterface", "BandedMatrices", "BoundaryValueDiffEqCore", "ConcreteStructs", "DiffEqBase", "DifferentiationInterface", "FastAlmostBandedMatrices", "FastClosures", "ForwardDiff", "LinearAlgebra", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "Setfield", "SparseArrays"]
+git-tree-sha1 = "400776e8f37030321d6e46576cf613142668cc55"
 uuid = "ed55bfe0-3725-4db6-871e-a1dc9f42a757"
-version = "1.6.0"
+version = "1.6.1"
 
 [[deps.BracketingNonlinearSolve]]
 deps = ["CommonSolve", "ConcreteStructs", "NonlinearSolveBase", "PrecompileTools", "Reexport", "SciMLBase"]
@@ -874,19 +1257,15 @@ version = "3.29.0"
 
 [[deps.ColorTypes]]
 deps = ["FixedPointNumbers", "Random"]
-git-tree-sha1 = "67e11ee83a43eb71ddc950302c53bf33f0690dfe"
+git-tree-sha1 = "b10d0b65641d57b8b4d5e234446582de5047050d"
 uuid = "3da002f7-5984-5a60-b8a6-cbb66c0b333f"
-version = "0.12.1"
-weakdeps = ["StyledStrings"]
-
-    [deps.ColorTypes.extensions]
-    StyledStringsExt = "StyledStrings"
+version = "0.11.5"
 
 [[deps.ColorVectorSpace]]
 deps = ["ColorTypes", "FixedPointNumbers", "LinearAlgebra", "Requires", "Statistics", "TensorCore"]
-git-tree-sha1 = "8b3b6f87ce8f65a2b4f857528fd8d70086cd72b1"
+git-tree-sha1 = "a1f44953f2382ebb937d60dafbe2deea4bd23249"
 uuid = "c3611d14-8923-5661-9e6a-0046d554d3a4"
-version = "0.11.0"
+version = "0.10.0"
 weakdeps = ["SpecialFunctions"]
 
     [deps.ColorVectorSpace.extensions]
@@ -1009,9 +1388,9 @@ version = "1.16.2+0"
 
 [[deps.DelayDiffEq]]
 deps = ["ArrayInterface", "DataStructures", "DiffEqBase", "LinearAlgebra", "Logging", "OrdinaryDiffEq", "OrdinaryDiffEqCore", "OrdinaryDiffEqDefault", "OrdinaryDiffEqDifferentiation", "OrdinaryDiffEqNonlinearSolve", "OrdinaryDiffEqRosenbrock", "Printf", "RecursiveArrayTools", "Reexport", "SciMLBase", "SimpleNonlinearSolve", "SimpleUnPack", "SymbolicIndexingInterface"]
-git-tree-sha1 = "f21c4d910df39e556a4656db85df077218287a39"
+git-tree-sha1 = "8b416f6b1f9ef8df4c13dd0fe6c191752722b36f"
 uuid = "bcd4f6db-9728-5f36-b5f7-82caef46ccdb"
-version = "5.53.0"
+version = "5.53.1"
 
 [[deps.DelimitedFiles]]
 deps = ["Mmap"]
@@ -1021,9 +1400,9 @@ version = "1.9.1"
 
 [[deps.DiffEqBase]]
 deps = ["ArrayInterface", "ConcreteStructs", "DataStructures", "DocStringExtensions", "EnumX", "EnzymeCore", "FastBroadcast", "FastClosures", "FastPower", "FunctionWrappers", "FunctionWrappersWrappers", "LinearAlgebra", "Logging", "Markdown", "MuladdMacro", "Parameters", "PrecompileTools", "Printf", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators", "SciMLStructures", "Setfield", "Static", "StaticArraysCore", "Statistics", "SymbolicIndexingInterface", "TruncatedStacktraces"]
-git-tree-sha1 = "ae6f0576b4a99e1aab7fde7532efe7e47539b588"
+git-tree-sha1 = "575a4b945c26f654625c9bc58a1ed10a4eddd267"
 uuid = "2b5f629d-d688-5b77-993f-72d75c75574e"
-version = "6.170.1"
+version = "6.173.0"
 
     [deps.DiffEqBase.extensions]
     DiffEqBaseCUDAExt = "CUDA"
@@ -1095,9 +1474,9 @@ version = "7.16.1"
 
 [[deps.DifferentiationInterface]]
 deps = ["ADTypes", "LinearAlgebra"]
-git-tree-sha1 = "aa87a743e3778d35a950b76fbd2ae64f810a2bb3"
+git-tree-sha1 = "c8d85ecfcbaef899308706bebdd8b00107f3fb43"
 uuid = "a0c0ee7d-e4b9-4e03-894e-1c5f64a51d63"
-version = "0.6.52"
+version = "0.6.54"
 
     [deps.DifferentiationInterface.extensions]
     DifferentiationInterfaceChainRulesCoreExt = "ChainRulesCore"
@@ -1161,9 +1540,9 @@ version = "1.11.0"
 
 [[deps.Distributions]]
 deps = ["AliasTables", "FillArrays", "LinearAlgebra", "PDMats", "Printf", "QuadGK", "Random", "SpecialFunctions", "Statistics", "StatsAPI", "StatsBase", "StatsFuns"]
-git-tree-sha1 = "6d8b535fd38293bc54b88455465a1386f8ac1c3c"
+git-tree-sha1 = "3e6d038b77f22791b8e3472b7c633acea1ecac06"
 uuid = "31c24e10-a181-5473-b8eb-7969acd0382f"
-version = "0.25.119"
+version = "0.25.120"
 
     [deps.Distributions.extensions]
     DistributionsChainRulesCoreExt = "ChainRulesCore"
@@ -1251,9 +1630,9 @@ version = "4.4.4+1"
 
 [[deps.FastAlmostBandedMatrices]]
 deps = ["ArrayInterface", "ArrayLayouts", "BandedMatrices", "ConcreteStructs", "LazyArrays", "LinearAlgebra", "MatrixFactorizations", "PrecompileTools", "Reexport"]
-git-tree-sha1 = "3f03d94c71126b6cfe20d3cbcc41c5cd27e1c419"
+git-tree-sha1 = "9482a2b4face8ade73792c23a54796c79ed1bcbf"
 uuid = "9d29842c-ecb8-4973-b1e9-a27b1157504e"
-version = "0.1.4"
+version = "0.1.5"
 
 [[deps.FastBroadcast]]
 deps = ["ArrayInterface", "LinearAlgebra", "Polyester", "Static", "StaticArrayInterface", "StrideArraysCore"]
@@ -1479,9 +1858,9 @@ version = "0.3.28"
 
 [[deps.Hyperscript]]
 deps = ["Test"]
-git-tree-sha1 = "8d511d5b81240fc8e6802386302675bdf47737b9"
+git-tree-sha1 = "179267cfa5e712760cd43dcae385d7ea90cc25a4"
 uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
-version = "0.0.4"
+version = "0.0.5"
 
 [[deps.HypertextLiteral]]
 deps = ["Tricks"]
@@ -1587,9 +1966,9 @@ version = "0.2.1+0"
 
 [[deps.Krylov]]
 deps = ["LinearAlgebra", "Printf", "SparseArrays"]
-git-tree-sha1 = "efadd12a94e5e73b7652479c2693cd394d684f95"
+git-tree-sha1 = "b94257a1a8737099ca40bc7271a8b374033473ed"
 uuid = "ba0b0d4f-ebba-5204-a429-3ac8c609bfb7"
-version = "0.10.0"
+version = "0.10.1"
 
 [[deps.LAME_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
@@ -1765,9 +2144,9 @@ version = "1.11.0"
 
 [[deps.LinearSolve]]
 deps = ["ArrayInterface", "ChainRulesCore", "ConcreteStructs", "DocStringExtensions", "EnumX", "GPUArraysCore", "InteractiveUtils", "Krylov", "LazyArrays", "Libdl", "LinearAlgebra", "MKL_jll", "Markdown", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators", "Setfield", "StaticArraysCore", "UnPack"]
-git-tree-sha1 = "1e1f3ba20d745a9ea57831b7f30e7b275731486e"
+git-tree-sha1 = "c5e80f547e47f00f53c290aa5d4a11034104b94d"
 uuid = "7ed4a6bd-45f5-4d41-b270-4a48e9bafcae"
-version = "3.9.0"
+version = "3.11.0"
 
     [deps.LinearSolve.extensions]
     LinearSolveBandedMatricesExt = "BandedMatrices"
@@ -1829,6 +2208,11 @@ version = "1.11.0"
 deps = ["Dates", "Logging"]
 git-tree-sha1 = "f02b56007b064fbfddb4c9cd60161b6dd0f40df3"
 uuid = "e6f89c97-d47a-5376-807f-9c37f3926c36"
+version = "1.1.0"
+
+[[deps.MIMEs]]
+git-tree-sha1 = "c64d943587f7187e751162b3b84445bbbd79f691"
+uuid = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
 version = "1.1.0"
 
 [[deps.MKL_jll]]
@@ -1981,9 +2365,9 @@ version = "4.8.0"
 
 [[deps.NonlinearSolveBase]]
 deps = ["ADTypes", "Adapt", "ArrayInterface", "CommonSolve", "Compat", "ConcreteStructs", "DifferentiationInterface", "EnzymeCore", "FastClosures", "LinearAlgebra", "Markdown", "MaybeInplace", "Preferences", "Printf", "RecursiveArrayTools", "SciMLBase", "SciMLJacobianOperators", "SciMLOperators", "StaticArraysCore", "SymbolicIndexingInterface", "TimerOutputs"]
-git-tree-sha1 = "edfa90b9b46fc841b6f03106d9e1a054816f4f1d"
+git-tree-sha1 = "686fd9d0d455171e3530d3540cff94bb01222823"
 uuid = "be0214bd-f91f-a760-ac4e-3421ce2b2da0"
-version = "1.6.0"
+version = "1.7.0"
 weakdeps = ["BandedMatrices", "DiffEqBase", "ForwardDiff", "LineSearch", "LinearSolve", "SparseArrays", "SparseMatrixColorings"]
 
     [deps.NonlinearSolveBase.extensions]
@@ -1997,15 +2381,15 @@ weakdeps = ["BandedMatrices", "DiffEqBase", "ForwardDiff", "LineSearch", "Linear
 
 [[deps.NonlinearSolveFirstOrder]]
 deps = ["ADTypes", "ArrayInterface", "CommonSolve", "ConcreteStructs", "DiffEqBase", "FiniteDiff", "ForwardDiff", "LineSearch", "LinearAlgebra", "LinearSolve", "MaybeInplace", "NonlinearSolveBase", "PrecompileTools", "Reexport", "SciMLBase", "SciMLJacobianOperators", "Setfield", "StaticArraysCore"]
-git-tree-sha1 = "3a559775faab057f7824036c0bc5f30c74b00d1b"
+git-tree-sha1 = "9c8cd0a986518ba317af263549b48e34ac8f776d"
 uuid = "5959db7a-ea39-4486-b5fe-2dd0bf03d60d"
-version = "1.4.0"
+version = "1.5.0"
 
 [[deps.NonlinearSolveQuasiNewton]]
 deps = ["ArrayInterface", "CommonSolve", "ConcreteStructs", "DiffEqBase", "LinearAlgebra", "LinearSolve", "MaybeInplace", "NonlinearSolveBase", "PrecompileTools", "Reexport", "SciMLBase", "SciMLOperators", "StaticArraysCore"]
-git-tree-sha1 = "290d60e3e097eed44e0aba00643995a47284746b"
+git-tree-sha1 = "eafb327f5c2d9f1ac890aa2b9fbe05a1bd7e4dc8"
 uuid = "9a2c21bd-3a47-402d-9113-8faf9a0ee114"
-version = "1.3.0"
+version = "1.4.0"
 weakdeps = ["ForwardDiff"]
 
     [deps.NonlinearSolveQuasiNewton.extensions]
@@ -2085,9 +2469,9 @@ version = "1.8.0"
 
 [[deps.OrdinaryDiffEq]]
 deps = ["ADTypes", "Adapt", "ArrayInterface", "DataStructures", "DiffEqBase", "DocStringExtensions", "EnumX", "ExponentialUtilities", "FastBroadcast", "FastClosures", "FillArrays", "FiniteDiff", "ForwardDiff", "FunctionWrappersWrappers", "InteractiveUtils", "LineSearches", "LinearAlgebra", "LinearSolve", "Logging", "MacroTools", "MuladdMacro", "NonlinearSolve", "OrdinaryDiffEqAdamsBashforthMoulton", "OrdinaryDiffEqBDF", "OrdinaryDiffEqCore", "OrdinaryDiffEqDefault", "OrdinaryDiffEqDifferentiation", "OrdinaryDiffEqExplicitRK", "OrdinaryDiffEqExponentialRK", "OrdinaryDiffEqExtrapolation", "OrdinaryDiffEqFIRK", "OrdinaryDiffEqFeagin", "OrdinaryDiffEqFunctionMap", "OrdinaryDiffEqHighOrderRK", "OrdinaryDiffEqIMEXMultistep", "OrdinaryDiffEqLinear", "OrdinaryDiffEqLowOrderRK", "OrdinaryDiffEqLowStorageRK", "OrdinaryDiffEqNonlinearSolve", "OrdinaryDiffEqNordsieck", "OrdinaryDiffEqPDIRK", "OrdinaryDiffEqPRK", "OrdinaryDiffEqQPRK", "OrdinaryDiffEqRKN", "OrdinaryDiffEqRosenbrock", "OrdinaryDiffEqSDIRK", "OrdinaryDiffEqSSPRK", "OrdinaryDiffEqStabilizedIRK", "OrdinaryDiffEqStabilizedRK", "OrdinaryDiffEqSymplecticRK", "OrdinaryDiffEqTsit5", "OrdinaryDiffEqVerner", "Polyester", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators", "SciMLStructures", "SimpleNonlinearSolve", "SimpleUnPack", "SparseArrays", "Static", "StaticArrayInterface", "StaticArrays", "TruncatedStacktraces"]
-git-tree-sha1 = "2d7026dd8e4c7b3e7f47eef9c13c60ae55fe4912"
+git-tree-sha1 = "dfae5ed215f5949f52de22b92e2e42ea3e3e652d"
 uuid = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
-version = "6.95.1"
+version = "6.96.0"
 
 [[deps.OrdinaryDiffEqAdamsBashforthMoulton]]
 deps = ["DiffEqBase", "FastBroadcast", "MuladdMacro", "OrdinaryDiffEqCore", "OrdinaryDiffEqLowOrderRK", "Polyester", "RecursiveArrayTools", "Reexport", "Static"]
@@ -2103,9 +2487,9 @@ version = "1.5.0"
 
 [[deps.OrdinaryDiffEqCore]]
 deps = ["ADTypes", "Accessors", "Adapt", "ArrayInterface", "DataStructures", "DiffEqBase", "DocStringExtensions", "EnumX", "FastBroadcast", "FastClosures", "FastPower", "FillArrays", "FunctionWrappersWrappers", "InteractiveUtils", "LinearAlgebra", "Logging", "MacroTools", "MuladdMacro", "Polyester", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators", "SciMLStructures", "SimpleUnPack", "Static", "StaticArrayInterface", "StaticArraysCore", "SymbolicIndexingInterface", "TruncatedStacktraces"]
-git-tree-sha1 = "af7374f4af1b9a67ce29524e7fd328fa3da33189"
+git-tree-sha1 = "84e142da0b18f62c5bad660e450542cde312d28d"
 uuid = "bbf590c4-e513-4bbe-9b18-05decba2e5d8"
-version = "1.23.0"
+version = "1.25.0"
 weakdeps = ["EnzymeCore"]
 
     [deps.OrdinaryDiffEqCore.extensions]
@@ -2113,15 +2497,15 @@ weakdeps = ["EnzymeCore"]
 
 [[deps.OrdinaryDiffEqDefault]]
 deps = ["ADTypes", "DiffEqBase", "EnumX", "LinearAlgebra", "LinearSolve", "OrdinaryDiffEqBDF", "OrdinaryDiffEqCore", "OrdinaryDiffEqRosenbrock", "OrdinaryDiffEqTsit5", "OrdinaryDiffEqVerner", "PrecompileTools", "Preferences", "Reexport"]
-git-tree-sha1 = "835c06684b6ff1b8904ceae4d18cc8fe45b9a7cc"
+git-tree-sha1 = "8eeed32442874d1bdcc2192a874a73f1a9a07e31"
 uuid = "50262376-6c5a-4cf5-baba-aaf4f84d72d7"
-version = "1.3.0"
+version = "1.4.0"
 
 [[deps.OrdinaryDiffEqDifferentiation]]
 deps = ["ADTypes", "ArrayInterface", "ConcreteStructs", "ConstructionBase", "DiffEqBase", "DifferentiationInterface", "FastBroadcast", "FiniteDiff", "ForwardDiff", "FunctionWrappersWrappers", "LinearAlgebra", "LinearSolve", "OrdinaryDiffEqCore", "SciMLBase", "SciMLOperators", "SparseArrays", "SparseMatrixColorings", "StaticArrayInterface", "StaticArrays"]
-git-tree-sha1 = "6595287379a518d7eb8f02edc49a96a02396e887"
+git-tree-sha1 = "13f0d0e1acfc8055d07096925c398a21a94f29be"
 uuid = "4302a76b-040a-498a-8c04-15b101fed76b"
-version = "1.7.0"
+version = "1.8.0"
 
 [[deps.OrdinaryDiffEqExplicitRK]]
 deps = ["DiffEqBase", "FastBroadcast", "LinearAlgebra", "MuladdMacro", "OrdinaryDiffEqCore", "RecursiveArrayTools", "Reexport", "TruncatedStacktraces"]
@@ -2143,9 +2527,9 @@ version = "1.5.0"
 
 [[deps.OrdinaryDiffEqFIRK]]
 deps = ["ADTypes", "DiffEqBase", "FastBroadcast", "FastGaussQuadrature", "FastPower", "LinearAlgebra", "LinearSolve", "MuladdMacro", "OrdinaryDiffEqCore", "OrdinaryDiffEqDifferentiation", "OrdinaryDiffEqNonlinearSolve", "Polyester", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators"]
-git-tree-sha1 = "7d2c82c13a634f7400a3f398d33f1354ab38a090"
+git-tree-sha1 = "dc0e2765b946b54163b95ea8906ad47b96b66a80"
 uuid = "5960d6e9-dd7a-4743-88e7-cf307b64f125"
-version = "1.10.0"
+version = "1.11.0"
 
 [[deps.OrdinaryDiffEqFeagin]]
 deps = ["DiffEqBase", "FastBroadcast", "MuladdMacro", "OrdinaryDiffEqCore", "Polyester", "RecursiveArrayTools", "Reexport", "Static"]
@@ -2172,10 +2556,10 @@ uuid = "9f002381-b378-40b7-97a6-27a27c83f129"
 version = "1.3.0"
 
 [[deps.OrdinaryDiffEqLinear]]
-deps = ["DiffEqBase", "ExponentialUtilities", "LinearAlgebra", "OrdinaryDiffEqCore", "OrdinaryDiffEqTsit5", "OrdinaryDiffEqVerner", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators"]
-git-tree-sha1 = "0f81a77ede3da0dc714ea61e81c76b25db4ab87a"
+deps = ["DiffEqBase", "ExponentialUtilities", "LinearAlgebra", "OrdinaryDiffEqCore", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators"]
+git-tree-sha1 = "836c8c194fee92f67e4b30ffb18fadfe836c6636"
 uuid = "521117fe-8c41-49f8-b3b6-30780b3f0fb5"
-version = "1.1.0"
+version = "1.2.0"
 
 [[deps.OrdinaryDiffEqLowOrderRK]]
 deps = ["DiffEqBase", "FastBroadcast", "LinearAlgebra", "MuladdMacro", "OrdinaryDiffEqCore", "RecursiveArrayTools", "Reexport", "SciMLBase", "Static"]
@@ -2191,9 +2575,9 @@ version = "1.3.0"
 
 [[deps.OrdinaryDiffEqNonlinearSolve]]
 deps = ["ADTypes", "ArrayInterface", "DiffEqBase", "FastBroadcast", "FastClosures", "ForwardDiff", "LinearAlgebra", "LinearSolve", "MuladdMacro", "NonlinearSolve", "OrdinaryDiffEqCore", "OrdinaryDiffEqDifferentiation", "PreallocationTools", "RecursiveArrayTools", "SciMLBase", "SciMLOperators", "SciMLStructures", "SimpleNonlinearSolve", "StaticArrays"]
-git-tree-sha1 = "d75cf29dea3a72bac7a5b21523ac969b71f43e96"
+git-tree-sha1 = "329ff99adc060788e1f8821c7e71f6d70b037729"
 uuid = "127b3ac7-2247-4354-8eb6-78cf4e7c58e8"
-version = "1.6.1"
+version = "1.8.0"
 
 [[deps.OrdinaryDiffEqNordsieck]]
 deps = ["DiffEqBase", "FastBroadcast", "LinearAlgebra", "MuladdMacro", "OrdinaryDiffEqCore", "OrdinaryDiffEqTsit5", "Polyester", "RecursiveArrayTools", "Reexport", "Static"]
@@ -2227,9 +2611,9 @@ version = "1.1.0"
 
 [[deps.OrdinaryDiffEqRosenbrock]]
 deps = ["ADTypes", "DiffEqBase", "DifferentiationInterface", "FastBroadcast", "FiniteDiff", "ForwardDiff", "LinearAlgebra", "LinearSolve", "MacroTools", "MuladdMacro", "OrdinaryDiffEqCore", "OrdinaryDiffEqDifferentiation", "Polyester", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "Static"]
-git-tree-sha1 = "baa4a9b4380b2fb65f1e2b4ec01d3bd019a6dcea"
+git-tree-sha1 = "a9b9aff8e740bfc09a2ea669f7fc02e867f95ab7"
 uuid = "43230ef6-c299-4910-a778-202eb28ce4ce"
-version = "1.9.0"
+version = "1.10.0"
 
 [[deps.OrdinaryDiffEqSDIRK]]
 deps = ["ADTypes", "DiffEqBase", "FastBroadcast", "LinearAlgebra", "MacroTools", "MuladdMacro", "OrdinaryDiffEqCore", "OrdinaryDiffEqDifferentiation", "OrdinaryDiffEqNonlinearSolve", "RecursiveArrayTools", "Reexport", "SciMLBase", "TruncatedStacktraces"]
@@ -2280,9 +2664,9 @@ version = "10.42.0+1"
 
 [[deps.PDMats]]
 deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse"]
-git-tree-sha1 = "0e1340b5d98971513bddaa6bbed470670cebbbfe"
+git-tree-sha1 = "f07c06228a1c670ae4c87d1276b92c7c597fdda0"
 uuid = "90014a1f-27ba-587c-ab20-58faa44d9150"
-version = "0.11.34"
+version = "0.11.35"
 
 [[deps.PackageExtensionCompat]]
 git-tree-sha1 = "fb28e33b8a95c4cee25ce296c817d89cc2e53518"
@@ -2404,10 +2788,10 @@ version = "1.40.13"
     Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [[deps.PlutoUI]]
-deps = ["AbstractPlutoDingetjes", "Base64", "Dates", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "Markdown", "Random", "Reexport", "UUIDs"]
-git-tree-sha1 = "5152abbdab6488d5eec6a01029ca6697dff4ec8f"
+deps = ["AbstractPlutoDingetjes", "Base64", "ColorTypes", "Dates", "FixedPointNumbers", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "MIMEs", "Markdown", "Random", "Reexport", "URIs", "UUIDs"]
+git-tree-sha1 = "d3de2694b52a01ce61a036f18ea9c0f61c4a9230"
 uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
-version = "0.7.23"
+version = "0.7.62"
 
 [[deps.PoissonRandom]]
 deps = ["Random"]
@@ -2435,9 +2819,9 @@ version = "0.2.4"
 
 [[deps.PreallocationTools]]
 deps = ["Adapt", "ArrayInterface", "ForwardDiff"]
-git-tree-sha1 = "4406f9a118bfcf362290d755fcb46c0c4894beae"
+git-tree-sha1 = "6d98eace73d82e47f5b16c393de198836d9f790a"
 uuid = "d236fae5-4411-538c-8e31-a6e3d9e00b46"
-version = "0.4.26"
+version = "0.4.27"
 
     [deps.PreallocationTools.extensions]
     PreallocationToolsReverseDiffExt = "ReverseDiff"
@@ -2468,6 +2852,10 @@ version = "2.4.0"
 [[deps.Printf]]
 deps = ["Unicode"]
 uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+version = "1.11.0"
+
+[[deps.Profile]]
+uuid = "9abbd945-dff8-562f-b5e8-e1ebf5ef1b79"
 version = "1.11.0"
 
 [[deps.PtrArrays]]
@@ -2625,9 +3013,9 @@ version = "0.1.0"
 
 [[deps.SciMLBase]]
 deps = ["ADTypes", "Accessors", "ArrayInterface", "CommonSolve", "ConstructionBase", "Distributed", "DocStringExtensions", "EnumX", "FunctionWrappersWrappers", "IteratorInterfaceExtensions", "LinearAlgebra", "Logging", "Markdown", "Moshi", "PrecompileTools", "Preferences", "Printf", "RecipesBase", "RecursiveArrayTools", "Reexport", "RuntimeGeneratedFunctions", "SciMLOperators", "SciMLStructures", "StaticArraysCore", "Statistics", "SymbolicIndexingInterface"]
-git-tree-sha1 = "70744adfa4d6875dfcb2c41749d20d73a90edd7d"
+git-tree-sha1 = "9aeb5d46899aeb8f9d42ec6836ea9fa32e6595cf"
 uuid = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
-version = "2.86.1"
+version = "2.89.0"
 
     [deps.SciMLBase.extensions]
     SciMLBaseChainRulesCoreExt = "ChainRulesCore"
@@ -2652,15 +3040,15 @@ version = "2.86.1"
 
 [[deps.SciMLJacobianOperators]]
 deps = ["ADTypes", "ArrayInterface", "ConcreteStructs", "ConstructionBase", "DifferentiationInterface", "FastClosures", "LinearAlgebra", "SciMLBase", "SciMLOperators"]
-git-tree-sha1 = "6e9d280334839fe405fdab2a1268f2969c9d3eeb"
+git-tree-sha1 = "1e2033bdf0792aa2a2f21de8e9378197f13386ec"
 uuid = "19f34311-ddf3-4b8b-af20-060888a46c0e"
-version = "0.1.3"
+version = "0.1.4"
 
 [[deps.SciMLOperators]]
 deps = ["Accessors", "ArrayInterface", "DocStringExtensions", "LinearAlgebra", "MacroTools"]
-git-tree-sha1 = "1c4b7f6c3e14e6de0af66e66b86d525cae10ecb4"
+git-tree-sha1 = "d82853c515a8d9d42c1ab493a2687a37f1e26c91"
 uuid = "c0aeaf25-5076-4817-a8d5-81caf7dfa961"
-version = "0.3.13"
+version = "0.4.0"
 weakdeps = ["SparseArrays", "StaticArraysCore"]
 
     [deps.SciMLOperators.extensions]
@@ -2707,9 +3095,9 @@ version = "1.2.0"
 
 [[deps.SimpleNonlinearSolve]]
 deps = ["ADTypes", "ArrayInterface", "BracketingNonlinearSolve", "CommonSolve", "ConcreteStructs", "DifferentiationInterface", "FastClosures", "FiniteDiff", "ForwardDiff", "LineSearch", "LinearAlgebra", "MaybeInplace", "NonlinearSolveBase", "PrecompileTools", "Reexport", "SciMLBase", "Setfield", "StaticArraysCore"]
-git-tree-sha1 = "5e45414767cf97234f90a874b9a43cda876adb32"
+git-tree-sha1 = "068c16a16834c1483c299b0e27e901599439570d"
 uuid = "727e6d20-b764-4bd8-a329-72de5adea6c7"
-version = "2.3.0"
+version = "2.4.0"
 
     [deps.SimpleNonlinearSolve.extensions]
     SimpleNonlinearSolveChainRulesCoreExt = "ChainRulesCore"
@@ -2751,9 +3139,9 @@ version = "1.11.0"
 
 [[deps.SparseConnectivityTracer]]
 deps = ["ADTypes", "DocStringExtensions", "FillArrays", "LinearAlgebra", "Random", "SparseArrays"]
-git-tree-sha1 = "cccc976f8fdd51bb3a6c3dcd9e1e7d110582e083"
+git-tree-sha1 = "fadb2d7010dd92912e5eb31a493613ad4b8c9583"
 uuid = "9f842d2f-2579-4b1d-911e-f412cf18a3f5"
-version = "0.6.17"
+version = "0.6.18"
 
     [deps.SparseConnectivityTracer.extensions]
     SparseConnectivityTracerDataInterpolationsExt = "DataInterpolations"
@@ -2771,9 +3159,9 @@ version = "0.6.17"
 
 [[deps.SparseDiffTools]]
 deps = ["ADTypes", "Adapt", "ArrayInterface", "Compat", "DataStructures", "FiniteDiff", "ForwardDiff", "Graphs", "LinearAlgebra", "PackageExtensionCompat", "Random", "Reexport", "SciMLOperators", "Setfield", "SparseArrays", "StaticArrayInterface", "StaticArrays", "UnPack", "VertexSafeGraphs"]
-git-tree-sha1 = "51a202c01ee64d223553a7013e5a00583ad9f49b"
+git-tree-sha1 = "ccbf06a08573200853b1bd06203d8ccce8449578"
 uuid = "47a9eef4-7e08-11e9-0b38-333d64bd3804"
-version = "2.25.0"
+version = "2.26.0"
 
     [deps.SparseDiffTools.extensions]
     SparseDiffToolsEnzymeExt = "Enzyme"
@@ -2815,9 +3203,9 @@ weakdeps = ["ChainRulesCore"]
 
 [[deps.StableRNGs]]
 deps = ["Random"]
-git-tree-sha1 = "83e6cce8324d49dfaf9ef059227f91ed4441a8e5"
+git-tree-sha1 = "95af145932c2ed859b63329952ce8d633719f091"
 uuid = "860ef19b-820b-49d6-a774-d7a799459cd3"
-version = "1.0.2"
+version = "1.0.3"
 
 [[deps.Static]]
 deps = ["CommonWorldInvalidations", "IfElse", "PrecompileTools"]
@@ -2873,9 +3261,9 @@ version = "1.7.0"
 
 [[deps.StatsBase]]
 deps = ["AliasTables", "DataAPI", "DataStructures", "LinearAlgebra", "LogExpFunctions", "Missings", "Printf", "Random", "SortingAlgorithms", "SparseArrays", "Statistics", "StatsAPI"]
-git-tree-sha1 = "29321314c920c26684834965ec2ce0dacc9cf8e5"
+git-tree-sha1 = "b81c5035922cc89c2d9523afc6c54be512411466"
 uuid = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
-version = "0.34.4"
+version = "0.34.5"
 
 [[deps.StatsFuns]]
 deps = ["HypergeometricFunctions", "IrrationalConstants", "LogExpFunctions", "Reexport", "Rmath", "SpecialFunctions"]
@@ -2896,9 +3284,9 @@ version = "2.5.0"
 
 [[deps.StochasticDiffEq]]
 deps = ["ADTypes", "Adapt", "ArrayInterface", "DataStructures", "DiffEqBase", "DiffEqNoiseProcess", "DocStringExtensions", "FastPower", "FiniteDiff", "ForwardDiff", "JumpProcesses", "LevyArea", "LinearAlgebra", "Logging", "MuladdMacro", "NLsolve", "OrdinaryDiffEqCore", "OrdinaryDiffEqDifferentiation", "OrdinaryDiffEqNonlinearSolve", "Random", "RandomNumbers", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators", "SparseArrays", "SparseDiffTools", "StaticArrays", "UnPack"]
-git-tree-sha1 = "fa374aac59f48d11274ce15862aecb8a144350a9"
+git-tree-sha1 = "f354a21a3272fd8ac1509da58e61dffba6925dbe"
 uuid = "789caeaf-c7a9-5a7d-9973-96adeb23e2a0"
-version = "6.76.0"
+version = "6.78.0"
 
 [[deps.StrideArraysCore]]
 deps = ["ArrayInterface", "CloseOpenIntervals", "IfElse", "LayoutPointers", "LinearAlgebra", "ManualMemory", "SIMDTypes", "Static", "StaticArrayInterface", "ThreadingUtilities"]
@@ -3321,9 +3709,9 @@ version = "1.18.0+0"
 
 [[deps.libpng_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Zlib_jll"]
-git-tree-sha1 = "068dfe202b0a05b8332f1e8e6b4080684b9c7700"
+git-tree-sha1 = "002748401f7b520273e2b506f61cab95d4701ccf"
 uuid = "b53b4c65-9356-5827-b1ea-8c7a1a84506f"
-version = "1.6.47+0"
+version = "1.6.48+0"
 
 [[deps.libvorbis_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Ogg_jll", "Pkg"]
@@ -3366,56 +3754,85 @@ uuid = "dfaa095f-4041-5dcd-9319-2fabd8486b76"
 version = "3.5.0+0"
 
 [[deps.xkbcommon_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Wayland_jll", "Wayland_protocols_jll", "Xorg_libxcb_jll", "Xorg_xkeyboard_config_jll"]
-git-tree-sha1 = "63406453ed9b33a0df95d570816d5366c92b7809"
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Wayland_jll", "Wayland_protocols_jll", "Xorg_libxcb_jll", "Xorg_xkeyboard_config_jll"]
+git-tree-sha1 = "c950ae0a3577aec97bfccf3381f66666bc416729"
 uuid = "d8fb68d0-12a3-5cfd-a85a-d49703b185fd"
-version = "1.4.1+2"
+version = "1.8.1+0"
 """
 
 # ╔═╡ Cell order:
-# ╟─ed866e82-2722-11f0-290a-79ad6e0c862c
-# ╠═104730c1-d576-4375-b75e-13123e970bdb
-# ╟─76361d5f-fac2-4420-b99b-9a24e7be3984
-# ╟─f67a7a9c-f5e4-411c-891a-db10745e01b3
-# ╟─9164f8e8-f4ca-4d84-94b1-a92054f640a2
-# ╟─27a0c2d5-58ee-4de2-bf5e-4f20e4eca98c
-# ╟─b859f319-d0f4-41f6-86fe-b1dfc0f01806
-# ╟─5dd1c35b-2a8b-4531-aa8e-305b12bafcdb
-# ╟─1def9119-468f-4bb2-9857-ea54986b36bc
-# ╟─758b8ba6-6a46-4ae5-831f-b0c1ecc83485
-# ╟─6680a825-0ead-41a0-8eef-63d36fd06c43
-# ╟─9b95787c-3858-4c7f-90e5-d7940fad378b
-# ╟─c8d97023-21f9-4b51-828f-635b71b91dbf
-# ╟─b9ad21d4-d4a4-4f20-a55c-037a62fd063c
-# ╟─13c58b0a-9434-433a-bb89-d53cbabed974
-# ╟─e84bb5da-f233-439c-9275-f264a9ffb7d1
-# ╠═43dd28c3-28ab-42e6-8723-1222455236f8
-# ╠═de4506b7-f864-41d5-90c9-6ae7025faeac
-# ╠═a13b5a74-11ed-4d70-9812-3ac3c13f2049
-# ╠═b79c1516-543e-443d-923e-c552103062c0
-# ╟─7a1b92c2-50f0-45b6-8dd9-64099baba396
-# ╠═b5d3d04d-5496-4066-a588-08b9b18aca33
-# ╟─40a935d4-c2f0-43e2-a714-103f0380f8c1
-# ╟─1081a378-e2ec-497f-8382-3ea00b27d860
-# ╠═628a7564-1dfe-461a-b552-ba49742f8946
-# ╠═7f1b2d97-39f3-4cc0-af21-72a5af1c44c5
-# ╠═5ae3a26c-dc5e-42f3-b4f2-5d9c75bed5b8
-# ╠═c25f1923-8a4e-491f-a4e6-4f3ea267d374
-# ╠═4aeea69d-cd46-47e8-bd70-bca18cd09a88
-# ╠═d47bc690-08cb-40b5-8d2f-425ad1ee5a7c
-# ╟─59bd1be4-9b20-46d2-a68f-287a57edb223
-# ╟─b0130ccd-6b36-40ff-ac8a-ae43b1ac10d0
-# ╟─4307191c-8ccc-4af9-92b6-ca5a1069fa26
-# ╠═e2b9a3b1-28f4-4556-88c9-15619b611f32
-# ╠═49475e63-f3cb-4c68-bd81-ce2aaa87a8d2
-# ╠═6efcb593-4d04-4dee-891d-880bc342c86a
-# ╠═5a00b31e-3c07-4529-9812-51c1c76d80f4
-# ╠═24c4a618-afd6-4aa3-909f-f966ae59613d
-# ╠═99a27d56-dfc4-4816-aa3b-2b1150f11bae
-# ╠═29871224-af35-4283-aa1d-ea76e030d68f
-# ╠═112c561a-224c-44e2-9524-7941e1aa305b
-# ╠═27680643-bdbb-46d9-970c-3735e44b459d
-# ╠═35c2edfe-2ef8-47cd-a73b-d894f3101db4
-# ╟─2dd090f6-561d-421c-88f9-2f19af6d92db
+# ╠═bd11828d-81ca-42d9-850c-f54422335b5e
+# ╠═ea28a805-1c6d-4d96-b661-4b60a592eed9
+# ╟─7d381c3f-c221-4f1f-9fea-be99dac678f5
+# ╠═4b028cb5-5ca3-4499-91ec-e65c71138874
+# ╠═eff5884d-e9c6-4f90-9958-76d5969ed7e3
+# ╟─fa80e68c-9848-4cb3-8309-a19569b5bef3
+# ╠═aa85bdb3-6133-403b-a8d0-0426f4aced56
+# ╠═8b38ad57-aad6-44ba-a58c-c86f0148171d
+# ╠═22821300-1e2b-4599-8adf-7afa076d198f
+# ╠═72875630-28b8-4f22-a805-8f86d356fc3c
+# ╠═0e33080f-7b5c-4734-89c8-bd491780d6ae
+# ╠═deaaf630-cb40-4dd0-af94-ba19df1bbc1d
+# ╠═80954e65-0359-4804-abc9-8b04a108cf2a
+# ╠═2112053e-5b4e-48d0-8bfa-a79213c82682
+# ╠═f496faba-26b6-46e7-b99a-87b10cded17d
+# ╠═216a70e5-c63f-4902-bf34-a31efd3ff212
+# ╠═5ea07fdd-4f27-44c0-848d-2ed51cdc2dc6
+# ╠═8dbb4851-9400-4156-a1b4-543f06393fb7
+# ╠═9513c6b0-a4b9-4c07-9d28-e0c2f70756e2
+# ╠═7e0672c6-0988-4819-8056-c55b7d3b6506
+# ╠═568b9a52-f31e-4354-bfa2-65395573304b
+# ╠═a57b8725-c2d0-4331-980e-6bd712f9b18c
+# ╠═0b2cd6bf-f6dd-486b-aaac-181cdad82488
+# ╠═61329fe5-39d0-45e7-8031-ebdc36515deb
+# ╠═6bd7d23a-dc72-4d6a-a6e3-447efbc4a4a5
+# ╠═42305c2a-bafa-4ed4-adb1-87d3a9804e7c
+# ╠═b6831ab7-4912-44a6-ba6d-e6848934f1eb
+# ╠═b5885b8b-c3fd-4caa-a4f8-fabb3ff3a90c
+# ╠═e321a03c-da0d-429c-8cc6-d76f8fcc92e4
+# ╠═d098022c-9592-4ec1-9b52-7caf03c38e75
+# ╠═f8ab6415-f637-4136-afbc-a606605d98df
+# ╠═f9738195-675f-49f4-9524-d5de7de9ff0e
+# ╠═18526569-4745-48c1-920a-c61d84725305
+# ╠═41b943a9-33ef-495d-83c3-9f7a30a0368e
+# ╠═ec29187e-aa14-4297-a3a7-c83128f730e4
+# ╠═ff9bb4b4-72f3-483e-bf7d-94d11c28c4c8
+# ╠═10b61807-2d35-4121-83ea-dd23ee04ec66
+# ╠═090e9ea8-ab41-408e-be3b-ea557a1f536e
+# ╠═d1885b23-7589-4ffe-9848-f5735ca4c68f
+# ╠═ce0cb420-8bd6-4b2d-8782-c24bcef0ff3f
+# ╠═fb1bdaf1-8ac4-4248-83fa-818373c9cf70
+# ╠═0c5739ce-44c7-4daf-a570-411167b9945f
+# ╠═97c661ab-97cd-4cef-9c9d-5eecb3d4dbf3
+# ╠═d708f8e4-5a62-4eba-91b9-2d7b9dbe3589
+# ╟─fc6f154d-9f05-4d03-a897-12dab03fe818
+# ╠═57da86a0-5ae4-4533-aaf4-5b623a948a46
+# ╠═8b60eee1-3539-4d34-949a-b582d361d20d
+# ╠═e064f06a-73fa-4131-b6fd-b351a8bbc397
+# ╠═ebbb9fef-322e-4243-a3f1-ccb7ede44dc8
+# ╠═ed79c331-150f-4021-8f03-661d09748d0a
+# ╠═30ae3cc1-ce03-4f69-89d7-274e444d855a
+# ╠═31902baa-d167-48d9-bbd6-aa98a3811e9e
+# ╠═2eb46e08-6206-430f-a2ab-939ab3935136
+# ╠═b9c856fd-966a-46af-8591-23434b5be1c0
+# ╠═bfa63b6f-1b7b-4326-a4ed-a86636164297
+# ╠═f867a1fd-197c-47f9-bb92-e2ac7dfc4510
+# ╠═d7807d6e-11ee-4455-b3f6-afd0b3693cea
+# ╠═835ade1a-bc9c-4f8a-aa81-ae841982bd15
+# ╠═dc1f5e4c-8d7a-4084-a4f6-94a918d83a2f
+# ╠═d5477121-51b5-4066-abba-394fd5f7776f
+# ╠═9ecab244-828f-4810-b91c-1c0b14e0d9a9
+# ╠═9915bfc0-c67f-455c-baf3-76703021fb02
+# ╟─02fb5535-29b3-4bdc-9c74-3b0ce0790df7
+# ╠═e996a200-d5a1-47da-94ba-50939f8e8307
+# ╠═b1938b6f-3151-4825-9f01-33f56dc801c4
+# ╠═2fba6169-6742-4425-8e85-aaa777a65f0e
+# ╠═a87c1210-6980-4e04-8f0d-a4ee2a6bff4f
+# ╠═db51f4f4-3023-415f-b53d-825cb45ff503
+# ╠═d03973b8-e049-4395-ad63-ea78ae5b7150
+# ╠═914061d1-3fd9-4dfd-9e94-302d83ef052d
+# ╠═b49c4dc7-1e53-4221-9961-eca75ca43c5f
+# ╠═d96733bf-abe6-4973-b1e9-a1da3d6d4863
+# ╠═5b823e56-0966-4dc7-802b-79906989167d
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
