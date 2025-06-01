@@ -26,6 +26,7 @@ begin
 	using LinearAlgebra
 	using BenchmarkTools
 	plotlyjs()
+	default(label = false, legend = false)
 end;
 
 # ╔═╡ ebbb9fef-322e-4243-a3f1-ccb7ede44dc8
@@ -71,15 +72,32 @@ md"""
 # ╔═╡ 4b028cb5-5ca3-4499-91ec-e65c71138874
 md"""
 
-## Motivation
+## Motivation -- Why Use Lie-Group Integrators for Rotation?
 
-  
+*Rigid-body orientation lives on a curved manifold—the rotation group* $\mathrm{SO}(3)$ (or its unit-quaternion cover $S^3$).
 
-In rigid-body dynamics (e.g. spacecraft attitude or multibody simulations), the orientation is typically represented on the **rotation group** $SO(3)$ (often via unit quaternions). A major challenge with standard numerical integrators (like explicit Runge–Kutta methods) is that they treat the state as a vector in $\mathbb{R}^n$ and can **drift off the manifold** that represents valid orientations. For example, integrating quaternion kinematics with a classical RK4 may not strictly preserve the unit-norm constraint ($|q|=1$), causing the quaternion to deviate from $S^3$ (the unit sphere in $\mathbb{R}^4$) over time. In practice, engineers often resort to ad-hoc **normalization or projection** steps (renormalizing the quaternion or orthonormalizing a rotation matrix) to drag the solution back to the valid rotation manifold. However, this “fix” can introduce small errors and distort the physics over long simulations . In short, **standard integrators do not inherently respect the geometry of rotational motion**, motivating integrators that work _on the Lie group itself_. The goal is to develop integration schemes that “live on the group” – preserving orthonormality or unit norm by construction – thus eliminating the need for brute-force constraint corrections mid-simulation. This is especially crucial for long-term simulations where accumulated drift or repeated renormalization can degrade accuracy .
+---
 
-  
+| Classical RK4 update | Lie-Group RK4 update |
+| :--- | :--- |
+| Treats quaternion like a vector in $\Bbb R^4$ → **drifts off manifold** | Updates by **group multiplication**:  |
+| (‖q‖ ≠ 1, rotation matrix loses orthonormality). | $\displaystyle q_{k+1}=q_k \;\exp\!\big(h\,\omega_k\big)$ |
+| Needs ad-hoc “renormalise / re-orthonormalise” fixes. | Stays on $\mathrm{SO}(3)$ / $S^3$ *exactly*—no post-fix, no drift. |
 
-**Lie group integrators** address this by leveraging the mathematical structure of the rotation group. Instead of updating orientations via vector-space addition (which is only approximately valid for small rotations), these methods perform updates via group operations (like quaternion multiplication or matrix exponentials). By doing so, the numerical solution remains on the manifold at every step, preserving the **geometric constraints exactly** (up to machine precision). As a result, the integrator maintains the special structure (orthonormality of rotation matrices or unit length of quaternions) automatically. An expert succinctly noted that normalization is essentially a _“kludge to drag the quaternion back to the unit 3-sphere”_, and the fundamental reason quaternions drift off is that using a standard Euler or RK step on the quaternion is _“in a sense invalid mathematically: The unit quaternions are a group, not an algebra.”_ The recommended cure: _“Do it right (e.g., Lie group integration techniques) and the quaternion will stay on the manifold.”_ . In other words, by integrating within the Lie group framework, we respect the non-Euclidean geometry of rotation and keep the solution physical without artificial corrections . This is invaluable for multibody dynamics, where orientation constraints and conservation laws (like angular momentum direction) are critical for realistic behavior over time.
+---
+
+**Why this matters in multibody dynamics**
+
+* Joints stay aligned, constraint equations remain consistent.  
+* Long simulations keep momentum & energy believable—no cumulative error from repeated “projection fixes.”  
+* Larger stable step sizes → less CPU spent on babysitting rotations.
+
+> *“Normalization is a kludge to drag the quaternion back to the unit 3-sphere—  
+>  do it right with Lie-group integration and the quaternion never leaves.”*  
+> — D. Hammen (Stack Overflow)
+
+**Take-away:** Treat rotations as group elements, not vectors.  
+A Lie-group integrator preserves geometry by construction—crucial for reliable multibody simulations.
 
 
 """
@@ -87,15 +105,18 @@ In rigid-body dynamics (e.g. spacecraft attitude or multibody simulations), the 
 # ╔═╡ eff5884d-e9c6-4f90-9958-76d5969ed7e3
 md"""
 
-## Mathematical Foundations: Rotations as a Lie Group
+## Mathematical Foundations - Rotations as a Lie Group
 
-  
+| Concept | In Practice |
+| --- | --- |
+| Rotation group | $SO(3)=\{R\!\in\!\mathbb{R}^{3\times3}\mid R^\top R=I,\;\det R=1\}$ — smooth 3-D manifold **and** group |
+| Unit quaternions | $S^3$ is a double cover of $SO(3)$; group law is Hamilton (quaternion) multiplication |
+| Lie algebra | $\mathfrak{so}(3)=\{\Omega\!\in\!\mathbb{R}^{3\times3}\mid\Omega^\top=-\Omega\}$, isomorphic to $(\mathbb{R}^3,\times)$ |
+| Exponential / Log maps | $\exp:\mathfrak{so}(3)\!\to\!SO(3)$ and $\log:SO(3)\!\to\!\mathfrak{so}(3)$; e.g. $\exp(u)=(\cos\|u\|,\;\hat u\,\sin\|u\|)$ |
+| Key takeaway | Use $\exp$ + group multiplication to update orientation ⇒ stays on the manifold |
 
-Rigid body rotations form a smooth manifold with a group structure – specifically the **Special Orthogonal Group** $SO(3)$, consisting of all $3\times3$ orthogonal matrices with determinant 1. In practical computations, we often use **unit quaternions** (also called Euler parameters) to represent rotations. Unit quaternions (elements of $S^3 \subset \mathbb{R}^4$) are a double-cover of $SO(3)$, meaning each rotation in 3D corresponds to two antipodal points on the unit 3-sphere. Under quaternion multiplication (Hamilton’s product), unit quaternions form a group isomorphic to $SU(2)$, which in turn is a double-cover of $SO(3)$. This group of unit quaternions is a **Lie group**: it’s a smooth manifold where the group operations (here, quaternion multiplication and inversion) are smooth maps. The associated **Lie algebra** of $SO(3)$ (denoted $\mathfrak{so}(3)$) can be identified with $\mathbb{R}^3$ (the space of 3-dimensional angular velocity vectors) with the cross-product as the algebra’s bracket operation. Intuitively, the Lie algebra corresponds to the **tangent space** of the group at the identity (for $SO(3)$, think of small rotation vectors). In the quaternion setting, the Lie algebra of $S^3$ (or $SU(2)$) corresponds to the set of _purely imaginary quaternions_ (those with zero scalar part), which can be identified with $\mathbb{R}^3$ as well. Thus, there’s a one-to-one correspondence between a 3-vector (an axis-angle representation scaled by angle) and a “direction” of rotation on the group.
-
-  
-
-Key point: This Lie group structure provides a natural way to move between a rotation (group element) and a **rotation increment** (algebra element). Instead of describing an update in orientation by adding a small vector to Euler angles or quaternion components (which is flawed for anything but infinitesimal steps), we describe it via rotating by a small rotation vector on $SO(3)$. Lie theory provides smooth maps to convert back and forth: the **exponential map** and its inverse, the **logarithm map**.
+*Think of a quaternion as a point on $S^3$, and an angular-velocity vector as a point in the tangent space $\mathfrak{so}(3)$.  
+Lie theory lets us march from one to the other **without leaving $SO(3)$**.*
 
 
 """
@@ -103,21 +124,33 @@ Key point: This Lie group structure provides a natural way to move between a rot
 # ╔═╡ fa80e68c-9848-4cb3-8309-a19569b5bef3
 md"""
 
-## Exponential and Logarithm Maps on $SO(3)$ (and $S^3$)
+## Exponential & Logarithm Maps — the bridge between $\mathfrak{so}(3)$ and $SO(3)$
 
-- **Exponential Map ($\exp$):** The exponential map $\exp: \mathfrak{so}(3)\to SO(3)$ takes an element of the Lie algebra (a 3D rotation vector) and returns a group element (a rotation matrix or equivalent quaternion). For rotation groups, $\exp$ essentially corresponds to the Rodrigues formula for converting an axis–angle representation into a rotation. If we represent a small rotation by a vector $u \in \mathbb{R}^3$, where the direction of $u$ is the axis of rotation and $|u|$ is the rotation angle in radians, then:
-    
-    $$\exp(u) = \Big(\cos|u|,; \frac{u}{|u|}\sin|u|\Big),$$
-    
-    when using unit quaternions to represent the rotation . Here we’ve written the resulting quaternion $q = (q_0, q_v)$ as a scalar–vector pair: $q_0 = \cos\theta$ (with $\theta = |u|$) and $q_v = (u/|u|)\sin\theta$. In more geometric terms, $\exp(u)$ produces a rotation about axis $u/|u|$ by angle $|u|$. For small $u$, $\exp(u) \approx (1, u)$ to first order, meaning a tiny rotation is almost the identity plus the small vector part. This map gives a **chart at the identity** of the group – it allows us to go from a small algebra element to a nearby group element.
-    
-- **Logarithm Map ($\log$):** The inverse $\log: SO(3)\to \mathfrak{so}(3)$ (or $S^3\setminus{-1}\to \mathbb{R}^3$ for quaternions, excluding the antipodal -1 which corresponds to a 2π rotation) takes a rotation (quaternion) and returns the algebra element (rotation vector) that generates it. For a given unit quaternion $q = (\cos\theta,; v\sin\theta)$ – where $\theta$ is the rotation angle and $v$ is the unit vector axis – the log map yields:
-    
-    $$\log(q) = \frac{\theta}{\sin\theta} , v, \quad \text{assuming } q = (\cos\theta,; v\sin\theta) \text{ with } 0 < \theta < \pi.$$
-    
-    In other words, $\log(q)$ produces a 3-vector of length $\theta$ in the direction $v$. Intuitively, it extracts the axis-angle parameters from the quaternion. These $\exp$ and $\log$ maps let us move back and forth between the curved manifold $SO(3)$ (or $S^3$ for quaternions) and a flat $\mathbb{R}^3$ representation of rotations. They are the mathematical tools by which we can update orientations through algebra increments while staying on the manifold.
-    
-- **Why we need exp/log in integration:** In a Lie-group integrator, we will compute updates in the Lie algebra (e.g. an “increment” rotation vector) and then use $\exp$ to map that increment to a rotation/quaternion that can be applied to the current orientation. Conversely, sometimes we need $\log$ to compute the algebra element corresponding to a difference between two orientations (for example, in higher-order integrator stages). The exp/log maps ensure we handle rotations properly, especially for large steps: rather than adding orientation errors in a Euclidean sense, we compose rotations. This avoids singularities of other parametrizations (like Euler angles) and respects the topology of $SO(3)$.
+**Exponential map** $\exp:\mathbb{R}^3 \rightarrow S^3$
+
+$$\exp(u)=\bigl(\cos\lVert u\rVert,\; \hat u\,\sin\lVert u\rVert\bigr),\qquad
+\hat u=\frac{u}{\lVert u\rVert}\;(u\neq0)$$
+
+_Axis $\hat u$ and angle $\lVert u\rVert$ turn the algebra vector into a unit quaternion._
+
+**Logarithm map** $\log : S^3\setminus\{-1\} \rightarrow \mathbb{R}^3$
+
+$$q=(\cos\theta,\;v\sin\theta)
+\;\Longrightarrow\;
+\log(q)=\theta\,v,\qquad 0<\theta<\pi$$
+
+*Extracts the axis–angle vector that generates a given quaternion.*
+
+**Why we need $\exp/\log$ in integration**
+
+- Convert an **increment** $\Delta u\in\mathbb{R}^3$ to a rotation update  
+  $$q_{k+1}=q_k\,\exp(\Delta u).$$
+- Measure the **difference** between two orientations  
+  $$\Delta u=\log\!\bigl(q_k^{-1}q_{k+1}\bigr).$$
+- Keeps every step **on the manifold**—no drift, no post-normalisation.
+- Avoids Euler-angle singularities and works for large rotation steps.
+
+*(Small-angle check: for $\lVert u\rVert\ll1$, $\exp(u)\approx(1,u)$—“identity plus tiny vector,” matching linear intuition.)*
     
 
 """
@@ -125,27 +158,27 @@ md"""
 # ╔═╡ aa85bdb3-6133-403b-a8d0-0426f4aced56
 md"""
 
-## Differential of the Exponential (dexp) and Its Inverse
+## Differential of the Exponential — $\mathrm{dexp}$
 
-  
+-  $\mathrm{dexp}_u : \mathbb{R}^3 \rightarrow \mathbb{R}^3$  
+  moves a perturbation $v$ in the Lie algebra **to** the tangent space at $\exp(u)\!\in\!SO(3)$.
 
-When integrating on a manifold, especially with higher-order Runge–Kutta, we often need the **differential of the exponential map**, denoted $\mathrm{dexp}$. This arises because when we take multiple stages (like midpoint evaluations in RK4), we perturb the system and need to interpret those perturbations on the manifold. The **tangent** of the exponential map at a given algebra element $u$, $\mathrm{dexp}_u: \mathfrak{so}(3)\to \mathfrak{so}(3)$, maps an “infinitesimal” increment in the algebra to the corresponding **infinitesimal change on the group** when starting from $\exp(u)$. More practically, its **inverse** $\mathrm{dexp}^{-1}_u$ tells us how to map a small difference on the group back to the algebra. In Lie-group integrators, $\mathrm{dexp}^{-1}$ is used to properly combine increments.
+- Inverse map $\mathrm{dexp}^{-1}_u$ brings a group–space difference **back** to the algebra.  
+  Crucial for Runge–Kutta stages taken away from the identity.
 
-  
+- Small–angle series (safe when $\lVert u\rVert\!\ll\!1$)  
+  $$\mathrm{dexp}^{-1}_u(v)=v-\tfrac12\,u\times v+\tfrac1{12}\,u\times(u\times v)+\mathcal{O}(\lVert u\rVert^{3}).$$
 
-For example, consider we have an orientation $q$ and we perturb it by a small rotation $\delta q = q^{-1} q_{\text{new}}$ (in group terms). To incorporate this perturbation as an algebra increment, we use $\Delta u = \log(\delta q)$. However, if $\delta q$ is obtained after already moving by some $u$ (i.e. we are not at the identity), we should technically use $\mathrm{dexp}^{-1}_u(\delta)$ to account for curvature (this corrects the increment as measured in the local tangent frame at $u$ back to the original algebra coordinates at identity). The $\mathrm{dexp}$ operator has a known series expansion for small $u$:
+- Closed form for any $u$ (rotation‐vector norm $\theta=\lVert u\rVert$)  
+  $$\mathrm{dexp}^{-1}_u(v)=\alpha\,v+\tfrac12\,u\times v+\gamma\,u\,(u\!\cdot\!v),$$  
+  $$\alpha=\tfrac{\theta\cot(\theta/2)}{2},\qquad
+    \gamma=\tfrac{1-\alpha}{\theta^{2}}.$$
 
-  
+- **Practical recipe**  
+  * if $\theta < 10^{-3}$ use the series (numerically stable),  
+  * else use the closed form.
 
-$$\mathrm{dexp}^{-1}_u(v) = v - \tfrac{1}{2}[u, v] + \tfrac{1}{12}[u,[u,v]] - \cdots,$$
-
-  
-
-or in inverse form (for $\mathrm{dexp}^{-1}$) one often uses a closed-form involving $|u| \cot(|u|/2)$ etc., but in implementation it’s common to use the series for stability when $|u|$ is very small . In our context (rotation in $\mathbb{R}^3$), $[u,v] = u \times v$ (the cross product). So $\mathrm{dexp}^{-1}$ provides a correction when combining rotations in non-commuting, curved space.
-
-  
-
-**In simpler terms:** whenever we want to add a rotation increment $\Delta u$ to a current rotation described by $u_i$ (in RK intermediate stages), we use $\mathrm{dexp}^{-1}_{u_i}$ to find the equivalent Lie algebra vector that produces the needed change on the manifold. This ensures consistency across different tangent spaces. Many implementations have an invdexp function that computes this efficiently. If time step sizes are small, $\mathrm{dexp}^{-1}$ is near identity, but for larger steps or higher accuracy, it’s important to include to avoid slight errors in orientation (especially in long simulations, these small errors could accumulate if neglected).
+**Take-away:** applying $\mathrm{dexp}^{-1}$ ensures that rotation increments combine correctly in higher-order Lie-group RK methods—no curvature surprises.
 
 
 """
@@ -153,312 +186,31 @@ or in inverse form (for $\mathrm{dexp}^{-1}$) one often uses a closed-form invol
 # ╔═╡ 8b38ad57-aad6-44ba-a58c-c86f0148171d
 md"""
 
-## Left-Trivialization and Geodesic Updates on the Group
+## Left-Trivialization & Geodesic Updates
 
-  
+**Left translation** on a Lie group $G$: $L_g(h)=gh$  
+maps the Lie algebra (tangent at the identity) to the tangent space at $g\in G$.
 
-A concept that underpins Lie-group integration schemes is using **left-trivialization** of the tangent spaces. On a Lie group $G$, **left multiplication** by an element $g$, $L_g(h) = g,h$, is a smooth map that essentially “transports” points on the group by left-composing with $g$. This map also induces a mapping of tangent vectors: it identifies the tangent space at identity (the Lie algebra) with the tangent space at $g$. In practical terms, if we have a rotation $q_k$ at time step $k$, and we want to apply an incremental rotation $\exp(\Delta u)$ to get the next orientation, we do a left-multiply:
+**Left-Geodesic Transport (LGT)** for rotations  
 
-  
+$$q_{k+1}=q_k\,\exp(\Delta u),$$
 
-$$q_{k+1} = q_k ,\exp(\Delta u).$$
+where $\Delta u\in\mathbb{R}^3$ is a body-fixed rotation vector.
 
-  
+*Why this matters*
 
-This operation is sometimes called **left geodesic transport (LGT)** or simply a _group update_. It means we take the current orientation $q_k$ and “step forward along a geodesic” on the manifold by the amount $\Delta u$. The result $q_{k+1}$ stays on $S^3$ (or $SO(3)$) because it’s just a multiplication of two unit quaternions/rotations (thus automatically unit-length and orthonormal). Geometrically, we’re moving along the manifold itself rather than stepping out of it.
+-  $q_{k+1}$ **remains on** $S^3$ (or $SO(3)$) automatically.  
+- Group multiplication replaces risky vector addition—no quaternion renormalisation.  
+- Works alongside ordinary additive updates for $\omega$, positions, etc.
 
-  
+**Integrator workflow**
 
-In contrast, a classical integrator would update via addition: $y_{k+1} = y_k + \text{(something)}$ in $\mathbb{R}^n$, which for rotation states is not appropriate. The Lie-group approach uses the group operation (here multiplication) in place of addition for the rotational part of the state. This **exactly preserves the constraints** by construction. In our quaternion example, if $q_k$ is unit-length and we form $q_{k+1}=q_k \exp(\Delta u)$, then $q_{k+1}$ is guaranteed to be unit-length (because the exponential of a pure imaginary quaternion yields a unit quaternion). This is why no normalization is needed at any step – the integrator “lives” on the group.
+1. Compute an algebra increment $\Delta u$ (often via $\omega$ and $\mathrm{dexp}^{-1}$).  
+2. Update orientation by left-multiplying: a geodesic step on the group.  
+3. Update the “vector-space” state (angular velocity, translations) additively.
 
-  
+*Separating the **group part** (orientation) from the **vector part** (velocities, positions) lets each evolve with the right geometry.*
 
-To clarify, this left-trivialized update is applied to the orientation part of the state, while the rest of the state (like angular velocity or other translational coordinates) can still be updated in the usual way. Essentially, we separate the _Lie group part_ of the state (orientation) from the _vector space part_ of the state (e.g. angular velocity, which lies in $\mathbb{R}^3$ and can be updated additively). By doing so, we treat each component with the correct geometry.
-
-
-"""
-
-# ╔═╡ 22821300-1e2b-4599-8adf-7afa076d198f
-md"""
-
-## Classical vs. Lie-Group Integrators (Conceptual Comparison)
-
-  
-
-Before diving into the specific algorithm, let’s contrast a classical RK4 integrator with a Lie-group RK4 integrator for a rigid body’s attitude, to see how they differ in form:
-
-|**Feature**|**Classical RK4 (standard)**|**Lie-Group RK4 (structure-preserving)**|
-|---|---|---|
-|State update|$y_{k+1} = y_k + \sum_{i} b_i,k_i$ (direct addition in $\mathbb{R}^n$)|$q_{k+1} = q_k ,\exp!\Big(\sum_i b_i,\Delta u_i\Big)$ (rotation update via group multiplication)  plus $ \omega_{k+1} = \omega_k + \sum_i b_i,k_i^{(\omega)}$ for angular velocity|
-|Increment type|Additive increments in a vector space (state space $\mathbb{R}^7$ for quaternion + ang. vel)|Additive increments in the Lie algebra ($\mathfrak{so}(3)$ for rotation, standard $\mathbb{R}^3$ for velocity) which are then applied multiplicatively on the group|
-|Constraint drift|Possible drift off manifold (requires normalization or constraint enforcement)|**No drift** – stays on $SO(3)$ or $S^3$ exactly, maintaining unit norm and orthonormality by construction|
-|Local error handling|Direct differences in state variables|Uses $\mathrm{dexp}^{-1}$ to map group differences to algebra (for intermediate stage corrections)|
-
-In summary, the classical method treats the orientation coordinates just like any other variable (which can violate the $SO(3)$ structure), whereas the Lie-group method treats the orientation via its Lie algebra so that rotations are properly **composed** rather than added. The outcome is that the Lie-group RK4, despite having the same order of accuracy as classical RK4, **enforces the rotation constraint exactly** at every step. This yields improved long-term fidelity for orientation problems – no accumulation of norm error or loss of orthogonality . Moreover, this often allows larger step sizes without instability in orientation, since the integrator won’t produce non-physical orientations (for instance, a quaternion won’t drift towards the zero vector or a rotation matrix won’t lose orthonormality).
-
-
-"""
-
-# ╔═╡ 72875630-28b8-4f22-a805-8f86d356fc3c
-md"""
-
-## Lie-Group RK4 Algorithm for Rigid Body Rotation
-
-  
-
-Let’s outline the Lie-group RK4 algorithm specifically for a rigid body’s rotational equations, using unit quaternions for orientation and angular velocity $\omega$ in the body frame as the state. The state at time $t_k$ is $y_k = (q_k, \omega_k)$, where $q_k$ is a unit quaternion and $\omega_k \in \mathbb{R}^3$. The ODE is given by the rigid body dynamics: $\dot q = \tfrac{1}{2}\Omega(q),\omega$ (quaternion kinematics, with $\Omega(q)$ a suitable matrix or quaternion multiplication operator) and $\dot\omega = I^{-1}\big( T(t) - \omega \times (I\omega)\big)$ (Euler’s equation for rotational motion, with $I$ inertia matrix and $T$ external torque). The Lie-group RK4 proceeds as follows (comparing to classical RK4 stages):
-
-1. **Stage 1:** Compute $k_1 = f(y_k)$, the time derivative at the starting state $(q_k,\omega_k)$. This yields $k_1 = (\dot q_k, \dot\omega_k)$. From this, extract the angular velocity $\omega_k$ (which is part of the state) and the angular acceleration $,\dot\omega_k$. For the quaternion part, we don’t directly use $\dot q_k$ for updating (because we will update via group multiplication). Instead, define an **algebra increment** for this stage:
-    
-    $$\Delta u_1 = h,\omega_k,$$
-    
-    where $h$ is the time step. Here $\omega_k$ (a 3-vector) is treated as an element of $\mathfrak{so}(3)$ – essentially the “rotation” over the full step if $\omega$ stayed constant. $\Delta u_1$ is like the Euler step’s change in orientation expressed as a rotation vector (angle = $|\omega_k|h$ about $\omega_k/|\omega_k|$ axis).
-    
-    Now _update the group element halfway_: we compute a provisional quaternion at the half-step using left transport:
-    
-    $$q_{(k,1/2)} = q_k ,\exp!\Big(\frac{1}{2}\Delta u_1\Big).$$
-    
-    This $q_{(k,1/2)}$ is the orientation at the midpoint if $\omega$ were constant at its initial value over half the step. Also update angular velocity linearly: $\omega_{(k,1/2)} = \omega_k + \frac{1}{2}h,\dot\omega_k$ (this part is the same as classical RK4).
-    
-2. **Stage 2:** Now evaluate the ODE at the midpoint: $k_2 = f\big(q_{(k,1/2)}, \omega_{(k,1/2)}\big)$ at time $t_k + h/2$. This gives $(\dot q_{(k,1/2)}, \dot\omega_{(k,1/2)})$. We again convert the quaternion change to an algebra increment. We first get the _actual_ quaternion increment from $q_k$ to $q_{(k,1/2)}$, which in our formulation was $\exp(0.5\Delta u_1)$. However, because $\omega$ changed, we can’t just double that for a full step. Instead, we compute:
-    
-    $$\Delta u_2 = h;\mathrm{dexp}^{-1}_{(,0.5\Delta u_1,)}\big(\omega_{(k,1/2)}\big).$$
-    
-    This formula encapsulates: take the $\omega$ at the midpoint, which gives the naive half-step rotation $0.5h,\omega_{(k,1/2)}$; then use $\mathrm{dexp}^{-1}$ to adjust this increment from the midpoint frame back to the reference frame. In practice, an implementation might directly compute $\Delta u_2$ via the series or closed-form using $\omega_{(k,1/2)}$ and $\Delta u_1$. The result $\Delta u_2$ is a 3-vector representing the effective rotation over the interval, mapped appropriately.
-    
-    Now update the quaternion to the full midpoint (which in RK4 would actually be at the same half step, conceptually):
-    
-    $$q_{(k,1/2)}’ = q_k ,\exp!\Big(\frac{1}{2}\Delta u_2\Big),$$
-    
-    (in practice $q_{(k,1/2)}’$ may equal $q_{(k,1/2)}$ if our $\Delta u_2$ was computed self-consistently – but think of $\Delta u_2$ as possibly corrected by curvature). Update $\omega$ again: $\omega_{(k,1/2)}’ = \omega_k + \frac{1}{2}h,\dot\omega_{(k,1/2)}$.
-    
-3. **Stage 3:** We repeat a similar process. Compute $k_3 = f(q_{(k,1/2)}’, \omega_{(k,1/2)}’)$ at $t_k + h/2$. From $k_3$ (specifically the angular velocity in it), compute
-    
-    $$\Delta u_3 = h;\mathrm{dexp}^{-1}_{(,0.5\Delta u_2,)}\big(\omega_{(k,1/2)}’\big).$$
-    
-    This is analogous to stage 2: mapping the midpoint increment back. Then update a provisional quaternion at full step using this:
-    
-    $$q_{(k+1)}^{\text{(temp)}} = q_k ,\exp(\Delta u_3),$$
-    
-    and provisional angular velocity $\omega_{(k+1)}^{\text{(temp)}} = \omega_k + h,\dot\omega_{(k,1/2)}’$ (this would actually be using $k_3$ info fully, which is analogous to the classical RK4 step 4 prep).
-    
-4. **Stage 4:** Evaluate $k_4 = f(q_{(k+1)}^{\text{(temp)}},,\omega_{(k+1)}^{\text{(temp)}})$ at the full step $t_k + h$. Now we have the four slope estimates $k_1, k_2, k_3, k_4$ (with their associated $\omega$ values and implied $\Delta u_i$ increments for the rotation).
-    
-5. **Combination (RK4 weighted sum):** Finally, we combine the increments. For the rotation, we take a weighted combination of the algebra increments:
-    
-    $$\Delta u_{\text{combo}} = \frac{1}{6}\big(\Delta u_1 + 2,\Delta u_2 + 2,\Delta u_3 + \Delta u_4\big).$$
-    
-    Here $\Delta u_4$ would be $h, \mathrm{dexp}^{-1}_{(\Delta u_3)}(\omega_{(k+1)}^{\text{(temp)}})$ obtained similarly from stage 4. This $\Delta u_{\text{combo}}$ is our best estimate of the total rotation (in the body frame) over the interval $[t_k, t_{k+1}]$. We then update the quaternion with this full increment via left multiplication:
-    
-    $$q_{k+1} = q_k ,\exp(\Delta u_{\text{combo}}).$$
-    
-    Meanwhile, the angular velocity is updated with the usual RK4 weighted sum in $\mathbb{R}^3$:
-    
-    $$\omega_{k+1} = \omega_k + \frac{h}{6}\big(k_1^{(\omega)} + 2k_2^{(\omega)} + 2k_3^{(\omega)} + k_4^{(\omega)}\big),$$
-    
-    where $k_i^{(\omega)}$ denotes the $\dot\omega$ component from stage $i$. (This update is identical to classical RK4 for the $\omega$ part since $\omega$ is an $\mathbb{R}^3$ vector coordinate.)
-    
-
-  
-
-In essence, the Lie-group RK4 algorithm modifies the quaternion update step of RK4 by inserting the exponential map at the right places and using $\mathrm{dexp}^{-1}$ to handle the non-commutativity of rotations during the intermediate stages . The final result is that $q_{k+1}$ is obtained by multiplying $q_k$ with a quaternion increment – ensuring $|q_{k+1}|=1$ automatically – rather than by adding a vector to $q_k$. Aside from these changes, the algorithm’s structure parallels classical RK4. This particular method is sometimes referred to as a **Crouch–Grossman 4th-order method** in the literature , after the researchers who developed early Lie-group integrators, or simply “Lie-group RK4.”
-
-
-"""
-
-# ╔═╡ 0e33080f-7b5c-4734-89c8-bd491780d6ae
-md"""
-
-## Implementation Notes (Pluto.jl / Julia specifics)
-
-  
-
-Implementing a Lie-group integrator in code (e.g. in Julia for a Pluto notebook) requires careful handling of the different parts of the state. Here are some practical notes for an efficient implementation targeting a programming-oriented course:
-
-- We typically represent the state as a combined vector u = [q; ω] of length 7 (4 for quaternion, 3 for angular velocity). In Julia, one can use a StaticVector (from StaticArrays.jl) for small fixed-size vectors like quaternions to get performance benefits . The derivative function f!(du, u, p, t) should be written to treat u[1:4] as the quaternion and u[5:7] as angular velocity, producing corresponding derivatives (as in the rigid_body! function of the notebook).
-    
-- One straightforward approach is to write a custom integrator function (as was done in the Pluto notebook) that takes a time span and initial state and manually loops to perform RK4 steps. Within this loop, you can have a flag (e.g. is_lie) to switch between classical updates and Lie-group updates . For is_lie=true, you implement the steps as described: use LGT (left geodesic transport) to update quaternions with partial increments and use an invdexp function to compute $\mathrm{dexp}^{-1}for combining increments [oai_citation:15‡file-fvpc6mw1xxmqxgc7sjpqpv](file://file-FvpC6mW1xxmQxGc7SjPqPv#:~:text=,dt%20end) [oai_citation:16‡file-fvpc6mw1xxmqxgc7sjpqpv](file://file-FvpC6mW1xxmQxGc7SjPqPv#:~:text=f%21,SVector%28k2%5B5%5D%2Ck2%5B6%5D%2Ck2%5B7%5D%29%20end). Foris_lie=false`, you just do the usual Euler updates inside RK4 (as a baseline).
-    
-- **Quaternion math:** You need routines to handle quaternion exponentials and log (or directly the incremental updates). In practice, since $\Delta u$ is a small 3-vector, one can compute $\exp(\Delta u)$ by the formulas above (or using a series expansion if $|\Delta u|$ is tiny to avoid numerical issues). The Pluto notebook code likely included a function LGT(q, Δu) which returns q * exp(Δu) – effectively updating the quaternion . The invdexp(w, Δ) likely implements $\mathrm{dexp}^{-1}_Δ(w)$, mapping an $\omega$ vector from one stage back to an equivalent algebra increment . These can be implemented using either the series given or closed-form: for example, $\mathrm{dexp}^{-1}_u(v) = v - \frac{1}{2}u \times v + \dots$.
-    
-- It is often wise to **normalize the quaternion occasionally as a safety check** – not because the integrator fails to preserve it (it should preserve to numerical precision), but to guard against any numerical round-off accumulation in very long runs. In a correct Lie-group integrator, $|q|$ will stay extremely close to 1 (deviations on the order of machine epsilon, e.g. $10^{-16}$). A conditional normalization (e.g., if norm drifts below a threshold like $10^{-12}$ from 1) can be added just to avoid any potential creeping error due to floating point rounding. In our Julia code, we could set normalize_quaternions=true to enforce this (the provided RigidBodyParams had such a flag).
-    
-- **Performance considerations:** Because these calculations happen at every time step, and especially in multibody simulations (with many bodies), efficiency matters. Pre-allocating arrays for $k_1, k_2, k_3, k_4$ and reusing them avoids excessive memory allocation . Static arrays, as mentioned, give stack allocation and unrolled operations for small vectors. Also, computing the matrix or formula for $\mathrm{dexp}^{-1}$ has a small overhead; if performance is critical and the time step is small, some implementations might approximate $\mathrm{dexp}^{-1} \approx \text{Id}$ (identity) for very small $\Delta u$ to save computation, but one should be careful with stability. In our educational code, clarity and correctness are prioritized, but it’s good for students to see that we _do_ manage memory and compute carefully for speed.
-    
-- **Code structure in Pluto:** Pluto notebooks mix markdown and Julia code cells. The lecture notebook likely defines the rigid_body! ODE function (computing $(\dot q, \dot \omega)$), then defines the custom integrator as above, then demonstrates it on examples. The markdown sections are used to explain theory (which we are expanding on here). Keeping a clear separation between explanation and code is useful: for instance, present the algorithm in pseudocode or descriptive math (like we did) in a Markdown cell, then below it have the actual Julia implementation for the students to inspect/run. This reinforces the learning by connecting math with code.
-    
-- **Verifying correctness:** One should test that the integrator indeed preserves $|q|=1$. In code, after integration, one can check maximum(abs.(sum(Y[:,1:4].^2, dims=2) .- 1)) to see the max deviation of quaternion norm from 1 over the trajectory – it should be near machine epsilon for the Lie-group method. If any larger drift is observed, that signals a bug in the implementation of the group update or $\mathrm{dexp}^{-1}`.
-    
-
-"""
-
-# ╔═╡ deaaf630-cb40-4dd0-af94-ba19df1bbc1d
-md"""
-
-## Application to Multibody Dynamics
-
-  
-
-The benefits of Lie-group integration become even more pronounced in **multibody dynamical systems** – systems of multiple rigid bodies connected by joints (e.g. robotic arms, vehicles with moving parts, cluster of satellites, etc.). In such systems, each body’s orientation lives on $SO(3)$, and the overall state space is a product of several $SO(3)$ rotations (along with possibly translations $\mathbb{R}^3$ for positions of center of mass, etc.). Using integrators that preserve the rotation structure for each body means that the **geometric constraints of each body’s orientation are maintained**, which in turn helps maintain the consistency of joint constraints between bodies.
-
-  
-
-Consider a robotic arm with multiple rotary joints: if the integrator slightly violates the orthonormality of a link’s orientation, that error can translate into joint misalignment or constraint violation down the chain (usually small, but in long simulations or with many steps it could accumulate). Typically, simulation software might periodically re-orthonormalize the rotation matrices or use Lagrange multiplier stabilization for constraints. A Lie-group integrator obviates the need for such fixes on the orientation side, because each rotation is updated by exact rotation operations. The links remain properly oriented on $SO(3)$, so the relative orientation constraints at joints remain purely rotational without drift.
-
-  
-
-Another scenario is free-flying multibody systems (like a collection of satellites or debris in space, each tumbling freely). If one integrates each body’s attitude with a Lie-group method, each one preserves its angular momentum direction more faithfully and keeps unit quaternion representation. This is important when coupling rotation with translation or orbital dynamics – you don’t want spurious changes in attitude due to numerical error to feed back into other parts of the simulation.
-
-  
-
-For **mechanical system energy or momentum preservation**: while Lie-group integrators (in the form we discuss) are not necessarily symplectic or energy-preserving by themselves, they can be combined with variational integrator frameworks to also conserve momenta. Even the basic Lie-group RK4 tends to give better long-term behavior for quantities like angular momentum. In an unconstrained rigid body (no external torque), the direction of angular momentum in space is an invariant. A classical integrator might slowly drift from this (especially if renormalizations introduce tiny inconsistencies), whereas a Lie-group integrator will at least keep the orientation consistent with a rotation about a fixed axis (since it follows the exact geodesic on the rotation manifold for free rotation). In more complex multibody simulations, preserving the group structure can prevent artificial energy loss or gain associated with constraint violations.
-
-  
-
-**Example – double pendulum:** Imagine a double pendulum simulated with quaternions for each link’s orientation. A classical integrator might need to enforce that each quaternion remains unit length and that the two links remain connected at the joint (requiring constraint stabilization). A Lie-group integrator ensures each link’s quaternion is unit-length at all times. One still needs to handle the joint constraint (which might be handled by constraint forces or coordinates), but at least the orientations themselves won’t drift into non-physical states. This improves the stability of constraint solver and avoids one source of error. Recent research in computational mechanics has indeed looked at Lie-group integrators specifically for multibody systems, finding that they improve reliability of simulations . In fact, Celledoni et al. (2021) discuss various ways to apply Lie group integrators to mechanical systems and report better accuracy and stability for rotations without needing to resort to local coordinate patches or constraints for the rotations.
-
-  
-
-In summary, for **multibody dynamics applications**, using Lie-group integrators for rotational degrees of freedom means:
-
-- Each rigid body’s orientation is always a valid rotation matrix/quaternion, so no normalization step interrupts the physics (important for preserving the smoothness of simulation).
-    
-- Long simulations (e.g., simulating the orbit and attitude of a satellite over days) don’t suffer from cumulative drift in attitude . This is crucial in, say, spacecraft orbit-attitude coupling simulations or high-fidelity robotics simulations where you might simulate many seconds at a high frequency.
-    
-- The integrator can often tolerate larger time steps for the rotational motion without becoming unstable or inaccurate, compared to a classical method that might produce large errors unless small steps (with frequent renormalization) are used . This can be an efficiency win in multibody simulation, where rotational dynamics might have fast frequencies – being able to take a somewhat larger step while maintaining stability is beneficial.
-    
-- Perhaps most importantly, the approach scales to any number of bodies: you simply integrate each body’s orientation with a Lie-group method. The complexity added is only in handling each body’s own local exponential/log computations, which is quite manageable and parallelizable. Each body’s rotation update is independent (except as coupled by joint forces/torques which enter the $\omega$ dynamics, but that doesn’t break the method – it just changes $f(y)$ inputs).
-    
-
-"""
-
-# ╔═╡ 80954e65-0359-4804-abc9-8b04a108cf2a
-md"""
-
-## Numerical Examples & Performance
-
-  
-
-Let’s solidify the understanding with a couple of example scenarios (as was done in the Pluto lecture) and examine how the Lie-group integrator performs versus a classical approach:
-
-- **Test 1: Free rigid-body rotation (torque-free motion).** This is a classic case where the exact motion is a steady rotation at constant angular momentum. We use an inertia matrix that is not spherical (so the rotation has a non-trivial behavior due to Euler’s equations – demonstrating the intermediate axis instability). The initial angular velocity is set such that the body is mostly spinning about the second principal axis with a small perturbation. Physically, for a free top, the rotation should follow a great-circle on $S^3$ (or equivalently, the orientation should change as if the body’s rotation axis precesses if it’s not aligned with a principal axis). We simulate this with both the classical RK4 (with no quaternion normalization during the integration) and the Lie-group RK4.
-    
-    As expected, the Lie-group RK4 conserves the quaternion norm to machine precision at all times, while the classical RK4’s quaternion gradually drifts from unit length. The figure below illustrates the **quaternion norm constraint violation** over time for the two methods. The orange curve shows $|q|^2 - 1$ for a classical RK4 integrator (which was allowed to run without renormalizing the quaternion), and we see it deviate on the order of $10^{-5}$ after a moderate simulation time. The Lie-group integrator’s constraint violation (not visible in the plot because it remains at zero) stays essentially zero — the quaternion norm remains exactly 1 within floating-point precision (the line for it coincides with the horizontal axis). The plot highlights how the classical method’s error grows in time (each “step” of error correlating with the dynamics of the intermediate axis flip, which stresses the integrator), whereas the Lie-group method produces no drift at all. This confirms that the Lie-group scheme **perfectly preserves the rotation manifold**. Importantly, the physical motion (e.g., the body flipping periodically due to the intermediate axis instability) is captured equally well by both integrators in terms of angular velocity evolution, but the Lie-group method does so without ever producing an invalid quaternion. If we had not monitored this, the classical integrator’s $q$ would need a correction; with Lie-group RK4, no corrections are needed – we could integrate for hours of simulated time and the attitude would remain a proper rotation.
-    
-- **Test 2: Forced rotation with damping.** In this scenario, we add an external torque (say, a periodic or step torque) and possibly a damping term, to see how the integrators cope when $\omega$ is changing non-trivially. Both integrators will produce qualitatively correct results for the motion. However, again the Lie-group method keeps the orientation on track. If damping is present, the energy will dissipate and the motion will slow – but throughout, the Lie-group integrator won’t introduce any fictitious energy or errors from re-normalization. A subtle point: if one were to normalize a quaternion every step in a classical integrator, that act of normalization can slightly alter the effective energy or momentum (it’s a non-physical operation that can inject or remove tiny amounts of angular momentum). Over many steps, these tiny differences can accumulate or bias the solution. The Lie-group integrator avoids this issue.
-    
-- **Accuracy vs. classical:** Aside from constraint preservation, we should ask: does the Lie-group RK4 give the same accuracy (in the usual sense of local/truncation error) as classical RK4? Yes – in fact it is an **O($h^4$)** method as well. For smooth dynamics, both will converge to the true solution as $h\to 0$. However, one interesting observation in literature is that for a given step size, a Lie-group integrator can often be _more accurate_ in practice than a same-order classical integrator when measuring error in orientation. This is because some of the error modes of the classical method manifest as distortion of the orientation (norm drift, etc.), whereas the Lie-group method’s errors stay within the manifold. For example, Andrle & Crassidis (2012) found that a 4th-order Crouch–Grossman method (Lie-group) yielded better accuracy than standard RK4 for attitude propagation, especially at larger step sizes . Our own experiments can verify this: one can compare the orientation obtained by both methods to a high-precision reference solution or an analytic solution (for simple cases like torque-free motion where an analytic solution is known). Typically, the Lie-group integrator’s orientation error grows slower over time.
-    
-- **Performance considerations:** We might worry that the Lie-group method is more computationally intensive per step (due to exp/log calculations). Indeed, each RK4 step involves a few extra 3×3 operations (for cross products and maybe a few trig functions for exp). In our Pluto implementation, we can benchmark the custom integrator with BenchmarkTools.jl. Results show that the Lie-group RK4 is only marginally slower than classical RK4 per step – the overhead of computing $\exp$ and $\mathrm{dexp}^{-1}$ is small for 3D rotations. And since one can often take equal or larger time steps for the same accuracy, the overall efficiency can be comparable or even better. For example, with a step size $h=0.001$ s over a 10 s simulation, the Lie-group RK4 might take ~0.002 seconds of CPU time vs ~0.0018 seconds for classical (just an illustrative number), which is a very modest cost for the gain in stability. As computers are fast and 3D rotations are low-dimensional, using Lie-group methods in multi-body simulation is usually well worth the slight extra computation.
-    
-
-"""
-
-# ╔═╡ 2112053e-5b4e-48d0-8bfa-a79213c82682
-md"""
-
-## Conclusions & References
-
-
-In conclusion, **Lie-group integrators** (like the Lie-group RK4 demonstrated here) provide a powerful way to integrate rigid body rotations in a way that inherently **preserves the geometric structure** of the configuration space. By operating directly on the rotation group $SO(3)$ (via unit quaternions or rotation matrices and their Lie algebra), these methods keep orientations valid and constraints satisfied without fiddling with normalization. This leads to improved long-term fidelity of simulations – orientations don’t “drift” and require no ad-hoc corrections, which means the physical behavior (especially in complex multibody scenarios) is captured more accurately over time . We saw that the Lie-group RK4 is essentially a **straightforward extension of classical RK4**, where additions are replaced by exponential map updates and intermediate steps use the logarithmic map’s differential to ensure consistency . The algorithm fits nicely into a programming context (as shown with Julia code), and the extra effort in implementation is offset by the benefits in stability.
-
-  
-
-For postgraduate mechanical engineering students, mastering these Lie-group techniques is valuable, as it equips you to simulate rotational dynamics (and other motion on manifolds) with higher reliability – an important skill for research in robotics, vehicle dynamics, aerospace, and any field involving 3D rotations. As problems and simulations grow more complex (think of simulating an entire spacecraft with moving parts, or a robotic swarm with coupled orientations), using integrators that respect the problem’s geometry can be the difference between a simulation that stays stable for real-time durations vs. one that slowly falls apart due to numerical issues.
-
-  
-
-**References:** (for further reading on Lie-group integrators and geometric integration)
-
-- Celledoni, E. & Owren, B. (2003). _“Lie–Group Methods for Rigid Body Dynamics and Time Integration on Manifolds.”_ (Computer Methods in Applied Mechanics and Engineering, 192) – foundational paper on applying Lie group integrators to rigid body mechanics.
-    
-- Iserles, A. et al. (2000). _“Lie-Group Integrators for Numerical Solution of Differential Equations.”_ (Foundations of Computational Mathematics) – a comprehensive look at Lie-group integrators theory.
-    
-- Hairer, E., Lubich, C., & Wanner, G. (2006). _“Geometric Numerical Integration: Structure-Preserving Algorithms for Ordinary Differential Equations.”_ – textbook covering many geometric integrators (see chapter on Lie-group methods).
-    
-- Andrle, M.S. & Crassidis, J.L. (2012). _“Geometric Integration of Quaternions.”_ – study focusing on quaternion norm preservation using Lie-group (Crouch–Grossman) methods .
-    
-- Stackoverflow discussion: _“Quaternion and normalization”_ – particularly insightful comments by D. Hammen on why Lie-group integration obviates constant normalization .
-"""
-
-# ╔═╡ f496faba-26b6-46e7-b99a-87b10cded17d
-md"""
-## Outline
-
-**Outline:**
-1. Motivation  
-2. Quaternions & Lie groups  
-3. Exp/log maps and dexp  
-4. Left-geodesic transport  
-5. Lie-group RK4 algorithm  
-6. Implementation notes  
-7. Numerical examples  
-8. Conclusions  
-
-"""
-
-# ╔═╡ 216a70e5-c63f-4902-bf34-a31efd3ff212
-md"""
-
-## Motivation
-
-- Standard integrators (e.g. classical RK4) can drift off the manifold (e.g. quaternion norm $≠1$).  
-- For rigid-body attitude, orthonormality & unit-norm constraints are critical.  
-- **Goal:** build an RK4 that “lives on the group” and exactly preserves the quaternion norm.  
-
-"""
-
-# ╔═╡ 5ea07fdd-4f27-44c0-848d-2ed51cdc2dc6
-md"""
-
-## Quaternions as a Lie Group
-
-- **Unit quaternions** $S^3$ ≅ double cover of $SO(3)$.  
-- Group operation: quaternion multiplication.  
-- Lie algebra: purely vector quaternions $\mathfrak{so}(3)\cong\mathbb{R}^3$.  
-- Chart at identity via the exponential map.  
-
-"""
-
-# ╔═╡ 8dbb4851-9400-4156-a1b4-543f06393fb7
-md"""
-
-## Exponential & Logarithm Maps
-
-- **Exp map** $\exp:\mathbb{R}^3\to S^3$:  
-  $$\exp(u)
-    =\Bigl(\cos\|u\|,\;\frac{u}{\|u\|}\,\sin\|u\|\Bigr).$$  
-- **Log map** $\log:S^3\setminus\{-1\}\to\mathbb{R}^3$:  
-  $$\log(q)
-    =\frac{\theta}{\sin\theta}\,v,
-    \quad
-    q=(\cos\theta,\;v\sin\theta).$$  
-- These let us move “back and forth” between group and algebra.  
-
-"""
-
-# ╔═╡ 9513c6b0-a4b9-4c07-9d28-e0c2f70756e2
-md"""
-
-## Differential of the Exponential (dexp)
-
-- The **dexp** operator maps algebra increments to tangent-space increments on the group.  
-- $d\exp_u$: differential of $\exp$ at $u\in\mathbb{R}^3$.  
-- Its inverse, $\mathrm{dexp}^{-1}$, corrects for curvature when adding increments.  
-- Series expansion for small $\|u\|$ vs. closed form for general $\|u\|$.  
-
-"""
-
-# ╔═╡ 7e0672c6-0988-4819-8056-c55b7d3b6506
-md"""
-
-## Left-Trivialization & Geodesic Transport
-
-- On a Lie group $G$, left-translation $L_g(h)=gh$ identifies tangent spaces.  
-- **Left Geodesic Transport (LGT):**  
-  $$q_{k+1} = q_k \,\exp\bigl(\Delta u\bigr)$$  
-  applies algebra increment $\Delta u$ in the body frame.  
-- Guarantees updated quaternion remains on $S^3$.  
 
 """
 
@@ -467,90 +219,152 @@ md"""
 
 ## Classical RK4 vs Lie-Group RK4
 
-| Feature             | Classical RK4                             | Lie-Group RK4                                               |
-|---------------------|-------------------------------------------|-------------------------------------------------------------|
-| Stage update        | $y_{k+1}=y_k+\sum b_i\,k_i$               | $q_{k+1}=q_k\,\exp\!\bigl(\sum b_i\,\Delta u_i\bigr)$       |
-| Additive increments | in $\mathbb{R}^n$                         | in Lie algebra $\mathfrak{g}$                               |
-| Constraint drift    | possible                                  | eliminated                                                  |
+| Feature | Classical RK4 | Lie-Group RK4 |
+| --- | --- | --- |
+| **Orientation update** | $y_{k+1}=y_k+\displaystyle\sum_i b_i\,k_i$ | $q_{k+1}=q_k\,\exp\!\bigl(\displaystyle\sum_i b_i\,\Delta u_i\bigr)$ |
+| **Where increments live** | Vector space $\mathbb{R}^n$ (additive) | Lie algebra $\mathfrak{so}(3)$ for rotation, $\mathbb{R}^3$ for $\omega$ |
+| **Constraint drift** | Possible: quaternion norm $\neq1$ → needs renormalisation | None: stays on $S^3$ / $SO(3)$ exactly |
+| **Intermediate-stage correction** | Direct differences in state variables | Uses $\mathrm{dexp}^{-1}$ to combine rotation steps consistently |
+| **Practical impact** | Small steps or frequent fixes to keep attitudes valid | Larger stable steps, no post-step repairs |
+
+*Take-away:* classical RK4 **adds** rotations like vectors; Lie-Group RK4 **composes** them via the exponential map, so unit-norm/orthonormality is preserved automatically.
+"""
+
+# ╔═╡ 72875630-28b8-4f22-a805-8f86d356fc3c
+md"""
+
+## Lie-Group RK4 (Crouch–Grossman) — algorithm outline
+
+Given state $(q_k,\omega_k)$ at time $t_k$ and step $h$:
+
+1. **Stage 1**  
+   
+   $k_1 = f(q_k,\omega_k)$  
+
+   $\Delta u_1 = h\,\omega_k$  
+
+   $q_{k+\tfrac12}= q_k\,\exp(\tfrac12\Delta u_1)$  
+
+   $\omega_{k+\tfrac12}= \omega_k + \tfrac12 h\,k_1^\omega$
+
+2. **Stage 2**  
+   
+   $k_2 = f(q_{k+\tfrac12},\omega_{k+\tfrac12})$  
+
+   $\Delta u_2 = h\,\mathrm{dexp}^{-1}_{\tfrac12\Delta u_1}(\,\omega_{k+\tfrac12}\,)$  
+
+   $q_{k+\tfrac12}' = q_k\,\exp(\tfrac12\Delta u_2)$  
+
+   $\omega_{k+\tfrac12}' = \omega_k + \tfrac12 h\,k_2^\omega$
+
+3. **Stage 3**  
+
+   $k_3 = f(q_{k+\tfrac12}',\omega_{k+\tfrac12}')$  
+
+   $\Delta u_3 = h\,\mathrm{dexp}^{-1}_{\tfrac12\Delta u_2}(\,\omega_{k+\tfrac12}'\,)$  
+
+   $q_{\text{tmp}} = q_k\,\exp(\Delta u_3)$  
+
+   $\omega_{\text{tmp}} = \omega_k + h\,k_3^\omega$
+
+4. **Stage 4**  
+
+   $k_4 = f(q_{\text{tmp}},\omega_{\text{tmp}})$  
+
+   $\Delta u_4 = h\,\mathrm{dexp}^{-1}_{\Delta u_3}(\,\omega_{\text{tmp}}\,)$
+
+5. **Combine (RK4 weights)**  
+
+   $$\Delta u=\tfrac16\bigl(\Delta u_1+2\Delta u_2+2\Delta u_3+\Delta u_4\bigr)$$  
+
+   $$q_{k+1}=q_k\,\exp(\Delta u),\qquad 
+     \omega_{k+1}= \omega_k+\tfrac{h}{6}(k_1^\omega+2k_2^\omega+2k_3^\omega+k_4^\omega)$$
+
+Result: $q_{k+1}$ stays unit-length, so the rotation constraint is preserved **exactly** while $\omega$ is updated just as in classical RK4.
+
 
 """
 
-# ╔═╡ a57b8725-c2d0-4331-980e-6bd712f9b18c
+# ╔═╡ deaaf630-cb40-4dd0-af94-ba19df1bbc1d
 md"""
 
-## Lie-Group RK4 Algorithm
+## Why Lie-Group Integrators Shine in Multibody Dynamics
 
-1. **Compute** $k_1 = f(y_k)$.  Split into $\omega$ and $\dot\omega$.  
-2. **$\Delta u_1 = h\,\omega$**, update group:  
-   $$q_2 = q_1\,\exp\!\bigl(\tfrac12\,\Delta u_1\bigr).$$  
-3. **Compute** $k_2$ at midpoint; get $\Delta u_2$ via $\mathrm{dexp}^{-1}$.  
-4. **Repeat** for $k_3$ and $k_4$.  
-5. **Combine:**  
-   $$\Delta u 
-     = \tfrac16\bigl(\Delta u_1 + 2\Delta u_2 + 2\Delta u_3 + \Delta u_4\bigr),
-     \quad
-     q_{n+1} = q_n\,\exp(\Delta u),
-     \quad
-     \omega_{n+1} = \omega_n + \tfrac16\bigl(k_1^\omega + 2k_2^\omega + 2k_3^\omega + k_4^\omega\bigr).$$  
+- **Every link lives on $SO(3)$.**  
+  A product of rotation manifolds + translations forms the full state.
+
+- **Geometric constraints stay intact.**  
+  No quaternion renormalisation → joints don’t mis-align, constraint forces stay small.
+
+- **Robust over long runs.**  
+  Free-flying satellites or high-speed robots keep angular-momentum direction and energy believable for hours of simulated time.
+
+- **Tolerates larger time steps.**  
+  Structure-preservation ≙ fewer “tiny-step or re-project” hacks → faster simulations.
+
+- **Scales to many bodies.**  
+  Update each body’s $q$ with the same $q \gets q\,\exp(\Delta u)$ kernel; computations are independent and parallel-friendly.
+
+*Example:* a double pendulum integrated with Lie-group RK4 needs only the usual joint forces; the quaternions of both links stay unit length automatically, so the constraint solver never fights drift.
+    
 
 """
 
-# ╔═╡ 0b2cd6bf-f6dd-486b-aaac-181cdad82488
+# ╔═╡ 80954e65-0359-4804-abc9-8b04a108cf2a
 md"""
 
-## Derivation of $\Delta u$ Using $\mathrm{dexp}^{-1}$
+## Numerical Tests & Performance Snapshot
 
-- At stages 2 & 3, map the “difference” back into the algebra:  
-  $$\Delta u_i = \mathrm{dexp}^{-1}_{u_i}\!\bigl(\text{increment}\bigr).$$  
-- Series vs. closed-form:  
-  $$\mathrm{dexp}^{-1}_u(v)
-    = v + \tfrac12\,[u,v] + \tfrac1{12}\,[u,[u,v]] + \dots$$  
+**Test 1 – torque-free top**  
+*Goal:* keep quaternion norm at 1 while the body undergoes intermediate-axis motion.  
+*Observation:* classical RK4 drifts to ‖q‖−1 ≈ 10⁻⁵ after a few seconds; Lie-group RK4 stays at machine ε.
+
+**Test 2 – forced rotation with damping**  
+*Goal:* track attitude while external torque + damping change ω(t).  
+*Observation:* both methods capture the motion, but classical RK4 needs per-step renormalisation (injects tiny energy); Lie-group RK4 does not.
+
+**Metrics to plot in Pluto**
+
+| Metric | Code snippet |
+| --- | --- |
+| Quaternion norm error | `abs(norm(q) - 1)` vs. time |
+| Attitude error (vs. ground-truth) | `orientation_error(q, q_ref)` |
+| Runtime | `@benchmark integ!(…)` |
+
+**Take-aways**
+
+- Lie-group RK4 is still 4th-order accurate but keeps ‖q‖=1 exactly.  
+- Error in attitude grows **slower** than classical RK4 for equal h.  
+- Extra cost is minor (a few trig calls); often offset by larger stable steps.  
+    
 
 """
 
-# ╔═╡ 61329fe5-39d0-45e7-8031-ebdc36515deb
+# ╔═╡ 2112053e-5b4e-48d0-8bfa-a79213c82682
 md"""
 
-## Implementation Notes
+## Conclusions & Key References
 
-- Use **StaticArrays** for fixed-size performance (quaternions & $\omega$).  
-- Pre-allocate stage buffers `k1, k2, k3, k4`.  
-- Optionally normalize quaternion each step for safety.  
-- Function signature: `f!(du,u,p,t)` + custom RK4 loop.  
-- State vector length = 7 ($q\in\mathbb{R}^4$, $\omega\in\mathbb{R}^3$).  
+- **Lie-group integrators preserve geometry.**  
+  By updating $q$ via $q\gets q\,\exp(\Delta u)$ they keep orientations on $SO(3)$ / $S^3$ exactly—no renormalisation drift.
 
-"""
+- **Lie-group RK4 is a small tweak to classical RK4.**  
+  Replace vector additions by group composition and insert $\mathrm{dexp}^{-1}$ in intermediate stages.
 
-# ╔═╡ 6bd7d23a-dc72-4d6a-a6e3-447efbc4a4a5
-md"""
+- **Pay-off:** larger stable steps, cleaner constraint handling, and reliable long-time behaviour in multibody simulations.
 
-## Numerical Examples & Performance
-
-- **Test 1:** Free rigid-body rotation (no torque) → exact geodesic on $S^3$.  
-- **Test 2:** Forced rotation with damping.  
-- Metrics:
-  - **Constraint violation:** $\|q\| - 1$ over time.  
-  - **Error** vs. classical RK4 for attitude.  
-  - **Timing** using `BenchmarkTools.jl`.  
-
-"""
-
-# ╔═╡ 42305c2a-bafa-4ed4-adb1-87d3a9804e7c
-md"""
-
-## Conclusions & References
-
-- Lie-group integrators maintain structure & improve long-term fidelity.  
-- RK4 with $\mathrm{dexp}^{-1}$ & LGT is a straightforward extension of classical RK4.  
-
-**References:**
-- Celledoni et al., “Lie–Group Methods for Rigid Body Dynamics”  
-- Iserles et al., “Lie-Group Integrators”  
-- Hairer, Lubich & Wanner, “Geometric Numerical Integration”  
+### Further reading
+1. Celledoni & Owren (2003) *Lie-Group Methods for Rigid-Body Dynamics*.  
+2. Iserles et al. (2000) *Lie-Group Integrators for ODEs*.  
+3. Hairer, Lubich & Wanner (2006) *Geometric Numerical Integration* (ch. VI).  
+4. Andrle & Crassidis (2012) *Geometric Integration of Quaternions*.  
+5. D. Hammen (Stack Overflow) “Quaternion normalisation is a kludge…” – clear practitioner insight.
 """
 
 # ╔═╡ b6831ab7-4912-44a6-ba6d-e6848934f1eb
 md"""
+## Torque-free top example 
+
 Code taken from `lecture_21`
 """
 
@@ -3761,38 +3575,25 @@ version = "1.8.1+0"
 """
 
 # ╔═╡ Cell order:
-# ╠═bd11828d-81ca-42d9-850c-f54422335b5e
+# ╟─bd11828d-81ca-42d9-850c-f54422335b5e
 # ╠═ea28a805-1c6d-4d96-b661-4b60a592eed9
 # ╟─7d381c3f-c221-4f1f-9fea-be99dac678f5
-# ╠═4b028cb5-5ca3-4499-91ec-e65c71138874
-# ╠═eff5884d-e9c6-4f90-9958-76d5969ed7e3
+# ╟─4b028cb5-5ca3-4499-91ec-e65c71138874
+# ╟─eff5884d-e9c6-4f90-9958-76d5969ed7e3
 # ╟─fa80e68c-9848-4cb3-8309-a19569b5bef3
-# ╠═aa85bdb3-6133-403b-a8d0-0426f4aced56
-# ╠═8b38ad57-aad6-44ba-a58c-c86f0148171d
-# ╠═22821300-1e2b-4599-8adf-7afa076d198f
-# ╠═72875630-28b8-4f22-a805-8f86d356fc3c
-# ╠═0e33080f-7b5c-4734-89c8-bd491780d6ae
-# ╠═deaaf630-cb40-4dd0-af94-ba19df1bbc1d
-# ╠═80954e65-0359-4804-abc9-8b04a108cf2a
-# ╠═2112053e-5b4e-48d0-8bfa-a79213c82682
-# ╠═f496faba-26b6-46e7-b99a-87b10cded17d
-# ╠═216a70e5-c63f-4902-bf34-a31efd3ff212
-# ╠═5ea07fdd-4f27-44c0-848d-2ed51cdc2dc6
-# ╠═8dbb4851-9400-4156-a1b4-543f06393fb7
-# ╠═9513c6b0-a4b9-4c07-9d28-e0c2f70756e2
-# ╠═7e0672c6-0988-4819-8056-c55b7d3b6506
-# ╠═568b9a52-f31e-4354-bfa2-65395573304b
-# ╠═a57b8725-c2d0-4331-980e-6bd712f9b18c
-# ╠═0b2cd6bf-f6dd-486b-aaac-181cdad82488
-# ╠═61329fe5-39d0-45e7-8031-ebdc36515deb
-# ╠═6bd7d23a-dc72-4d6a-a6e3-447efbc4a4a5
-# ╠═42305c2a-bafa-4ed4-adb1-87d3a9804e7c
+# ╟─aa85bdb3-6133-403b-a8d0-0426f4aced56
+# ╟─8b38ad57-aad6-44ba-a58c-c86f0148171d
+# ╟─568b9a52-f31e-4354-bfa2-65395573304b
+# ╟─72875630-28b8-4f22-a805-8f86d356fc3c
+# ╟─deaaf630-cb40-4dd0-af94-ba19df1bbc1d
+# ╟─80954e65-0359-4804-abc9-8b04a108cf2a
+# ╟─2112053e-5b4e-48d0-8bfa-a79213c82682
 # ╠═b6831ab7-4912-44a6-ba6d-e6848934f1eb
 # ╠═b5885b8b-c3fd-4caa-a4f8-fabb3ff3a90c
 # ╠═e321a03c-da0d-429c-8cc6-d76f8fcc92e4
 # ╠═d098022c-9592-4ec1-9b52-7caf03c38e75
 # ╠═f8ab6415-f637-4136-afbc-a606605d98df
-# ╠═f9738195-675f-49f4-9524-d5de7de9ff0e
+# ╟─f9738195-675f-49f4-9524-d5de7de9ff0e
 # ╠═18526569-4745-48c1-920a-c61d84725305
 # ╠═41b943a9-33ef-495d-83c3-9f7a30a0368e
 # ╠═ec29187e-aa14-4297-a3a7-c83128f730e4
@@ -3802,7 +3603,7 @@ version = "1.8.1+0"
 # ╠═d1885b23-7589-4ffe-9848-f5735ca4c68f
 # ╠═ce0cb420-8bd6-4b2d-8782-c24bcef0ff3f
 # ╠═fb1bdaf1-8ac4-4248-83fa-818373c9cf70
-# ╠═0c5739ce-44c7-4daf-a570-411167b9945f
+# ╟─0c5739ce-44c7-4daf-a570-411167b9945f
 # ╠═97c661ab-97cd-4cef-9c9d-5eecb3d4dbf3
 # ╠═d708f8e4-5a62-4eba-91b9-2d7b9dbe3589
 # ╟─fc6f154d-9f05-4d03-a897-12dab03fe818
@@ -3829,7 +3630,7 @@ version = "1.8.1+0"
 # ╠═2fba6169-6742-4425-8e85-aaa777a65f0e
 # ╠═a87c1210-6980-4e04-8f0d-a4ee2a6bff4f
 # ╠═db51f4f4-3023-415f-b53d-825cb45ff503
-# ╠═d03973b8-e049-4395-ad63-ea78ae5b7150
+# ╟─d03973b8-e049-4395-ad63-ea78ae5b7150
 # ╠═914061d1-3fd9-4dfd-9e94-302d83ef052d
 # ╠═b49c4dc7-1e53-4221-9961-eca75ca43c5f
 # ╠═d96733bf-abe6-4973-b1e9-a1da3d6d4863
