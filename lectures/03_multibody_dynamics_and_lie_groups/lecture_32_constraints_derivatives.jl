@@ -225,9 +225,9 @@ $$\dot{\boldsymbol{l}}
 
 and note
 
-$$\dot{\boldsymbol{c}}_i = \tilde{\boldsymbol{c}}_i\,\boldsymbol{\omega}_i,
+$$\dot{\boldsymbol{c}}_i = \tilde{\boldsymbol{\omega}}_i\,\boldsymbol{c}_i = -\tilde{\boldsymbol{c}}_i\,\boldsymbol{\omega}_i,
 \quad
-\dot{\boldsymbol{c}}_j = \tilde{\boldsymbol{c}}_j\,\boldsymbol{\omega}_j.$$
+\dot{\boldsymbol{c}}_j = \tilde{\boldsymbol{\omega}}_j\,\boldsymbol{c}_j = -\tilde{\boldsymbol{c}}_j\,\boldsymbol{\omega}_j.$$
 
 Then the time-derivative of the constraint becomes
 
@@ -267,15 +267,20 @@ Taking another time derivative, with $\dot{\boldsymbol{\omega}}_i=\boldsymbol{\a
 
 $$\ddot{\boldsymbol{g}}_{ij}
 = \ddot{\boldsymbol{l}}
-= \dot{\boldsymbol{v}}_j - \tilde{\boldsymbol{c}}_j\,\dot{\boldsymbol{\omega}}_j - \dot{\boldsymbol{v}}_i + \tilde{\boldsymbol{c}}_i\,\dot{\boldsymbol{\omega}}_i
+= \dot{\boldsymbol{v}}_j 
+- \tilde{\boldsymbol{c}}_j\,\dot{\boldsymbol{\omega}}_j 
+- \dot{\tilde{\boldsymbol{c}}}_j\,\boldsymbol{\omega}_j 
+- \dot{\boldsymbol{v}}_i 
++ \tilde{\boldsymbol{c}}_i\,\dot{\boldsymbol{\omega}}_i
++ \dot{\tilde{\boldsymbol{c}}}_i\,\boldsymbol{\omega}_i 
 = \boldsymbol{0}.$$
 
 Defining the $(3\times1)$ “Coriolis” vector
 
 $$\bar{\boldsymbol{\gamma}}_{ij}
 \equiv
-\tilde{\boldsymbol{c}}_i\,\boldsymbol{\omega}_i
-- \tilde{\boldsymbol{c}}_j\,\boldsymbol{\omega}_j
+\dot{\tilde{\boldsymbol{c}}}_i\,\boldsymbol{\omega}_i
+- \dot{\tilde{\boldsymbol{c}}}_j\,\boldsymbol{\omega}_j
 =
 \tilde{\boldsymbol{\omega}}_j\,\tilde{\boldsymbol{\omega}}_j\,\boldsymbol{c}_j
 - \tilde{\boldsymbol{\omega}}_i\,\tilde{\boldsymbol{\omega}}_i\,\boldsymbol{c}_i,$$
@@ -839,7 +844,7 @@ function _prep(bA::BodyState,rA::SVector{3},
     RA = rotmat(bA.q);  RB = rotmat(bB.q)
     cA = RA*rA;         cB = RB*rB
     P_A = bA.X + cA;    P_B = bB.X + cB
-    ωA_W = RA*bA.ωB;    ωB_W = RB*bB.ωB
+    ωA_W = bA.ωB;    ωB_W = bB.ωB
     (;RA,RB,cA,cB,P_A,P_B,ωA_W,ωB_W)
 end
 
@@ -853,8 +858,8 @@ g_ball_joint(bA,rA,bB,rB) = _prep(bA,rA,bB,rB).P_B -
 function Aω_ball_joint(bA,rA,bB,rB)
     C = _prep(bA,rA,bB,rB)
     AωA =  tilde(C.cA)
-    AωB = -tilde(C.cB)
-    hcat(AωA, -I(3),  AωB,  I(3))   # size 3×12
+    AωB =  tilde(C.cB)
+    hcat(AωA, -I(3),  -AωB,  I(3))   # size 3×12
 end
 
 # ╔═╡ 50c5f06a-be83-45bd-af13-7ec7670432b1
@@ -1437,7 +1442,7 @@ version = "17.4.0+2"
 """
 
 # ╔═╡ Cell order:
-# ╠═b8f0fade-e453-42e3-9ecb-803d41328d10
+# ╟─b8f0fade-e453-42e3-9ecb-803d41328d10
 # ╠═bb4550ab-de3f-4890-9fdd-4e006a2d698d
 # ╟─3d62a7d0-930d-461c-a4ef-ee38019d49b0
 # ╟─aa843098-61a4-4702-9a8e-bfc55a81084d

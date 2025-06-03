@@ -445,7 +445,7 @@ p_top = RigidBodyParams(I = I_top, T = t -> [0, 0, 0], normalize_quaternions=fal
 # Initial conditions
 begin
 	q0_top = [1.0, 0.0, 0.0, 0.0]
-	ω0_top = [1e-3, 1.0, 0.0] # we need some small disturbance
+	ω0_top = [1e-3, 1.0, 1e-3] # we need some small disturbance
 	u0_top = [q0_top; ω0_top]
 end
 
@@ -548,7 +548,7 @@ skew(u::SVector{3,T}) where T = @SMatrix [
 ]
 
 # ╔═╡ 30ae3cc1-ce03-4f69-89d7-274e444d855a
-
+one(Float16)
 
 # ╔═╡ 31902baa-d167-48d9-bbd6-aa98a3811e9e
 function quat_mult(q1::SVector{4,T}, q2::SVector{4,T}) where T
@@ -618,9 +618,9 @@ function custom_rk4(
         if is_lie
             Δq1 = dt * wi
             Δw1 = dt * SVector(k1[5],k1[6],k1[7])
-        else
-            Δq1 = dt * SVector(k1[1],k1[2],k1[3],k1[4])
-            Δw1 = dt * SVector(k1[5],k1[6],k1[7])
+        # else
+        #     Δq1 = dt * SVector(k1[1],k1[2],k1[3],k1[4])
+        #     Δw1 = dt * SVector(k1[5],k1[6],k1[7])
         end
 
         # Stage 2 prep
@@ -637,9 +637,9 @@ function custom_rk4(
         if is_lie
             Δq2 = dt * invdexp(w2, Δq1/2)
             Δw2 = dt * SVector(k2[5],k2[6],k2[7])
-        else
-            Δq2 = dt * SVector(k2[1],k2[2],k2[3],k2[4])
-            Δw2 = dt * SVector(k2[5],k2[6],k2[7])
+        # else
+        #     Δq2 = dt * SVector(k2[1],k2[2],k2[3],k2[4])
+        #     Δw2 = dt * SVector(k2[5],k2[6],k2[7])
         end
 
         # Stage 3 prep
@@ -656,9 +656,9 @@ function custom_rk4(
         if is_lie
             Δq3 = dt * invdexp(w3, Δq2/2)
             Δw3 = dt * SVector(k3[5],k3[6],k3[7])
-        else
-            Δq3 = dt * SVector(k3[1],k3[2],k3[3],k3[4])
-            Δw3 = dt * SVector(k3[5],k3[6],k3[7])
+        # else
+        #     Δq3 = dt * SVector(k3[1],k3[2],k3[3],k3[4])
+        #     Δw3 = dt * SVector(k3[5],k3[6],k3[7])
         end
 
         # Stage 4 prep
@@ -675,9 +675,9 @@ function custom_rk4(
         if is_lie
             Δq4 = dt * invdexp(w4, Δq3)
             Δw4 = dt * SVector(k4[5],k4[6],k4[7])
-        else
-            Δq4 = dt * SVector(k4[1],k4[2],k4[3],k4[4])
-            Δw4 = dt * SVector(k4[5],k4[6],k4[7])
+        # else
+        #     Δq4 = dt * SVector(k4[1],k4[2],k4[3],k4[4])
+        #     Δw4 = dt * SVector(k4[5],k4[6],k4[7])
         end
 
         # combine
@@ -3588,7 +3588,7 @@ version = "1.8.1+0"
 # ╟─deaaf630-cb40-4dd0-af94-ba19df1bbc1d
 # ╟─80954e65-0359-4804-abc9-8b04a108cf2a
 # ╟─2112053e-5b4e-48d0-8bfa-a79213c82682
-# ╠═b6831ab7-4912-44a6-ba6d-e6848934f1eb
+# ╟─b6831ab7-4912-44a6-ba6d-e6848934f1eb
 # ╠═b5885b8b-c3fd-4caa-a4f8-fabb3ff3a90c
 # ╠═e321a03c-da0d-429c-8cc6-d76f8fcc92e4
 # ╠═d098022c-9592-4ec1-9b52-7caf03c38e75
@@ -3609,7 +3609,7 @@ version = "1.8.1+0"
 # ╟─fc6f154d-9f05-4d03-a897-12dab03fe818
 # ╠═57da86a0-5ae4-4533-aaf4-5b623a948a46
 # ╠═8b60eee1-3539-4d34-949a-b582d361d20d
-# ╠═e064f06a-73fa-4131-b6fd-b351a8bbc397
+# ╟─e064f06a-73fa-4131-b6fd-b351a8bbc397
 # ╠═ebbb9fef-322e-4243-a3f1-ccb7ede44dc8
 # ╠═ed79c331-150f-4021-8f03-661d09748d0a
 # ╠═30ae3cc1-ce03-4f69-89d7-274e444d855a
