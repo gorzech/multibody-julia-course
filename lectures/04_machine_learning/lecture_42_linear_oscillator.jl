@@ -21,7 +21,7 @@ end
 md"""
 # Programming Multibody Systems in Julia
 
-### Lecture 11: Example of linear oscillator surrogate Model  
+### Lecture 12: Example of linear oscillator surrogate Model  
 
 Peter Manzl and Grzegorz Orzechowski
   
@@ -40,8 +40,8 @@ Assume you have the following CSV files (each row is one sample):
 
 We’ll read them into DataFrames, convert to `Array{Float32}` and inspect shapes.
 
-- **input**: $[x_0, \dot{x}_0, F_0, ... F_n-1]^T$
-- **output**: $[x_1, ... x_n]^T$  with $x_i = x(t=i\cdot h)$; $h = 0.5/64$
+- **input**: $\boldsymbol{x} = [x_0, \dot{x}_0, F_0, ... F_n-1]^T$
+- **output**: $\boldsymbol{y} = [x_1, ... x_n]^T$  with $x_i = x(t=i\cdot h)$; $h = 0.5/64$
 - note that the force is scaled by 1/2000 to normalize the input vector.
 """
 
@@ -91,6 +91,8 @@ md"""
 ## 4. Define Neural Network Surrogate
 
 We use a single linear layer (no bias) to map inputs → outputs.  
+
+$$\boldsymbol{y} = \boldsymbol{W} \boldsymbol{x}$$
 
 Note: Here we explicitly use a linear layer as our neural network surrogate.
 """
@@ -375,9 +377,9 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 [compat]
 CSV = "~0.10.15"
 DataFrames = "~1.7.0"
-Flux = "~0.16.4"
+Flux = "~0.14.25"
 LaTeXStrings = "~1.4.0"
-Optimisers = "~0.4.6"
+Optimisers = "~0.3.4"
 Plots = "~1.40.13"
 """
 
@@ -387,7 +389,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "6bc3262e17396e4d8c0a7d9b53cff1ddea76d232"
+project_hash = "f9026f7030aa1e0013dada89e6679fd43f4af1c0"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -513,6 +515,11 @@ deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "1b96ea4a01afe0ea4090c5c8039690672dd13f2e"
 uuid = "6e34b625-4abd-537c-b88f-471c36dfa7a0"
 version = "1.0.9+0"
+
+[[deps.CEnum]]
+git-tree-sha1 = "389ad5c84de1ae7cf0e28e381131c98ea87d54fc"
+uuid = "fa961155-64e5-5f13-b03f-caf6b980ea82"
+version = "0.5.0"
 
 [[deps.CSV]]
 deps = ["CodecZlib", "Dates", "FilePathsBase", "InlineStrings", "Mmap", "Parsers", "PooledArrays", "PrecompileTools", "SentinelArrays", "Tables", "Unicode", "WeakRefStrings", "WorkerUtilities"]
@@ -718,15 +725,6 @@ deps = ["ArgTools", "FileWatching", "LibCURL", "NetworkOptions"]
 uuid = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 version = "1.6.0"
 
-[[deps.EnzymeCore]]
-git-tree-sha1 = "7d7822a643c33bbff4eab9c87ca8459d7c688db0"
-uuid = "f151be2c-9106-41f4-ab19-57ee4f262869"
-version = "0.8.11"
-weakdeps = ["Adapt"]
-
-    [deps.EnzymeCore.extensions]
-    AdaptExt = "Adapt"
-
 [[deps.EpollShim_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "8a4be429317c42cfae6a7fc03c31bad1970c310d"
@@ -807,10 +805,10 @@ uuid = "53c48c17-4a7d-5ca2-90c5-79b7896eea93"
 version = "0.8.5"
 
 [[deps.Flux]]
-deps = ["Adapt", "ChainRulesCore", "Compat", "EnzymeCore", "Functors", "LinearAlgebra", "MLCore", "MLDataDevices", "MLUtils", "MacroTools", "NNlib", "OneHotArrays", "Optimisers", "Preferences", "ProgressLogging", "Random", "Reexport", "Setfield", "SparseArrays", "SpecialFunctions", "Statistics", "Zygote"]
-git-tree-sha1 = "2c35003ec8dafabdc48549102208b1b15552cb33"
+deps = ["Adapt", "ChainRulesCore", "Compat", "Functors", "LinearAlgebra", "MLDataDevices", "MLUtils", "MacroTools", "NNlib", "OneHotArrays", "Optimisers", "Preferences", "ProgressLogging", "Random", "Reexport", "Setfield", "SparseArrays", "SpecialFunctions", "Statistics", "Zygote"]
+git-tree-sha1 = "df520a0727f843576801a0294f5be1a94be28e23"
 uuid = "587475ba-b771-5e3f-ad9e-33799f191a9c"
-version = "0.16.4"
+version = "0.14.25"
 
     [deps.Flux.extensions]
     FluxAMDGPUExt = "AMDGPU"
@@ -862,10 +860,10 @@ uuid = "559328eb-81f9-559d-9380-de523a88c83c"
 version = "1.0.17+0"
 
 [[deps.Functors]]
-deps = ["Compat", "ConstructionBase", "LinearAlgebra", "Random"]
-git-tree-sha1 = "60a0339f28a233601cb74468032b5c302d5067de"
+deps = ["LinearAlgebra"]
+git-tree-sha1 = "64d8e93700c7a3f28f717d265382d52fac9fa1c1"
 uuid = "d9f16b24-f501-4c13-a1f2-28368ffc5196"
-version = "0.5.2"
+version = "0.4.12"
 
 [[deps.Future]]
 deps = ["Random"]
@@ -877,6 +875,12 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Libglvnd_jll", "Xorg_libXcursor_jl
 git-tree-sha1 = "fcb0584ff34e25155876418979d4c8971243bb89"
 uuid = "0656b61e-2033-5cc2-a64a-77c0f6c09b89"
 version = "3.4.0+2"
+
+[[deps.GPUArrays]]
+deps = ["Adapt", "GPUArraysCore", "KernelAbstractions", "LLVM", "LinearAlgebra", "Printf", "Random", "Reexport", "ScopedValues", "Serialization", "Statistics"]
+git-tree-sha1 = "eea7b3a1964b4de269bb380462a9da604be7fcdb"
+uuid = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
+version = "11.2.2"
 
 [[deps.GPUArraysCore]]
 deps = ["Adapt"]
@@ -1025,12 +1029,16 @@ deps = ["Adapt", "Atomix", "InteractiveUtils", "MacroTools", "PrecompileTools", 
 git-tree-sha1 = "80d268b2f4e396edc5ea004d1e0f569231c71e9e"
 uuid = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 version = "0.9.34"
-weakdeps = ["EnzymeCore", "LinearAlgebra", "SparseArrays"]
 
     [deps.KernelAbstractions.extensions]
     EnzymeExt = "EnzymeCore"
     LinearAlgebraExt = "LinearAlgebra"
     SparseArraysExt = "SparseArrays"
+
+    [deps.KernelAbstractions.weakdeps]
+    EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
+    LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
 [[deps.LAME_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
@@ -1043,6 +1051,24 @@ deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "aaafe88dccbd957a8d82f7d05be9b69172e0cee3"
 uuid = "88015f11-f218-50d7-93a8-a6af411a945d"
 version = "4.0.1+0"
+
+[[deps.LLVM]]
+deps = ["CEnum", "LLVMExtra_jll", "Libdl", "Preferences", "Printf", "Unicode"]
+git-tree-sha1 = "5e8b243b2e4c86648dac82cf767ae1456000b92d"
+uuid = "929cbde3-209d-540e-8aea-75f648917ca0"
+version = "9.4.0"
+
+    [deps.LLVM.extensions]
+    BFloat16sExt = "BFloat16s"
+
+    [deps.LLVM.weakdeps]
+    BFloat16s = "ab4f0b2a-ad5b-11e8-123f-65d77653426b"
+
+[[deps.LLVMExtra_jll]]
+deps = ["Artifacts", "JLLWrappers", "LazyArtifacts", "Libdl", "TOML"]
+git-tree-sha1 = "f8022e2c8b5eef5f30e7fb2fe52c97cc5674db23"
+uuid = "dad2f222-ce93-54a1-a47d-0025e8a3acab"
+version = "0.0.36+0"
 
 [[deps.LLVMOpenMP_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
@@ -1078,6 +1104,11 @@ version = "0.16.8"
     SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
     SymEngine = "123dc426-2d89-5057-bbad-38513e3affd8"
     tectonic_jll = "d7dd28d6-a5e6-559c-9131-7eb760cdacc5"
+
+[[deps.LazyArtifacts]]
+deps = ["Artifacts", "Pkg"]
+uuid = "4af54fe1-eca0-43a8-85a7-787d91b784e3"
+version = "1.11.0"
 
 [[deps.LibCURL]]
 deps = ["LibCURL_jll", "MozillaCACerts_jll"]
@@ -1183,16 +1214,15 @@ version = "1.0.0"
 
 [[deps.MLDataDevices]]
 deps = ["Adapt", "Compat", "Functors", "Preferences", "Random"]
-git-tree-sha1 = "a47f08b67298dee5778cf279a9a735ca2d11a890"
+git-tree-sha1 = "85b47bc5a8bf0c886286638585df3bec7c9f8269"
 uuid = "7e8f7934-dd98-4c1a-8fe8-92b47a384d40"
-version = "1.10.0"
+version = "1.5.3"
 
     [deps.MLDataDevices.extensions]
     MLDataDevicesAMDGPUExt = "AMDGPU"
     MLDataDevicesCUDAExt = "CUDA"
     MLDataDevicesChainRulesCoreExt = "ChainRulesCore"
     MLDataDevicesChainRulesExt = "ChainRules"
-    MLDataDevicesComponentArraysExt = "ComponentArrays"
     MLDataDevicesFillArraysExt = "FillArrays"
     MLDataDevicesGPUArraysExt = "GPUArrays"
     MLDataDevicesMLUtilsExt = "MLUtils"
@@ -1212,7 +1242,6 @@ version = "1.10.0"
     CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
     ChainRules = "082447d4-558c-5d27-93f4-14fc19e9eca2"
     ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
-    ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
     FillArrays = "1a297f60-69ca-5386-bcde-b61e274b549b"
     GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
     MLUtils = "f1d291b0-491e-4a28-83b9-f70985020b54"
@@ -1365,20 +1394,10 @@ uuid = "efe28fd5-8261-553b-a9e1-b2916fc3738e"
 version = "0.5.6+0"
 
 [[deps.Optimisers]]
-deps = ["ChainRulesCore", "ConstructionBase", "Functors", "LinearAlgebra", "Random", "Statistics"]
-git-tree-sha1 = "131dc319e7c58317e8c6d5170440f6bdaee0a959"
+deps = ["ChainRulesCore", "Functors", "LinearAlgebra", "Random", "Statistics"]
+git-tree-sha1 = "c9ff5c686240c31eb8570b662dd1f66f4b183116"
 uuid = "3bd65402-5787-11e9-1adc-39752487f4e2"
-version = "0.4.6"
-
-    [deps.Optimisers.extensions]
-    OptimisersAdaptExt = ["Adapt"]
-    OptimisersEnzymeCoreExt = "EnzymeCore"
-    OptimisersReactantExt = "Reactant"
-
-    [deps.Optimisers.weakdeps]
-    Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
-    EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
-    Reactant = "3c362404-f566-11ee-1572-e11a4b42c853"
+version = "0.3.4"
 
 [[deps.Opus_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
@@ -1838,12 +1857,10 @@ version = "1.7.0"
 git-tree-sha1 = "b13c4edda90890e5b04ba24e20a310fbe6f249ff"
 uuid = "013be700-e6cd-48c3-b4a1-df204f14c38f"
 version = "0.3.0"
+weakdeps = ["LLVM"]
 
     [deps.UnsafeAtomics.extensions]
     UnsafeAtomicsLLVM = ["LLVM"]
-
-    [deps.UnsafeAtomics.weakdeps]
-    LLVM = "929cbde3-209d-540e-8aea-75f648917ca0"
 
 [[deps.Unzip]]
 git-tree-sha1 = "ca0969166a028236229f63514992fc073799bb78"
@@ -2041,19 +2058,17 @@ uuid = "3161d3a3-bdf6-5164-811a-617609db77b4"
 version = "1.5.7+1"
 
 [[deps.Zygote]]
-deps = ["AbstractFFTs", "ChainRules", "ChainRulesCore", "DiffRules", "Distributed", "FillArrays", "ForwardDiff", "GPUArraysCore", "IRTools", "InteractiveUtils", "LinearAlgebra", "LogExpFunctions", "MacroTools", "NaNMath", "PrecompileTools", "Random", "SparseArrays", "SpecialFunctions", "Statistics", "ZygoteRules"]
-git-tree-sha1 = "d1db6ee766b1b200594a22714c80d6678dee3c81"
+deps = ["AbstractFFTs", "ChainRules", "ChainRulesCore", "DiffRules", "Distributed", "FillArrays", "ForwardDiff", "GPUArrays", "GPUArraysCore", "IRTools", "InteractiveUtils", "LinearAlgebra", "LogExpFunctions", "MacroTools", "NaNMath", "PrecompileTools", "Random", "Requires", "SparseArrays", "SpecialFunctions", "Statistics", "ZygoteRules"]
+git-tree-sha1 = "8462a20f0fd85b4ef4a1b7310d33e7475d2bb14f"
 uuid = "e88e6eb3-aa80-5325-afca-941959d7151f"
-version = "0.7.7"
+version = "0.6.77"
 
     [deps.Zygote.extensions]
-    ZygoteAtomExt = "Atom"
     ZygoteColorsExt = "Colors"
     ZygoteDistancesExt = "Distances"
     ZygoteTrackerExt = "Tracker"
 
     [deps.Zygote.weakdeps]
-    Atom = "c52e3926-4ff0-5f6e-af25-54175e0327b1"
     Colors = "5ae59095-9a9b-59fe-a467-6f913c188581"
     Distances = "b4f34e82-e78d-54a5-968a-f98e89d6e8f7"
     Tracker = "9f7883ad-71c0-57eb-9f7f-b5c9e6d3789c"

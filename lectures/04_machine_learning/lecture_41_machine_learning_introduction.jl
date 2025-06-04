@@ -85,10 +85,9 @@ md"""
 - Reproducibility.
 - Huge literature.
 - Poor quality reporting.
-"""
-###
 
-###
+![](https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/AI_hierarchy.svg/480px-AI_hierarchy.svg.png)
+"""
 
 # ╔═╡ 12ab9972-301c-4a73-9191-e92bf6414927
 md"""
@@ -99,7 +98,10 @@ md"""
 - **Unsupervised learning**: finds patterns in unlabeled data.
 - **Reinforcement learning**: learns from interactions with the environment.
 
-Here, we focus mostly on supervised learning.
+![](https://upload.wikimedia.org/wikipedia/commons/4/4d/Supervised_and_unsupervised_learning.png)
+![](https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Reinforcement_learning_diagram.svg/497px-Reinforcement_learning_diagram.svg.png)
+
+Here, we focus mostly on _supervised learning_.
 """
 
 # ╔═╡ 5170b369-3eb9-466e-abc1-46b7d44ea70e
@@ -118,7 +120,11 @@ md"""
 md"""
 ## Neural Networks: Intuition
 
+Wiki on [Neural Networks](https://en.wikipedia.org/wiki/Neural_network_(machine_learning))
+
 A neural network consists of layers of interconnected nodes (neurons).
+
+![Neural network architecture](https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Colored_neural_network.svg/399px-Colored_neural_network.svg.png)
 
 - **Input Layer**: receives input data
 - **Hidden Layers**: learn features from data
