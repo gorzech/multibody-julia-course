@@ -762,6 +762,73 @@ $$\bar{\bar{\boldsymbol\gamma}}_{ij}
 
 """
 
+# ╔═╡ 07d43b2c-d937-442a-87d5-d98aad66f324
+md"""
+## Why $A_\omega \!\to\! A_q$ needs a projection step
+
+A unit quaternion has **4** coordinates but only **3** independent rotational
+DOFs:
+
+* norm constraint $q^\top q=1$  
+  ⇒ $q^\top\dot q = 0$ (tangent space condition).
+
+Mapping matrices (body frame)
+
+| direction | size | property |
+|-----------|------|-----------|
+| $\omega_B \to \dot q$ : $\tfrac12\,E(q)$ | $4 \times 3$ | full rank |
+| $\dot q \to \omega_B$ : $2\,E(q)^\top$   | $3 \times 4$ | left-inverse only |
+
+Key identities  
+$$(2E^\top)(\tfrac12E)=I_3,\qquad
+(\tfrac12E)(2E^\top)=I_4-q\,q^\top.$$
+
+The projector $I_4-q\,q^\top$ removes the component parallel to $q$.
+
+### Consequence for Jacobians  
+
+* **Twist → coordinate**  
+  $$A_q^{\text{raw}} = A_\omega\,2E(q)^\top$$  
+  lives in the full 4-space but contains an extra piece proportional to $q$.
+* Any row differing by $\lambda\,q^\top$ enforces **exactly the same** physics
+  because $q^\top\dot q=0$.
+* `ForwardDiff.jacobian` returns one particular tangent-space representative.
+  To make the analytic transform match, **project onto the tangent plane**.
+"""
+
+# ╔═╡ 1fdeb773-aee3-4693-b0a2-419085d3bd84
+md"""
+### Tangent-space projector in Julia  
+
+```julia
+tangentize(aq::SVector{4}, q::SVector{4}) =
+    aq - (aq ⋅ q) * q           # drop component parallel to q
+```
+
+### Safe transform for one body
+
+```
+Aq_part = tangentize( Aω_part * (2 * Emat(q)') , q )
+```
+
+### Two-body row (ball joint example)
+
+```
+I3 = SMatrix{3,3}(I)            # static 3×3 identity
+
+Aq = hcat( Aq_part_A,  -I3,
+           Aq_part_B,   I3 )
+```
+
+After this projection step the converted $A_q$ **matches exactly** the
+
+automatic-differentiation Jacobian, while the reverse direction
+
+$$A_\omega = A_q\,\tfrac12 E(q)$$
+
+needs no correction (it compresses 4 tangent components back to 3).
+"""
+
 # ╔═╡ 6c248888-faa8-437a-b375-2079c0795ed6
 md"""
 
@@ -799,7 +866,7 @@ md"""
 
 # ╔═╡ c0ced6cc-048d-4ff8-b414-e3755c3b8f3a
 # ========== small helpers =====================================================
-tilde(v::SVector{3}) = @SMatrix [ 0.0 -v[3]  v[2];
+skew(v::SVector{3}) = @SMatrix [ 0.0 -v[3]  v[2];
                                   v[3] 0.0  -v[1];
                                  -v[2] v[1]  0.0 ]
 
@@ -828,6 +895,21 @@ end
 # ╔═╡ b448ee2f-465f-4d16-a62a-3bc2b8209153
 Edot(q,q̇) = Emat(q̇)   # linear dependence on q
 
+# ╔═╡ 0326b452-be30-42c3-83f2-7d8888f3ecee
+# body-frame conversion E(q)  (4×3)  and its t-derivative
+function Gmat(q::SVector{4})
+    q0,q1,q2,q3 = q
+    @SMatrix [
+        -q1  -q2  -q3;
+         q0   -q3  q2;
+         q3   q0  -q1;
+         -q2  q1   q0
+    ]
+end
+
+# ╔═╡ 6cc85e61-2ccd-4843-a391-8799b6ca492b
+Gdot(q,q̇) = Gmat(q̇)   # linear dependence on q
+
 # ╔═╡ ad867600-289d-4452-acf2-e76c5885a05e
 # ========== light container ===================================================
 struct BodyState
@@ -839,46 +921,35 @@ end
 
 # ╔═╡ f0a55f46-b7e6-43d1-a63f-eeec1f6d774e
 # ========== internal pre-compute (shared by all functions) ====================
-function _prep(bA::BodyState,rA::SVector{3},
-               bB::BodyState,rB::SVector{3})
+function _prep(bA::BodyState, rA::SVector{3},
+               bB::BodyState, rB::SVector{3})
     RA = rotmat(bA.q);  RB = rotmat(bB.q)
     cA = RA*rA;         cB = RB*rB
-    P_A = bA.X + cA;    P_B = bB.X + cB
+    XA = bA.X;       XB = bB.X
     ωA_W = bA.ωB;    ωB_W = bB.ωB
-    (;RA,RB,cA,cB,P_A,P_B,ωA_W,ωB_W)
+    (;RA,RB,cA,cB,XA,XB,ωA_W,ωB_W)
 end
 
 # ╔═╡ 88c5f68d-85e2-41fc-a068-862da3708a5e
 # ========== 1) constraint vector g ============================================
-g_ball_joint(bA,rA,bB,rB) = _prep(bA,rA,bB,rB).P_B -
-                             _prep(bA,rA,bB,rB).P_A
+function g_ball_joint(bA, rA, bB, rB)
+	C = _prep(bA,rA,bB,rB)
+	C.XB + C.cB - C.XA - C.cA
+end
 
 # ╔═╡ de3e3be0-359e-4ceb-94e2-50ab1bf3b051
 # ========== 2) twist-space Jacobian Aω ========================================
-function Aω_ball_joint(bA,rA,bB,rB)
-    C = _prep(bA,rA,bB,rB)
-    AωA =  tilde(C.cA)
-    AωB =  tilde(C.cB)
-    hcat(AωA, -I(3),  -AωB,  I(3))   # size 3×12
+function Aω_ball_joint(bA, rA, bB, rB)
+    C = _prep(bA, rA, bB, rB)
+    hcat(skew(C.cA), -I(3),  -skew(C.cB),  I(3))   # size 3×12
 end
 
 # ╔═╡ 50c5f06a-be83-45bd-af13-7ec7670432b1
 # ========== 3) Γ in twist space ===============================================
 function Γω_ball_joint(bA,rA,bB,rB)
     C = _prep(bA,rA,bB,rB)
-    (C.ωA_W × (C.ωA_W × C.cA)) -
-    (C.ωB_W × (C.ωB_W × C.cB))
-end
-
-# ╔═╡ a856b5d2-2d58-4324-a925-0ed884ba8545
-# ========== 4) coordinate-space Jacobian Aq ===================================
-function Aq_ball_joint(bA,rA,bB,rB)
-    C = _prep(bA,rA,bB,rB)
-    EA, EB = Emat(bA.q), Emat(bB.q)
-    AωA =  tilde(C.cA)
-    AωB = -tilde(C.cB)
-    Aq = hcat(AωA*(2*EA'), -I(3),
-          AωB*(2*EB'),  I(3))          # size 3×14
+	(C.ωB_W × (C.ωB_W × C.cB)) -
+    (C.ωA_W × (C.ωA_W × C.cA))    
 end
 
 # ╔═╡ ad14cde5-752a-4b3b-a7b1-c58b0ac1d731
@@ -893,39 +964,42 @@ function Γq_ball_joint(bA,rA,bB,rB)
     extraA = 2 .* (Edot(bA.q,q̇A)' * q̇A)
     extraB = 2 .* (Edot(bB.q,q̇B)' * q̇B)
     Γω_ball_joint(bA,rA,bB,rB) +
-    (tilde(C.cA)*extraA + (-tilde(C.cB))*extraB)
+    (skew(C.cA)*extraA + (-skew(C.cB))*extraB)
 end
 
 
 # ╔═╡ 1a62acef-e214-44fb-9e1a-749412be82f6
 # ========== demo ==============================================================
 bodyA = BodyState(
-    SVector(1.0,0,0,0),  SVector(0,0,0),
+    SVector(0.6425754631219991,
+ -0.08032193289024989,
+  0.24096579867074963,
+  0.7228973960122489),  SVector(0.1,0.2,0.3),
     SVector(0,0,0),      SVector(0,0,0)
 )
 
 # ╔═╡ 78883d92-3f12-42f0-8129-fb21615dc76c
 bodyB = BodyState(
     SVector(cosd(15),0,sind(15),0),   # 30° about x
-    SVector(1,0,0),
+    SVector(1,-0.7,0.4),
     SVector(0,1,0),               # body-frame spin around +y
     SVector(0,0,0)
 )
 
 # ╔═╡ 0852e9e1-a866-45c2-9dec-1a9896ed3013
-EA, EB = Emat(bodyA.q), Emat(bodyB.q)
+GA, GB = Gmat(bodyA.q), Gmat(bodyB.q)
 
 # ╔═╡ d98bd951-2924-436c-b335-479bf250f7ae
-EB' * EB
+GB' * GB
 
 # ╔═╡ 4e73e349-fb21-4acf-9b6f-3438994b7f88
-EB * EB' + bodyB.q * bodyB.q'
+GB * GB' + bodyB.q * bodyB.q'
 
 # ╔═╡ 09a233c5-1dd6-4806-9372-889d9dadbe22
-rA = @SVector [0.0,0.0,0.0]
+rA = @SVector [0.3,-0.1,0.2]
 
 # ╔═╡ 1f6ed89f-4d01-486a-91ee-117d0528bc07
-rB = @SVector [1.0,0.0,0.0]
+rB = @SVector [1.0,0.7,-0.2]
 
 # ╔═╡ 61d37bbc-21b5-4c7f-aa9e-6e9884e5bbad
 println("g   = ", g_ball_joint(bodyA,rA, bodyB,rB))
@@ -935,9 +1009,6 @@ println("Aω  =\n", Aω_ball_joint(bodyA,rA, bodyB,rB))
 
 # ╔═╡ eec92226-1cba-4bab-bb6f-9c961832d074
 println("Γω  = ", Γω_ball_joint(bodyA,rA, bodyB,rB))
-
-# ╔═╡ e7fa14a6-efcd-4ad2-a526-3b6b9868e26c
-println("Aq  =\n", Aq_ball_joint(bodyA,rA, bodyB,rB))
 
 # ╔═╡ 37804ea6-aaec-4700-985d-f852ebe0f110
 println("Γq  = ", Γq_ball_joint(bodyA,rA, bodyB,rB))
@@ -976,22 +1047,34 @@ function blkdiag(mats::SMatrix...)
     SMatrix(out)                              # convert back to immutable
 end
 
+# ╔═╡ a856b5d2-2d58-4324-a925-0ed884ba8545
+# ========== 4) coordinate-space Jacobian Aq ===================================
+function Aq_ball_joint(bA, rA, bB, rB)
+    GA, GB = Gmat(bA.q), Gmat(bB.q)
+	Aω = Aω_ball_joint(bA, rA, bB, rB)
+	T = blkdiag(2GA', SMatrix{3,3}(I(3)), 2GB', SMatrix{3,3}(I(3)))   
+	Aq = Aω * T   # size 3×14
+end
+
+# ╔═╡ e7fa14a6-efcd-4ad2-a526-3b6b9868e26c
+println("Aq  =\n", Aq_ball_joint(bodyA,rA, bodyB,rB))
+
 # ╔═╡ e6b81f40-f242-4915-b1ef-49afdd932288
 #------------------------------------------------- Aq via ForwardDiff.jacobian --
 function Aq_AD(bA, rA, bB, rB)
     p0   = pack(bA, bB)
     gfun = pvec -> begin
         bA′,bB′ = unpack(pvec,bA,bB)
-        g_ball_joint(bA′,rA,bB′,rB)
+        g_ball_joint(bA′, rA, bB′, rB)
     end
     ForwardDiff.jacobian(gfun, p0) |> SMatrix{3,14}
 end
 
 # ╔═╡ d227a20f-3639-431a-832a-50d84189c883
 function Aω_AD(bA, rA, bB, rB)
-    EA, EB = Emat(bA.q), Emat(bB.q)
+    GA, GB = Gmat(bA.q), Gmat(bB.q)
 	Aq = Aq_AD(bA, rA, bB, rB)
-    T = blkdiag(0.5*EA, SMatrix{3,3}(I(3)), 0.5*EB, SMatrix{3,3}(I(3)))   # maps [ω_B;v]→[q̇;v]
+    T = blkdiag(0.5GA, SMatrix{3,3}(I(3)), 0.5GB, SMatrix{3,3}(I(3)))   # maps [ω_B;v]→[q̇;v]
     Aq * T                                      # 3×12
 end
 
@@ -1019,11 +1102,30 @@ end
 # ╔═╡ 0fd04dfb-7008-4dc4-a395-21a50e6e6622
 println("Aq_AD  =\n", Aq_AD(bodyA, rA, bodyB, rB))
 
+# ╔═╡ 71e6c590-a280-44ca-b39f-7b5ebbfd6766
+Aq_ball_joint(bodyA,rA, bodyB,rB)
+
+# ╔═╡ d68a45f7-00bd-41ee-8e23-23d2dd99e537
+Aq_AD(bodyA, rA, bodyB, rB)
+
 # ╔═╡ c20e7849-ae12-4d47-947c-4dfe3309d86d
 Aq_ball_joint(bodyA,rA, bodyB,rB) - Aq_AD(bodyA, rA, bodyB, rB)
 
+# ╔═╡ ad16fc44-6559-4028-97b2-72bae30e5c83
+md"""
+Aω_AD  =
+"""
+
 # ╔═╡ 44d57b3d-4404-4d6a-a0fe-78548c392fd0
-println("Aω_AD  =\n", Aω_AD(bodyA,rA, bodyB,rB))
+Aω_AD(bodyA,rA, bodyB,rB)
+
+# ╔═╡ 384593db-f3eb-40ac-b8e7-5102443210fd
+md"""
+Aω\_ball\_joint = 
+"""
+
+# ╔═╡ 1c61c669-e5e5-4242-a365-050d80d24eb1
+Aω_ball_joint(bodyA,rA, bodyB,rB)
 
 # ╔═╡ bb0bf79d-3c4a-421f-aa83-b080efeb199d
 Aω_ball_joint(bodyA,rA, bodyB,rB) - Aω_AD(bodyA,rA, bodyB,rB)
@@ -1466,12 +1568,16 @@ version = "17.4.0+2"
 # ╟─98cf5350-ff12-47f6-a1ca-d72b7d68708b
 # ╟─e812ca78-78bd-4c82-9446-a9828eb3577f
 # ╟─9c0d0f7f-7466-421f-b35e-6f0a6e2694c4
+# ╟─07d43b2c-d937-442a-87d5-d98aad66f324
+# ╟─1fdeb773-aee3-4693-b0a2-419085d3bd84
 # ╟─6c248888-faa8-437a-b375-2079c0795ed6
 # ╟─23942a6b-f7b0-4646-989e-c576823b3437
 # ╠═c0ced6cc-048d-4ff8-b414-e3755c3b8f3a
 # ╠═b428ec1e-e56e-47ac-b723-b033219b93b0
 # ╠═9c44685e-27e4-42e6-b362-9cf9eb9a45a5
 # ╠═b448ee2f-465f-4d16-a62a-3bc2b8209153
+# ╠═0326b452-be30-42c3-83f2-7d8888f3ecee
+# ╠═6cc85e61-2ccd-4843-a391-8799b6ca492b
 # ╠═ad867600-289d-4452-acf2-e76c5885a05e
 # ╠═f0a55f46-b7e6-43d1-a63f-eeec1f6d774e
 # ╠═88c5f68d-85e2-41fc-a068-862da3708a5e
@@ -1500,8 +1606,13 @@ version = "17.4.0+2"
 # ╠═d227a20f-3639-431a-832a-50d84189c883
 # ╠═d31117c7-d025-42f3-8d6e-73e7c28b1904
 # ╠═0fd04dfb-7008-4dc4-a395-21a50e6e6622
+# ╠═71e6c590-a280-44ca-b39f-7b5ebbfd6766
+# ╠═d68a45f7-00bd-41ee-8e23-23d2dd99e537
 # ╠═c20e7849-ae12-4d47-947c-4dfe3309d86d
+# ╟─ad16fc44-6559-4028-97b2-72bae30e5c83
 # ╠═44d57b3d-4404-4d6a-a0fe-78548c392fd0
+# ╟─384593db-f3eb-40ac-b8e7-5102443210fd
+# ╠═1c61c669-e5e5-4242-a365-050d80d24eb1
 # ╠═bb0bf79d-3c4a-421f-aa83-b080efeb199d
 # ╠═c5373ff8-42f2-4230-a575-26ee93eb7753
 # ╟─00000000-0000-0000-0000-000000000001
