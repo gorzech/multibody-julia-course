@@ -183,6 +183,9 @@ sA′ = [0.3,-0.1,0.2]
 # ╔═╡ 7fb1909f-2f0b-40cc-b010-50193d47c531
 sB′ = [1.0,0.7,-0.2]
 
+# ╔═╡ 0eaea5fd-a169-40ea-8078-40e0d06f8f81
+aA′ = [-0.3,0.2,-0.1]
+
 # ╔═╡ b6a78e8b-16ae-40b4-9e43-8e9fdd6771c3
 md"""
 ## Ball joint
@@ -240,14 +243,14 @@ function Aω_ball_joint_AD(bA, sA′, bB, sB′)
 end
 
 # ╔═╡ 93a7d201-6179-408b-86e9-0a26b87a753b
-@testset "Compare Aω with its AD version" begin
+@testset "Compare ball joint Aω with its AD version" begin
 	Aω = Aω_ball_joint(bodyA, sA′, bodyB, sB′)
 	Aω_AD = Aω_ball_joint_AD(bodyA, sA′, bodyB, sB′)
 	@test Aω ≈ Aω_AD
 end
 
 # ╔═╡ d846fa4f-b28c-46c1-b848-3fdf06364d2f
-@testset "Compare Aq*q̇ with its AD version" begin
+@testset "Compare ball joint Aq*q̇ with its AD version" begin
 	Aq = Aq_ball_joint(bodyA, sA′, bodyB, sB′)
 	Aq_AD = Aq_ball_joint_AD(bodyA, sA′, bodyB, sB′)
 	q̇ = vcat(
@@ -256,6 +259,168 @@ end
 		ω_to_ṗ(bodyB.ω, bodyB.p),
 		bodyB.v
 	)
+	@test Aq * q̇ ≈ Aq_AD * q̇
+end
+
+# ╔═╡ 7d5d4ccf-ccf4-43fd-bc6e-02cd0a1154d7
+md"""
+## Orthogonality Constraint -- Type 1 Perpendicularity
+"""
+
+# ╔═╡ f60f0875-4600-4823-823b-05edde788c70
+md"""
+### Constraint equation
+"""
+
+# ╔═╡ 36f81f5c-2b28-4224-ab57-bb3bb11a32a3
+# ========== 1) constraint vector g ============================================
+function g_orthogonality(bA, sA′, bB, sB′)
+	C = _prep(bA, sA′, bB, sB′)
+	[C.sA ⋅ C.sB]
+end
+
+# ╔═╡ 428eae10-32c8-4d3a-ad13-dd46086b5db7
+@testset "Ball joint call works" begin
+	g = @test_nowarn g_orthogonality(bodyA, sA′, bodyB, sB′)
+	@test length(g) == 1
+	@test all(isfinite.(g))
+end
+
+# ╔═╡ 213fbd77-6f61-4270-8fbc-bc7b3d06d06d
+md"""
+### Jacobians
+"""
+
+# ╔═╡ bf2f22d1-2750-491b-911e-eb9f8bd12dc8
+# ========== 2) twist-space Jacobian Aω ========================================
+function Aω_orthogonality(bA, sA′, bB, sB′)
+    C = _prep(bA, sA′, bB, sB′)
+    hcat(-C.sB' * C.RA * skew(sA′), zeros(1, 3),  -C.sA' * C.RB * skew(sB′),  zeros(1, 3))   # size 1×12
+end
+
+# ╔═╡ 6978bc40-b9ef-46c7-af29-4d0bf9ae1be4
+# ========== 4) coordinate-space Jacobian Aq ===================================
+function Aq_orthogonality(bA, sA′, bB, sB′)
+	Aω = Aω_orthogonality(bA, sA′, bB, sB′)
+	Aω_to_Aq(Aω, bA, bB)   # size 1×14
+end
+
+# ╔═╡ 612cb996-7223-40e3-afc6-bad022f9a9fa
+#------------------------------------------------- Aq via ForwardDiff.jacobian --
+function Aq_orthogonality_AD(bA, sA′, bB, sB′)
+    gfun(_bA, _bB) = g_orthogonality(_bA, sA′, _bB, sB′)
+    Aq_AD(gfun, bA, bB)
+end
+
+# ╔═╡ 08e0e485-3d0d-4b26-853e-44c4d8d565f8
+function Aω_orthogonality_AD(bA, sA′, bB, sB′)
+	Aq = Aq_orthogonality_AD(bA, sA′, bB, sB′)
+    Aq_to_Aω(Aq, bA, bB)                                     # 1×12
+end
+
+# ╔═╡ 13564452-ed30-490a-ae44-e78b15ce218c
+@testset "Compare orthogonality Aω with its AD version" begin
+	Aω = Aω_orthogonality(bodyA, sA′, bodyB, sB′)
+	Aω_AD = Aω_orthogonality_AD(bodyA, sA′, bodyB, sB′)
+	@test Aω ≈ Aω_AD
+end
+
+# ╔═╡ cd8f504c-53ba-4ee9-9e89-d1bab4afe944
+@testset "Compare orthogonality Aq*q̇ with its AD version" begin
+	Aq = Aq_orthogonality(bodyA, sA′, bodyB, sB′)
+	Aq_AD = Aq_orthogonality_AD(bodyA, sA′, bodyB, sB′)
+	q̇ = vcat(
+		ω_to_ṗ(bodyA.ω, bodyA.p),
+		bodyA.v,
+		ω_to_ṗ(bodyB.ω, bodyB.p),
+		bodyB.v
+	)
+	@test Aq * q̇ ≈ Aq_AD * q̇
+end
+
+# ╔═╡ aa93c255-c0c9-45d1-9c3c-8e46415f972e
+md"""
+## Constant Projection -- Type 2 Perpendicularity
+"""
+
+# ╔═╡ 8e4a4613-b299-40a9-b3e6-e3097d84bc56
+md"""
+### Constraint equation
+"""
+
+# ╔═╡ 8c465897-efa7-4698-be78-f9a804156224
+# ========== 1) constraint vector g ============================================
+function g_orthogonality_2(bA, aA′, sA′, bB, sB′)
+	C = _prep(bA, sA′, bB, sB′)
+	aA = C.RA * aA′
+	d = C.rB + C.sB - C.rA - C.sA
+	[aA ⋅ d]
+end
+
+# ╔═╡ 8e8e75ff-f749-4881-a0a1-2bb4d07ad11d
+@testset "Ball joint call works" begin
+	g = @test_nowarn g_orthogonality_2(bodyA, aA′, sA′, bodyB, sB′)
+	@test length(g) == 1
+	@test all(isfinite.(g))
+end
+
+# ╔═╡ 418b2863-e8df-479e-8515-bcab806773bd
+md"""
+### Jacobians
+"""
+
+# ╔═╡ f099af94-0bd9-4fee-b8cf-0760ca0888cf
+# ========== 2) twist-space Jacobian Aω ========================================
+function Aω_orthogonality_2(bA, aA′, sA′, bB, sB′)
+    C = _prep(bA, sA′, bB, sB′)
+	aA = C.RA * aA′
+	d = C.rB + C.sB - C.rA - C.sA
+    collect(hcat(
+		aA′' * skew(sA′) - d' * C.RA * skew(aA′), 
+		-aA',  
+		-aA' * C.RB * skew(sB′), 
+		aA'
+	))   # size 1×12
+end
+
+# ╔═╡ 682a8df8-52dc-4ed1-8210-231693c19268
+# ========== 4) coordinate-space Jacobian Aq ===================================
+function Aq_orthogonality_2(bA, aA′, sA′, bB, sB′)
+	Aω = Aω_orthogonality_2(bA, aA′, sA′, bB, sB′)
+	Aω_to_Aq(Aω, bA, bB)   # size 1×14
+end
+
+# ╔═╡ ad59816c-4f1a-47cb-b0ac-50b22f007164
+#------------------------------------------------- Aq via ForwardDiff.jacobian --
+function Aq_orthogonality_2_AD(bA, aA′, sA′, bB, sB′)
+    gfun(_bA, _bB) = g_orthogonality_2(_bA, aA′, sA′, _bB, sB′)
+    Aq_AD(gfun, bA, bB)
+end
+
+# ╔═╡ 9d1581f1-bac6-43b1-8eb8-4690408a5f9c
+function Aω_orthogonality_2_AD(bA, aA′, sA′, bB, sB′)
+	Aq = Aq_orthogonality_2_AD(bA, aA′, sA′, bB, sB′)
+    Aq_to_Aω(Aq, bA, bB)                                     # 1×12
+end
+
+# ╔═╡ 35453b85-1a91-4253-91ed-773c2e096a03
+@testset "Compare orthogonality_2 Aω with its AD version" begin
+	Aω = Aω_orthogonality_2(bodyA, aA′, sA′, bodyB, sB′)
+	Aω_AD = Aω_orthogonality_2_AD(bodyA, aA′, sA′, bodyB, sB′)
+	@test Aω ≈ Aω_AD
+end
+
+# ╔═╡ 8c0a6edf-e556-4aa8-9103-a239f9a20225
+@testset "Compare orthogonality_2 Aq*q̇ with its AD version" begin
+	Aq = Aq_orthogonality_2(bodyA, aA′, sA′, bodyB, sB′)
+	Aq_AD = Aq_orthogonality_2_AD(bodyA, aA′, sA′, bodyB, sB′)
+	q̇ = vcat(
+		ω_to_ṗ(bodyA.ω, bodyA.p),
+		bodyA.v,
+		ω_to_ṗ(bodyB.ω, bodyB.p),
+		bodyB.v
+	)
+	@test length(Aq_AD * q̇) == 1
 	@test Aq * q̇ ≈ Aq_AD * q̇
 end
 
@@ -690,6 +855,7 @@ version = "17.4.0+2"
 # ╠═83917cb0-f9e6-4a35-a487-c2097011c8a9
 # ╠═d9bda04d-d218-42ed-8517-ea4af5f1a102
 # ╠═7fb1909f-2f0b-40cc-b010-50193d47c531
+# ╠═0eaea5fd-a169-40ea-8078-40e0d06f8f81
 # ╟─b6a78e8b-16ae-40b4-9e43-8e9fdd6771c3
 # ╟─45998a24-667f-41fa-b2b7-b131eefacc19
 # ╠═b8c9ae41-100b-454a-bc54-d4fd4fbd6dd0
@@ -701,5 +867,27 @@ version = "17.4.0+2"
 # ╠═44bf0eed-9f27-470a-8c6d-2eba65856f1d
 # ╠═93a7d201-6179-408b-86e9-0a26b87a753b
 # ╠═d846fa4f-b28c-46c1-b848-3fdf06364d2f
+# ╟─7d5d4ccf-ccf4-43fd-bc6e-02cd0a1154d7
+# ╟─f60f0875-4600-4823-823b-05edde788c70
+# ╠═36f81f5c-2b28-4224-ab57-bb3bb11a32a3
+# ╠═428eae10-32c8-4d3a-ad13-dd46086b5db7
+# ╟─213fbd77-6f61-4270-8fbc-bc7b3d06d06d
+# ╠═bf2f22d1-2750-491b-911e-eb9f8bd12dc8
+# ╠═6978bc40-b9ef-46c7-af29-4d0bf9ae1be4
+# ╠═612cb996-7223-40e3-afc6-bad022f9a9fa
+# ╠═08e0e485-3d0d-4b26-853e-44c4d8d565f8
+# ╠═13564452-ed30-490a-ae44-e78b15ce218c
+# ╠═cd8f504c-53ba-4ee9-9e89-d1bab4afe944
+# ╟─aa93c255-c0c9-45d1-9c3c-8e46415f972e
+# ╟─8e4a4613-b299-40a9-b3e6-e3097d84bc56
+# ╠═8c465897-efa7-4698-be78-f9a804156224
+# ╠═8e8e75ff-f749-4881-a0a1-2bb4d07ad11d
+# ╠═418b2863-e8df-479e-8515-bcab806773bd
+# ╠═f099af94-0bd9-4fee-b8cf-0760ca0888cf
+# ╠═682a8df8-52dc-4ed1-8210-231693c19268
+# ╠═ad59816c-4f1a-47cb-b0ac-50b22f007164
+# ╠═9d1581f1-bac6-43b1-8eb8-4690408a5f9c
+# ╠═35453b85-1a91-4253-91ed-773c2e096a03
+# ╠═8c0a6edf-e556-4aa8-9103-a239f9a20225
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
