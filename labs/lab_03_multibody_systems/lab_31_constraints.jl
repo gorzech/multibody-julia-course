@@ -14,9 +14,6 @@ begin
 	PlutoUI.TableOfContents()
 end
 
-# ╔═╡ 42fd79b4-ca40-491a-aa7d-1bcd02bbe258
-using FiniteDiff
-
 # ╔═╡ 61976551-986d-4297-8f15-dad98120346a
 md"""
 # Programming Multibody Systems in Julia
@@ -105,59 +102,61 @@ function unpack(p::Vector{T}, templA, templB) where T
     BodyState{T}(qB, rB, templB.ω, templB.v)
 end
 
-# ╔═╡ 0176290a-1ff8-4c45-90a4-dde1e160dbd3
-# ========== internal pre-compute (shared by all functions) ====================
-function _prep(bA::BodyState, rA,
-               bB::BodyState, rB)
-    RA = rotmat(bA.p);  RB = rotmat(bB.p)
-    cA = RA*rA;         cB = RB*rB
-    rA = bA.r;          rB = bB.r
-    ωA = bA.ω;          ωB = bB.ω
-    (;RA,RB,cA,cB,rA,rB,ωA,ωB)
+# ╔═╡ a9fb78b9-061e-417a-a89b-e41c818761d1
+md"""
+## Transformations and AD functions
+
+"""
+
+# ╔═╡ a26861f4-72c4-422f-8665-eda6af5ff32c
+function Aω_to_Aq(Aω, pA::Vector, pB::Vector)
+	GA, GB = Gmat(pA), Gmat(pB)
+	T = blockdiag(sparse(2GA), sparse(I, 3, 3), sparse(2GB), sparse(I, 3, 3))
+	Aq = Aω * T
 end
 
-# ╔═╡ b8c9ae41-100b-454a-bc54-d4fd4fbd6dd0
-# ========== 1) constraint vector g ============================================
-function g_ball_joint(bA, rA, bB, rB)
-	C = _prep(bA, rA, bB, rB)
-	C.rB + C.cB - C.rA - C.cA
-end
+# ╔═╡ 5fbe31e5-961f-466b-809f-0f0b8b14ac41
+Aω_to_Aq(Aω, bA::BodyState, bB::BodyState) = Aω_to_Aq(Aω, bA.p, bB.p)
 
-# ╔═╡ 20b30699-a2a5-4818-939d-33a48e242122
-# ========== 2) twist-space Jacobian Aω ========================================
-function Aω_ball_joint(bA, rA, bB, rB)
-    C = _prep(bA, rA, bB, rB)
-    hcat(C.RA * skew(rA), -I(3),  -C.RB * skew(rB),  I(3))   # size 3×12
-end
-
-# ╔═╡ 24818e33-398b-4328-9806-a7c0f84965dd
-# ========== 4) coordinate-space Jacobian Aq ===================================
-function Aq_ball_joint(bA, rA, bB, rB)
-    GA, GB = Gmat(bA.p), Gmat(bB.p)
-	Aω = Aω_ball_joint(bA, rA, bB, rB)
-	T = blockdiag(sparse(2GA .+ bA.p'), sparse(I, 3, 3), sparse(2GB), sparse(I, 3, 3))
-	Aq = Aω * T   # size 3×14
-end
-
-# ╔═╡ 925aac96-4940-4bf0-ae0e-1eb7493f1224
+# ╔═╡ df32ac4d-da15-44a2-80f3-d8c072fbd04d
 #------------------------------------------------- Aq via ForwardDiff.jacobian --
-function Aq_AD(bA, rA, bB, rB)
-    p0   = pack(bA, bB)
-    gfun = pvec -> begin
-        bA′, bB′ = unpack(pvec, bA, bB)
-        g_ball_joint(bA′, rA, bB′, rB)
+function Aq_AD(cfun::Function, bA, bB)
+    q0   = pack(bA, bB)
+    _jfun = pvec -> begin
+        _bA, _bB = unpack(pvec, bA, bB)
+        cfun(_bA, _bB)
     end
-    ForwardDiff.jacobian(gfun, p0)
-	# FiniteDiff.finite_difference_jacobian(gfun, p0)
+    ForwardDiff.jacobian(_jfun, q0)
 end
 
-# ╔═╡ 44bf0eed-9f27-470a-8c6d-2eba65856f1d
-function Aω_AD(bA, rA, bB, rB)
-    GA, GB = Gmat(bA.p), Gmat(bB.p)
-	Aq = Aq_AD(bA, rA, bB, rB)
+# ╔═╡ 2efb9c7c-eea1-4546-a23c-9cf74a3f07d0
+function Aq_to_Aω(Aq, pA::Vector, pB::Vector)
+    GA, GB = Gmat(pA), Gmat(pB)
 	T = blockdiag(sparse(0.5GA'), sparse(I, 3, 3), sparse(0.5GB'), sparse(I, 3, 3))
    # maps [ω_B;v]→[ṗ;v]
     Aq * T                                      # 3×12
+end
+
+# ╔═╡ ea90acb0-59e0-466a-9ff2-8af6e40474b0
+Aq_to_Aω(Aq, bA::BodyState, bB::BodyState) = Aq_to_Aω(Aq, bA.p, bB.p)
+
+# ╔═╡ f5e1ff86-a36e-489e-9c4c-6d1cdb5e83de
+ω_to_ṗ(ω, p) = 0.5 * Gmat(p)' * ω
+
+# ╔═╡ 1c35f174-7419-49f4-bb8f-6e5dabdec1d3
+md"""
+## Body precompute
+"""
+
+# ╔═╡ 0176290a-1ff8-4c45-90a4-dde1e160dbd3
+# ========== internal pre-compute (shared by all functions) ====================
+function _prep(bA::BodyState, sA′,
+               bB::BodyState, sB′)
+    RA = rotmat(bA.p);  RB = rotmat(bB.p)
+    sA = RA*sA′;         sB = RB*sB′
+    rA = bA.r;          rB = bB.r
+    ωA = bA.ω;          ωB = bB.ω
+    (;RA,RB,sA,sB,rA,rB,ωA,ωB)
 end
 
 # ╔═╡ 402a6ddb-003d-4979-9135-794c5cf07196
@@ -178,85 +177,91 @@ bodyB = BodyState{Float64}(
     [0,0,0]
 )
 
-# ╔═╡ d2f7efd5-c1e2-49bb-abb0-7f5c660542b5
-GA, GB = Gmat(bodyA.p), Gmat(bodyB.p)
-
-# ╔═╡ 0f583fd5-833d-4a30-8831-13e3cadae215
-T1 = blockdiag(sparse(0.5GA'), sparse(I, 3, 3), sparse(0.5GB'), sparse(I, 3, 3))
-
-# ╔═╡ 8b81855f-500a-433d-8b19-ff4fe66806d0
-T2 = blockdiag(sparse(2GA), sparse(I, 3, 3), sparse(2GB), sparse(I, 3, 3))
-
 # ╔═╡ d9bda04d-d218-42ed-8517-ea4af5f1a102
-rA = [0.3,-0.1,0.2]
+sA′ = [0.3,-0.1,0.2]
 
 # ╔═╡ 7fb1909f-2f0b-40cc-b010-50193d47c531
-rB = [1.0,0.7,-0.2]
+sB′ = [1.0,0.7,-0.2]
 
-# ╔═╡ 7c030370-0356-438f-974b-52314018eeb8
-Aω = Aω_ball_joint(bodyA, rA, bodyB, rB)
-
-# ╔═╡ 25f353f6-6e27-4ea4-a69f-9bef135e744f
-Ap = Aω * T2
-
-# ╔═╡ dc436914-a57d-4c3f-a75b-1388f942f8a9
-Aω - Ap * T1
-
-# ╔═╡ 9d029d01-ad30-486b-ae8c-1f11d6f6b615
-Ap2 = Aq_AD(bodyA, rA, bodyB, rB)
-
-# ╔═╡ 6443ac96-2df7-428c-9f27-9610d8b155f4
-Aω2 = Ap2 * T1
-
-# ╔═╡ f0dc7e08-a62f-4f5f-be9a-a3d7ded5295c
-Ap2 - Aω2 * T2
-
-# ╔═╡ e2ceb5b3-c460-4cb0-85c1-fa2d1ed5d2e7
+# ╔═╡ b6a78e8b-16ae-40b4-9e43-8e9fdd6771c3
 md"""
-g = 
+## Ball joint
 """
 
-# ╔═╡ 55fa8d56-0933-42c1-abff-f47659dc6fb8
-g_ball_joint(bodyA, rA, bodyB, rB)
-
-# ╔═╡ bcc69f84-5c3e-4b91-9cf3-3c25aefe8931
-md"Aω  ="
-
-# ╔═╡ b51ac72e-60ab-4c93-b77c-6c0b789112dc
-md"Aq  ="
-
-# ╔═╡ 2a392a53-d288-4314-bf50-f0fa0c2e5d68
-Aq_ball_joint(bodyA, rA, bodyB, rB)
-
-# ╔═╡ c49a1969-231c-4de3-9a46-6f4bfb16cae0
-Aq_AD(bodyA, rA, bodyB, rB)
-
-# ╔═╡ 5a821300-4a0d-45e5-9a4c-8752684e182c
-Aq_ball_joint(bodyA, rA, bodyB, rB) - Aq_AD(bodyA, rA, bodyB, rB)
-
-# ╔═╡ 5741e629-c94c-4722-b316-8c56df8de428
+# ╔═╡ 45998a24-667f-41fa-b2b7-b131eefacc19
 md"""
-Aω_AD  =
+### Constraint equation
 """
 
-# ╔═╡ 24306d5f-a731-4778-b43b-78c173c1ec91
-Aω_AD(bodyA, rA, bodyB, rB)
+# ╔═╡ b8c9ae41-100b-454a-bc54-d4fd4fbd6dd0
+# ========== 1) constraint vector g ============================================
+function g_ball_joint(bA, sA′, bB, sB′)
+	C = _prep(bA, sA′, bB, sB′)
+	C.rB + C.sB - C.rA - C.sA
+end
 
-# ╔═╡ 2fde2821-3734-4e14-adf0-7e5aca958868
+# ╔═╡ e92263af-7da1-45b0-b92b-fdda7a52acc4
+@testset "Ball joint call works" begin
+	g = @test_nowarn g_ball_joint(bodyA, sA′, bodyB, sB′)
+	@test length(g) == 3
+	@test all(isfinite.(g))
+end
+
+# ╔═╡ ce9f7614-7543-4711-b07d-000977ab4379
 md"""
-Aω\_ball\_joint = 
+### Jacobians
 """
 
-# ╔═╡ 6a72636b-a262-4fdb-bb84-5846209f2f46
-Aω_ball_joint(bodyA, rA, bodyB, rB)
+# ╔═╡ 20b30699-a2a5-4818-939d-33a48e242122
+# ========== 2) twist-space Jacobian Aω ========================================
+function Aω_ball_joint(bA, sA′, bB, sB′)
+    C = _prep(bA, sA′, bB, sB′)
+    hcat(C.RA * skew(sA′), -I(3),  -C.RB * skew(sB′),  I(3))   # size 3×12
+end
 
-# ╔═╡ 0367e53f-5980-4dfd-b130-f1540382d1f8
-Aω_ball_joint(bodyA, rA, bodyB, rB) - Aω_AD(bodyA, rA, bodyB, rB)
+# ╔═╡ 24818e33-398b-4328-9806-a7c0f84965dd
+# ========== 4) coordinate-space Jacobian Aq ===================================
+function Aq_ball_joint(bA, sA′, bB, sB′)
+	Aω = Aω_ball_joint(bA, sA′, bB, sB′)
+	Aω_to_Aq(Aω, bA, bB)   # size 3×14
+end
+
+# ╔═╡ 925aac96-4940-4bf0-ae0e-1eb7493f1224
+#------------------------------------------------- Aq via ForwardDiff.jacobian --
+function Aq_ball_joint_AD(bA, sA′, bB, sB′)
+    gfun(_bA, _bB) = g_ball_joint(_bA, sA′, _bB, sB′)
+    Aq_AD(gfun, bA, bB)
+end
+
+# ╔═╡ 44bf0eed-9f27-470a-8c6d-2eba65856f1d
+function Aω_ball_joint_AD(bA, sA′, bB, sB′)
+	Aq = Aq_ball_joint_AD(bA, sA′, bB, sB′)
+    Aq_to_Aω(Aq, bA, bB)                                     # 3×12
+end
+
+# ╔═╡ 93a7d201-6179-408b-86e9-0a26b87a753b
+@testset "Compare Aω with its AD version" begin
+	Aω = Aω_ball_joint(bodyA, sA′, bodyB, sB′)
+	Aω_AD = Aω_ball_joint_AD(bodyA, sA′, bodyB, sB′)
+	@test Aω ≈ Aω_AD
+end
+
+# ╔═╡ d846fa4f-b28c-46c1-b848-3fdf06364d2f
+@testset "Compare Aq*q̇ with its AD version" begin
+	Aq = Aq_ball_joint(bodyA, sA′, bodyB, sB′)
+	Aq_AD = Aq_ball_joint_AD(bodyA, sA′, bodyB, sB′)
+	q̇ = vcat(
+		ω_to_ṗ(bodyA.ω, bodyA.p),
+		bodyA.v,
+		ω_to_ṗ(bodyB.ω, bodyB.p),
+		bodyB.v
+	)
+	@test Aq * q̇ ≈ Aq_AD * q̇
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
-FiniteDiff = "6a86dc24-6348-571c-b903-95158fe2bd41"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
@@ -264,7 +269,6 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
-FiniteDiff = "~2.27.0"
 ForwardDiff = "~0.10.38"
 PlutoUI = "~0.7.62"
 """
@@ -275,7 +279,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "0fa2669321de02e4e7e736374728addf49006448"
+project_hash = "005369054785afef08ba47bee3a26c358e59603b"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
@@ -283,55 +287,9 @@ git-tree-sha1 = "6e1d2a35f2f90a4bc7c2ed98079b2ba09c35b83a"
 uuid = "6e696c72-6542-2067-7265-42206c756150"
 version = "1.3.2"
 
-[[deps.Adapt]]
-deps = ["LinearAlgebra", "Requires"]
-git-tree-sha1 = "f7817e2e585aa6d924fd714df1e2a84be7896c60"
-uuid = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
-version = "4.3.0"
-
-    [deps.Adapt.extensions]
-    AdaptSparseArraysExt = "SparseArrays"
-    AdaptStaticArraysExt = "StaticArrays"
-
-    [deps.Adapt.weakdeps]
-    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
-    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
-
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
 version = "1.1.2"
-
-[[deps.ArrayInterface]]
-deps = ["Adapt", "LinearAlgebra"]
-git-tree-sha1 = "bebb10cd3f0796dd1429ba61e43990ba391186e9"
-uuid = "4fba245c-0d91-5ea0-9b3e-6abc04ee57a9"
-version = "7.18.1"
-
-    [deps.ArrayInterface.extensions]
-    ArrayInterfaceBandedMatricesExt = "BandedMatrices"
-    ArrayInterfaceBlockBandedMatricesExt = "BlockBandedMatrices"
-    ArrayInterfaceCUDAExt = "CUDA"
-    ArrayInterfaceCUDSSExt = "CUDSS"
-    ArrayInterfaceChainRulesCoreExt = "ChainRulesCore"
-    ArrayInterfaceChainRulesExt = "ChainRules"
-    ArrayInterfaceGPUArraysCoreExt = "GPUArraysCore"
-    ArrayInterfaceReverseDiffExt = "ReverseDiff"
-    ArrayInterfaceSparseArraysExt = "SparseArrays"
-    ArrayInterfaceStaticArraysCoreExt = "StaticArraysCore"
-    ArrayInterfaceTrackerExt = "Tracker"
-
-    [deps.ArrayInterface.weakdeps]
-    BandedMatrices = "aae01518-5342-5314-be14-df237901396f"
-    BlockBandedMatrices = "ffab5731-97b5-5995-9138-79e8c1846df0"
-    CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
-    CUDSS = "45b445bb-4962-46a0-9369-b4df9d0f772e"
-    ChainRules = "082447d4-558c-5d27-93f4-14fc19e9eca2"
-    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
-    GPUArraysCore = "46192b85-c4d5-4398-a991-12ede77f4527"
-    ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
-    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
-    StaticArraysCore = "1e83bf80-4336-4d27-bf5d-d5a4f845583c"
-    Tracker = "9f7883ad-71c0-57eb-9f7f-b5c9e6d3789c"
 
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
@@ -357,21 +315,6 @@ version = "0.3.1"
 deps = ["Artifacts", "Libdl"]
 uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
 version = "1.1.1+0"
-
-[[deps.ConstructionBase]]
-git-tree-sha1 = "76219f1ed5771adbb096743bff43fb5fdd4c1157"
-uuid = "187b0558-2788-49d3-abe0-74a17ed4e7c9"
-version = "1.5.8"
-
-    [deps.ConstructionBase.extensions]
-    ConstructionBaseIntervalSetsExt = "IntervalSets"
-    ConstructionBaseLinearAlgebraExt = "LinearAlgebra"
-    ConstructionBaseStaticArraysExt = "StaticArrays"
-
-    [deps.ConstructionBase.weakdeps]
-    IntervalSets = "8197267c-284f-5f27-9208-e0e47529a953"
-    LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
-    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [[deps.Dates]]
 deps = ["Printf"]
@@ -404,24 +347,6 @@ version = "1.6.0"
 uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
 version = "1.11.0"
 
-[[deps.FiniteDiff]]
-deps = ["ArrayInterface", "LinearAlgebra", "Setfield"]
-git-tree-sha1 = "f089ab1f834470c525562030c8cfde4025d5e915"
-uuid = "6a86dc24-6348-571c-b903-95158fe2bd41"
-version = "2.27.0"
-
-    [deps.FiniteDiff.extensions]
-    FiniteDiffBandedMatricesExt = "BandedMatrices"
-    FiniteDiffBlockBandedMatricesExt = "BlockBandedMatrices"
-    FiniteDiffSparseArraysExt = "SparseArrays"
-    FiniteDiffStaticArraysExt = "StaticArrays"
-
-    [deps.FiniteDiff.weakdeps]
-    BandedMatrices = "aae01518-5342-5314-be14-df237901396f"
-    BlockBandedMatrices = "ffab5731-97b5-5995-9138-79e8c1846df0"
-    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
-    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
-
 [[deps.FixedPointNumbers]]
 deps = ["Statistics"]
 git-tree-sha1 = "05882d6995ae5c12bb5f36dd2ed3f61c98cbb172"
@@ -439,11 +364,6 @@ version = "0.10.38"
 
     [deps.ForwardDiff.weakdeps]
     StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
-
-[[deps.Future]]
-deps = ["Random"]
-uuid = "9fa8497b-333b-5362-9e8d-4d0656e87820"
-version = "1.11.0"
 
 [[deps.Hyperscript]]
 deps = ["Test"]
@@ -643,12 +563,6 @@ git-tree-sha1 = "45e428421666073eab6f2da5c9d310d99bb12f9b"
 uuid = "189a3867-3050-52da-a836-e630ba90ab69"
 version = "1.2.2"
 
-[[deps.Requires]]
-deps = ["UUIDs"]
-git-tree-sha1 = "62389eeff14780bfe55195b7204c0d8738436d64"
-uuid = "ae029012-a4dd-5104-9daa-d747884805df"
-version = "1.3.1"
-
 [[deps.SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 version = "0.7.0"
@@ -656,12 +570,6 @@ version = "0.7.0"
 [[deps.Serialization]]
 uuid = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
 version = "1.11.0"
-
-[[deps.Setfield]]
-deps = ["ConstructionBase", "Future", "MacroTools", "StaticArraysCore"]
-git-tree-sha1 = "c5391c6ace3bc430ca630251d02ea9687169ca68"
-uuid = "efcf1570-3423-57d1-acb7-fd33fddbac46"
-version = "1.1.2"
 
 [[deps.SparseArrays]]
 deps = ["Libdl", "LinearAlgebra", "Random", "Serialization", "SuiteSparse_jll"]
@@ -764,44 +672,34 @@ version = "17.4.0+2"
 # ╠═ab0159aa-f6e5-4ca5-b2d4-f9e666e3902a
 # ╠═ca7454e1-843d-488e-bda0-e1ca4e95236c
 # ╠═b3e08dc3-a0aa-440e-a530-5ef5568694e9
-# ╠═2941e478-38fb-4fb4-8cc9-58a867657825
-# ╠═71d305d6-929a-458e-9a07-0e8cb9a2d865
 # ╟─7b2a97cb-223a-4603-bd89-d813ff8a831b
 # ╠═831493a6-a56f-4f8c-9862-ce331a615e32
 # ╠═daae7f68-1249-409d-915e-53ba6aadbc2c
 # ╠═173d35d7-ba79-4faa-bdf8-86a964f822d1
 # ╠═7a1ba4ee-801b-4902-bf48-ce20521fead1
+# ╟─a9fb78b9-061e-417a-a89b-e41c818761d1
+# ╠═a26861f4-72c4-422f-8665-eda6af5ff32c
+# ╠═5fbe31e5-961f-466b-809f-0f0b8b14ac41
+# ╠═df32ac4d-da15-44a2-80f3-d8c072fbd04d
+# ╠═2efb9c7c-eea1-4546-a23c-9cf74a3f07d0
+# ╠═ea90acb0-59e0-466a-9ff2-8af6e40474b0
+# ╠═f5e1ff86-a36e-489e-9c4c-6d1cdb5e83de
+# ╟─1c35f174-7419-49f4-bb8f-6e5dabdec1d3
 # ╠═0176290a-1ff8-4c45-90a4-dde1e160dbd3
-# ╠═b8c9ae41-100b-454a-bc54-d4fd4fbd6dd0
-# ╠═20b30699-a2a5-4818-939d-33a48e242122
-# ╠═24818e33-398b-4328-9806-a7c0f84965dd
-# ╠═42fd79b4-ca40-491a-aa7d-1bcd02bbe258
-# ╠═925aac96-4940-4bf0-ae0e-1eb7493f1224
-# ╠═44bf0eed-9f27-470a-8c6d-2eba65856f1d
-# ╠═d2f7efd5-c1e2-49bb-abb0-7f5c660542b5
-# ╠═0f583fd5-833d-4a30-8831-13e3cadae215
-# ╠═8b81855f-500a-433d-8b19-ff4fe66806d0
-# ╠═7c030370-0356-438f-974b-52314018eeb8
-# ╠═25f353f6-6e27-4ea4-a69f-9bef135e744f
-# ╠═dc436914-a57d-4c3f-a75b-1388f942f8a9
-# ╠═9d029d01-ad30-486b-ae8c-1f11d6f6b615
-# ╠═6443ac96-2df7-428c-9f27-9610d8b155f4
-# ╠═f0dc7e08-a62f-4f5f-be9a-a3d7ded5295c
 # ╠═402a6ddb-003d-4979-9135-794c5cf07196
 # ╠═83917cb0-f9e6-4a35-a487-c2097011c8a9
 # ╠═d9bda04d-d218-42ed-8517-ea4af5f1a102
 # ╠═7fb1909f-2f0b-40cc-b010-50193d47c531
-# ╟─e2ceb5b3-c460-4cb0-85c1-fa2d1ed5d2e7
-# ╠═55fa8d56-0933-42c1-abff-f47659dc6fb8
-# ╟─bcc69f84-5c3e-4b91-9cf3-3c25aefe8931
-# ╟─b51ac72e-60ab-4c93-b77c-6c0b789112dc
-# ╠═2a392a53-d288-4314-bf50-f0fa0c2e5d68
-# ╠═c49a1969-231c-4de3-9a46-6f4bfb16cae0
-# ╠═5a821300-4a0d-45e5-9a4c-8752684e182c
-# ╟─5741e629-c94c-4722-b316-8c56df8de428
-# ╠═24306d5f-a731-4778-b43b-78c173c1ec91
-# ╟─2fde2821-3734-4e14-adf0-7e5aca958868
-# ╠═6a72636b-a262-4fdb-bb84-5846209f2f46
-# ╠═0367e53f-5980-4dfd-b130-f1540382d1f8
+# ╟─b6a78e8b-16ae-40b4-9e43-8e9fdd6771c3
+# ╟─45998a24-667f-41fa-b2b7-b131eefacc19
+# ╠═b8c9ae41-100b-454a-bc54-d4fd4fbd6dd0
+# ╠═e92263af-7da1-45b0-b92b-fdda7a52acc4
+# ╟─ce9f7614-7543-4711-b07d-000977ab4379
+# ╠═20b30699-a2a5-4818-939d-33a48e242122
+# ╠═24818e33-398b-4328-9806-a7c0f84965dd
+# ╠═925aac96-4940-4bf0-ae0e-1eb7493f1224
+# ╠═44bf0eed-9f27-470a-8c6d-2eba65856f1d
+# ╠═93a7d201-6179-408b-86e9-0a26b87a753b
+# ╠═d846fa4f-b28c-46c1-b848-3fdf06364d2f
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
