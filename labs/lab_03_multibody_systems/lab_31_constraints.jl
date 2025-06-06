@@ -143,6 +143,32 @@ Aq_to_Aω(Aq, bA::BodyState, bB::BodyState) = Aq_to_Aω(Aq, bA.p, bB.p)
 # ╔═╡ f5e1ff86-a36e-489e-9c4c-6d1cdb5e83de
 ω_to_ṗ(ω, p) = 0.5 * Gmat(p)' * ω
 
+# ╔═╡ 0bf4988e-cf8e-426f-9480-d19f32937738
+md"""
+The following function uses the definition of γ for scleronomic constraints:
+
+$\gamma = −(𝑪_ω \boldsymbol{v})_ω \boldsymbol{v}$
+"""
+
+# ╔═╡ 48f1fe45-f503-47b9-a7cc-6d0cd4425c58
+function γω_AD(Aωfun::Function, bA, bB)
+    q0  = pack(bA,bB)
+
+	v   = vcat(bA.ω, bA.v, bB.ω, bB.v)
+
+    gfun = q -> begin
+        bA′,bB′ = unpack(q,bA,bB)
+		Aω = Aωfun(bA′,bB′)
+		Aω * v
+    end
+
+	Aω_v_dq = ForwardDiff.jacobian(gfun, q0)
+
+	Aω_v_ω = Aq_to_Aω(Aω_v_dq, bA, bB)
+
+    return -Aω_v_ω * v
+end
+
 # ╔═╡ 1c35f174-7419-49f4-bb8f-6e5dabdec1d3
 md"""
 ## Body precompute
@@ -260,6 +286,32 @@ end
 		bodyB.v
 	)
 	@test Aq * q̇ ≈ Aq_AD * q̇
+end
+
+# ╔═╡ dcca98dd-d3f6-42ff-9b4a-3bfb3df4bd61
+md"""
+### γ vector
+"""
+
+# ╔═╡ 0b7f96f5-0504-493a-a57c-2f6541777a29
+function γ_ball_joint(bA, sA′, bB, sB′)
+	C = _prep(bA, sA′, bB, sB′)
+	ω̃A = skew(bA.ω)
+	ω̃B = skew(bB.ω)
+	C.RA * ω̃A * ω̃A * sA′ - C.RB * ω̃B * ω̃B * sB′
+end
+
+# ╔═╡ 6f1306c2-9ffa-4ffa-9022-5f2ea6e6a655
+function γω_ball_joint_AD(bA,sA′,bB,sB′)
+	gfun(_bA, _bB) = Aω_ball_joint(_bA, sA′, _bB, sB′)
+    γω_AD(gfun, bA, bB)
+end
+
+# ╔═╡ f9f98275-aee6-407c-a584-99d6385ab2da
+@testset "Compare ball joint γω with its AD version" begin
+	γω = γ_ball_joint(bodyA, sA′, bodyB, sB′)
+	γω_AD = γω_ball_joint_AD(bodyA, sA′, bodyB, sB′)
+	@test γω ≈ γω_AD
 end
 
 # ╔═╡ 7d5d4ccf-ccf4-43fd-bc6e-02cd0a1154d7
@@ -849,6 +901,8 @@ version = "17.4.0+2"
 # ╠═2efb9c7c-eea1-4546-a23c-9cf74a3f07d0
 # ╠═ea90acb0-59e0-466a-9ff2-8af6e40474b0
 # ╠═f5e1ff86-a36e-489e-9c4c-6d1cdb5e83de
+# ╟─0bf4988e-cf8e-426f-9480-d19f32937738
+# ╠═48f1fe45-f503-47b9-a7cc-6d0cd4425c58
 # ╟─1c35f174-7419-49f4-bb8f-6e5dabdec1d3
 # ╠═0176290a-1ff8-4c45-90a4-dde1e160dbd3
 # ╠═402a6ddb-003d-4979-9135-794c5cf07196
@@ -867,6 +921,10 @@ version = "17.4.0+2"
 # ╠═44bf0eed-9f27-470a-8c6d-2eba65856f1d
 # ╠═93a7d201-6179-408b-86e9-0a26b87a753b
 # ╠═d846fa4f-b28c-46c1-b848-3fdf06364d2f
+# ╟─dcca98dd-d3f6-42ff-9b4a-3bfb3df4bd61
+# ╠═0b7f96f5-0504-493a-a57c-2f6541777a29
+# ╠═6f1306c2-9ffa-4ffa-9022-5f2ea6e6a655
+# ╠═f9f98275-aee6-407c-a584-99d6385ab2da
 # ╟─7d5d4ccf-ccf4-43fd-bc6e-02cd0a1154d7
 # ╟─f60f0875-4600-4823-823b-05edde788c70
 # ╠═36f81f5c-2b28-4224-ab57-bb3bb11a32a3
