@@ -4,7 +4,7 @@
 using Markdown
 using InteractiveUtils
 
-# ╔═╡ 4c764d5d-ff47-4beb-9276-60b4b7dab6b6
+# ╔═╡ c004859f-d951-4ee2-b0e0-6d94de353e76
 begin
 	using Flux, Plots, Random
 	
@@ -27,7 +27,6 @@ begin
 	    Dense(1, 6, relu),
 	    Dense(6, 1)
 	)
-	
 	# Loss function
 	loss(model, x, y) = Flux.Losses.mse(model(x), y)
 	
@@ -46,10 +45,7 @@ begin
 	    train_loss_history[epoch] = loss(model, X_train, y_train)
 	    val_loss_history[epoch] = loss(model, X_val, y_val)
 	end
-	
-	# Plot training and validation loss
-	plot(1:epochs, train_loss_history, label="Training Loss", xlabel="Epoch", ylabel="Loss", title="Training vs Validation Loss")
-	plot!(1:epochs, val_loss_history, label="Validation Loss")
+	plot(X_all, y_all, label="Noisy sin(x)")
 end
 
 # ╔═╡ 54c91356-6b3c-45d9-b24f-a4b26d51872e
@@ -167,6 +163,29 @@ md"""
 
 A simple neural network trained to fit synthetic data:
 """
+
+# ╔═╡ fae2a79c-93cb-442c-8028-cb183fe941a4
+model
+
+# ╔═╡ 895854d4-f20f-4a15-a86c-27a4e20fb6b7
+begin
+	# Plot training and validation loss
+	plot(1:epochs, train_loss_history, label="Training Loss", xlabel="Epoch", ylabel="Loss", title="Training vs Validation Loss")
+	plot!(1:epochs, val_loss_history, label="Validation Loss")
+end
+
+# ╔═╡ 406a2497-0d15-444d-a3f7-785f6796191f
+md"""
+## Predictions
+"""
+
+# ╔═╡ d608c870-ffb8-475d-bafb-66505affacd4
+begin
+	plot(X_train', model(X_train)', label="Training prediction")
+	plot!(X_val', model(X_val)', label="Validation prediction")
+	plot!(X_train', y_train', label="Training")
+	plot!(X_val', y_val', label="Validation")
+end
 
 # ╔═╡ b268b013-269e-41b4-b1aa-0c6e84270090
 md"""
@@ -1949,15 +1968,19 @@ version = "1.8.1+0"
 # ╟─571d1d34-99e7-45c7-a8e7-7fbe17067b97
 # ╟─12ab9972-301c-4a73-9191-e92bf6414927
 # ╟─5170b369-3eb9-466e-abc1-46b7d44ea70e
-# ╟─16bde3ea-4a8d-4fe9-9865-5b02c442ec08
-# ╟─d5ae56b1-f457-46d3-ae08-79b46dc5f3f4
-# ╟─f0d5540a-4165-41ce-a116-c5c0a4c995be
+# ╠═16bde3ea-4a8d-4fe9-9865-5b02c442ec08
+# ╠═d5ae56b1-f457-46d3-ae08-79b46dc5f3f4
+# ╠═f0d5540a-4165-41ce-a116-c5c0a4c995be
 # ╟─99e4784f-03d1-4ad9-9eb4-f4489a9a4c90
-# ╠═4c764d5d-ff47-4beb-9276-60b4b7dab6b6
-# ╟─b268b013-269e-41b4-b1aa-0c6e84270090
+# ╠═c004859f-d951-4ee2-b0e0-6d94de353e76
+# ╠═fae2a79c-93cb-442c-8028-cb183fe941a4
+# ╠═895854d4-f20f-4a15-a86c-27a4e20fb6b7
+# ╟─406a2497-0d15-444d-a3f7-785f6796191f
+# ╠═d608c870-ffb8-475d-bafb-66505affacd4
+# ╠═b268b013-269e-41b4-b1aa-0c6e84270090
 # ╟─ef05b29c-3df5-45f1-9981-dfa438077d90
 # ╟─01fcf06f-91c7-4f9e-8fb1-d3b2cd553720
-# ╟─c93b3710-0dda-4de9-86ea-c0cfffbe1180
+# ╠═c93b3710-0dda-4de9-86ea-c0cfffbe1180
 # ╟─a87f1fac-f633-41d2-8931-46529ce0d8af
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
