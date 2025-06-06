@@ -26,6 +26,25 @@ Following the nomenclature and equations from: E. J. Haug, _Computer Aided Kinem
 Grzegorz Orzechowski
 """
 
+# ╔═╡ 24f242a4-0143-43c5-8edf-6bab4f800ddf
+md"""
+## Usage of the entries in this file
+
+Here we are presenting the following elements needed in multibody software development:
+
+-  $\boldsymbol{g}$ constraint equations.
+-  $\boldsymbol{A}_p$ Jacobian of constraints with respect to generalized coordinates $\boldsymbol{q}$. $p$ refers to Euler parameters.
+-  $\boldsymbol{A}_\omega$ Jacobian of constraints with respect to cartesian translations and virtual rotations.
+-  $\boldsymbol{\gamma}$ RHS of the acceleration equation of the constraints. It is associated with angular velocities and accelerations. Therefore, it is compatible with $\boldsymbol{A}_\omega$ and $\boldsymbol{v}$, **but not** with $\boldsymbol{A}_p$ or $\dot{\boldsymbol{q}}$.
+
+As such: 
+-  $\boldsymbol{A}_p$ can be directly used to solve nonlinear equation $\boldsymbol{g}(\boldsymbol{q}, t) = \boldsymbol{0}$.
+-  $\boldsymbol{A}_\omega$ can be used to solve for velocities vector $\boldsymbol{v}$ as $\boldsymbol{A}_\omega \boldsymbol{v} = -\boldsymbol{A}_t$.
+-  $\boldsymbol{\gamma}$ can be used to solve the system for accelerations as $\boldsymbol{A}_\omega \dot{\boldsymbol{v}} = \boldsymbol{\gamma}$.
+
+Moreover, $\boldsymbol{A}_\omega$ and $\boldsymbol{\gamma}$ can be directly used to solve multibody equations of motions that are expressed in $\dot{\boldsymbol{v}}$.
+"""
+
 # ╔═╡ 9425a84f-29af-4b74-815e-6f1c0876bd35
 md"""
 ## Helper functions
@@ -944,6 +963,7 @@ version = "17.4.0+2"
 # ╔═╡ Cell order:
 # ╟─61976551-986d-4297-8f15-dad98120346a
 # ╠═441cc450-405b-11f0-32d4-b533235d9307
+# ╟─24f242a4-0143-43c5-8edf-6bab4f800ddf
 # ╟─9425a84f-29af-4b74-815e-6f1c0876bd35
 # ╟─f180ffcc-79e3-4554-a4d8-d7172dd6c133
 # ╟─714a2372-2df1-422a-912b-a77223c022da
