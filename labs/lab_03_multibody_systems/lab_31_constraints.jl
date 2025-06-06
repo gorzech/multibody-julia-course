@@ -390,6 +390,33 @@ end
 	@test Aq * q̇ ≈ Aq_AD * q̇
 end
 
+# ╔═╡ d74a36f6-5042-4508-bb1d-b6439656a39b
+md"""
+### γ vector
+"""
+
+# ╔═╡ 73239516-6fb5-4303-9e03-97dea53e7838
+function γ_orthogonality(bA, sA′, bB, sB′)
+	C = _prep(bA, sA′, bB, sB′)
+	ω̃A = skew(bA.ω)
+	ω̃B = skew(bB.ω)
+	[-sB′' * (C.RB' * C.RA * ω̃A * ω̃A + ω̃B * ω̃B * C.RB' * C.RA) * sA′ +
+		2bB.ω' * skew(sB′) * C.RB' * C.RA * skew(sA′) * bA.ω]
+end
+
+# ╔═╡ 6c8f2b32-636b-4b0d-98f6-c3432b7f78d7
+function γω_orthogonality_AD(bA,sA′,bB,sB′)
+	gfun(_bA, _bB) = Aω_orthogonality(_bA, sA′, _bB, sB′)
+    γω_AD(gfun, bA, bB)
+end
+
+# ╔═╡ 58ef7e7d-eb89-41b3-a911-6e29f4e6e589
+@testset "Compare orthogonality type 1 γω with its AD version" begin
+	γω = γ_orthogonality(bodyA, sA′, bodyB, sB′)
+	γω_AD = γω_orthogonality_AD(bodyA, sA′, bodyB, sB′)
+	@test γω ≈ γω_AD
+end
+
 # ╔═╡ aa93c255-c0c9-45d1-9c3c-8e46415f972e
 md"""
 ## Constant Projection -- Type 2 Perpendicularity
@@ -474,6 +501,40 @@ end
 	)
 	@test length(Aq_AD * q̇) == 1
 	@test Aq * q̇ ≈ Aq_AD * q̇
+end
+
+# ╔═╡ f20c96e6-a191-47ba-b136-0922325d39ae
+md"""
+### γ vector
+"""
+
+# ╔═╡ 6417542b-de6e-473f-9b19-da69d6f94611
+function γ_orthogonality_2(bA, aA′, sA′, bB, sB′)
+	C = _prep(bA, sA′, bB, sB′)
+	ω̃A = skew(bA.ω)
+	ω̃B = skew(bB.ω)
+	ṙA = bA.v + C.RA * ω̃A * sA′
+	ṙB = bB.v + C.RB * ω̃B * sB′
+	d = C.rB + C.sB - C.rA - C.sA
+	
+	[2bA.ω' * skew(aA′) * C.RA' * (ṙA - ṙB) +
+		2sB′' * ω̃B * C.RB' * C.RA * ω̃A * aA′ -
+		sA′' * ω̃A * ω̃A * aA′ -
+		sB′' * ω̃B * ω̃B * C.RB' * C.RA * aA′ -
+		d' * C.RA * ω̃A * ω̃A * aA′]
+end
+
+# ╔═╡ 6df9805a-c0c1-4a61-b9ff-81ba8e3ec954
+function γω_orthogonality_2_AD(bA, aA′,sA′,bB,sB′)
+	gfun(_bA, _bB) = Aω_orthogonality_2(_bA, aA′, sA′, _bB, sB′)
+    γω_AD(gfun, bA, bB)
+end
+
+# ╔═╡ c9878c23-f67f-4719-bd6e-4b1821a11161
+@testset "Compare orthogonality type 2 γω with its AD version" begin
+	γω = γ_orthogonality_2(bodyA, aA′, sA′, bodyB, sB′)
+	γω_AD = γω_orthogonality_2_AD(bodyA, aA′, sA′, bodyB, sB′)
+	@test γω ≈ γω_AD
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -936,6 +997,10 @@ version = "17.4.0+2"
 # ╠═08e0e485-3d0d-4b26-853e-44c4d8d565f8
 # ╠═13564452-ed30-490a-ae44-e78b15ce218c
 # ╠═cd8f504c-53ba-4ee9-9e89-d1bab4afe944
+# ╟─d74a36f6-5042-4508-bb1d-b6439656a39b
+# ╠═73239516-6fb5-4303-9e03-97dea53e7838
+# ╠═6c8f2b32-636b-4b0d-98f6-c3432b7f78d7
+# ╠═58ef7e7d-eb89-41b3-a911-6e29f4e6e589
 # ╟─aa93c255-c0c9-45d1-9c3c-8e46415f972e
 # ╟─8e4a4613-b299-40a9-b3e6-e3097d84bc56
 # ╠═8c465897-efa7-4698-be78-f9a804156224
@@ -947,5 +1012,9 @@ version = "17.4.0+2"
 # ╠═9d1581f1-bac6-43b1-8eb8-4690408a5f9c
 # ╠═35453b85-1a91-4253-91ed-773c2e096a03
 # ╠═8c0a6edf-e556-4aa8-9103-a239f9a20225
+# ╟─f20c96e6-a191-47ba-b136-0922325d39ae
+# ╠═6417542b-de6e-473f-9b19-da69d6f94611
+# ╠═6df9805a-c0c1-4a61-b9ff-81ba8e3ec954
+# ╠═c9878c23-f67f-4719-bd6e-4b1821a11161
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
