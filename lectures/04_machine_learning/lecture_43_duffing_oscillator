@@ -7,6 +7,15 @@ using InteractiveUtils
 # ╔═╡ f270d7b7-020c-4a66-8335-4c32c957ccb8
 using DifferentialEquations, Flux, Optimisers, Random, Plots, Statistics
 
+# ╔═╡ 22abe4f3-6ac2-4e9b-b43c-6714ae192632
+using Base.Iterators: product
+
+# ╔═╡ cf647393-4b49-4c77-a186-cb495e7b7fb8
+using Base.Threads
+
+# Prepare list of all hyperparameter combinations
+# combinations = [(hd, lr, bs) for hd in hidden_dims for lr in lrs for bs in batchSizes]
+
 # ╔═╡ 9506fa63-64a5-40d8-8ff5-1dba292847b4
 ### A Pluto.jl notebook ###
 
@@ -275,8 +284,6 @@ begin
 		Dropout(dropout_rate),
 		Dense(hidden_dim, hidden_dim, relu),
 		Dropout(dropout_rate),
-		Dense(hidden_dim, hidden_dim, relu),
-		Dropout(dropout_rate),
         Dense(hidden_dim, n_steps)
     )
 
@@ -284,6 +291,9 @@ begin
 end
 
 ###
+
+# ╔═╡ fbd7ea56-d158-4ad9-9756-b6278059338c
+model
 
 # ╔═╡ 805e95ac-fc9e-4e4a-8862-e0cb0e9ba7c9
 md"""
@@ -453,6 +463,102 @@ md"""
 - For larger datasets, consider data normalization or more advanced architectures (e.g., convolutional, recurrent).
 """
 ###
+
+# ╔═╡ 5318bfb4-7df8-4a21-9783-6e11dc276ce6
+### 
+md"""
+## 13. Hyperparameter Grid Search (AutoML)
+
+We now perform a simple grid search over key hyperparameters of our Duffing‐oscillator surrogate:
+- Hidden‐layer size (`hidden_dim`)
+- Learning rate (`lr`)
+- Batch size (`batchSize`)
+
+For efficiency, we train each configuration for a reduced number of epochs (`epochs_grid = 100`) and record the validation loss. At the end, we report the combination with the lowest validation loss.
+"""
+###
+
+# ╔═╡ 1891e5d2-06a3-435c-9fe8-43d2d5c38ccb
+results_mt = Vector{Tuple{Int,Float32,Int,Float32}}(undef, 12)
+
+# ╔═╡ feb10300-7b8c-47ad-8b02-5017cf805182
+begin
+    # 1. Define grid of hyperparameters
+	Random.seed!(789)
+    hidden_dims = [128, 256]
+    lrs         = [1f-3, 5f-4]
+    batchSizes  = [32, 64]
+	dropout_rates = [0.15, 0.2]
+	layers_count = [2, 3]
+	activation_functions = [relu, elu]
+    epochs_grid = 100    # fewer epochs for grid search
+
+    best_val    = Inf 
+    best_params = nothing
+    results     = []     # will hold tuples (hd, lr, bs, val_loss)
+
+    # 2. Loop over all combinations
+	for (hd, lr, bs, dr, lc, af) in product(hidden_dims, lrs, batchSizes, dropout_rates, layers_count, activation_functions)
+		global best_val
+		global best_params
+		# a. Define a fresh model for this combination
+		model_g = if lc == 3
+			Chain(
+		        Dense(2 + n_steps, hd, af),
+				Dropout(dr),
+				Dense(hd, hd, af),
+				Dropout(dr),
+				Dense(hd, hd, af),
+				Dropout(dr),
+		        Dense(hd, n_steps)
+		    )
+		else
+			Chain(
+		        Dense(2 + n_steps, hd, af),
+				Dropout(dr),
+				Dense(hd, hd, af),
+				Dropout(dr),
+		        Dense(hd, n_steps)
+		    )
+		end
+
+		# b. Set up optimizer and loss
+		opt_alg = Optimisers.Adam(lr)
+		opt_st  = Optimisers.setup(opt_alg, model_g)
+		loss_g(m, x, y) = Flux.Losses.mae(m(x), y)
+
+		# c. Prepare DataLoaders
+		dl_train = DataLoader((X_train, Y_train), batchsize=bs, shuffle=true)
+		dl_val   = DataLoader((X_test,  Y_test),  batchsize=bs, shuffle=false)
+
+		# d. Train for epochs_grid epochs
+		for epoch in 1:epochs_grid
+			for (x_b, y_b) in dl_train
+				∇m = gradient(m -> loss_g(m, x_b, y_b), model_g)[1]
+				Optimisers.update!(opt_st, model_g, ∇m)
+			end
+		end
+
+		# e. Compute validation loss
+		total_vl = 0f0
+		for (x_v, y_v) in dl_val
+			total_vl += loss_g(model_g, x_v, y_v)
+		end
+		val_loss = total_vl / length(dl_val)
+
+		# f. Record and compare
+		push!(results, (hd, lr, bs, val_loss))
+		if val_loss < best_val
+			best_val    = val_loss
+			best_params = (hd, lr, bs, dr, lc, af)
+		end
+
+		println("val_loss=$(round(val_loss, digits=6)) -> hd=$hd, lr=$lr, bs=$bs, dr=$dr, lc=$lc, af=$af")
+    end
+
+    println("Best params: $(best_params) with val_loss=$(round(best_val, digits=6))")
+    results
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -3444,6 +3550,7 @@ version = "1.8.1+0"
 # ╠═9506fa63-64a5-40d8-8ff5-1dba292847b4
 # ╠═cd25ef0e-e959-4a6c-9a95-727e147ddf40
 # ╠═f270d7b7-020c-4a66-8335-4c32c957ccb8
+# ╠═22abe4f3-6ac2-4e9b-b43c-6714ae192632
 # ╠═9e4428f3-5df6-4667-89f4-0c82ebcb2f9f
 # ╠═e0508cd6-422b-4e7f-8396-8f49754a8ebb
 # ╠═dc658836-643a-4590-8134-eac8959f0563
@@ -3457,6 +3564,7 @@ version = "1.8.1+0"
 # ╠═61d28441-2e61-4d2a-8477-7dca4db6b7fd
 # ╠═a13055da-5c99-435a-b7a3-47cdb9a06a00
 # ╠═26d81216-e046-4f61-96ce-986cc8df8183
+# ╠═fbd7ea56-d158-4ad9-9756-b6278059338c
 # ╠═805e95ac-fc9e-4e4a-8862-e0cb0e9ba7c9
 # ╠═82593745-5615-4331-9e89-c827ef815741
 # ╠═1251a07b-579f-4257-a0ab-1e2951eb5229
@@ -3468,5 +3576,9 @@ version = "1.8.1+0"
 # ╠═9238bae1-bfe7-4d83-8292-527bbf14d751
 # ╠═4c9f7e87-690a-479d-aaa1-89859ef894f0
 # ╠═911846c9-13a9-40a8-91e8-cc1f9148832c
+# ╠═5318bfb4-7df8-4a21-9783-6e11dc276ce6
+# ╠═cf647393-4b49-4c77-a186-cb495e7b7fb8
+# ╠═1891e5d2-06a3-435c-9fe8-43d2d5c38ccb
+# ╠═feb10300-7b8c-47ad-8b02-5017cf805182
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

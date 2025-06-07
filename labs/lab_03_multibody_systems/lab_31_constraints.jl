@@ -166,7 +166,7 @@ Aq_to_Aω(Aq, bA::BodyState, bB::BodyState) = Aq_to_Aω(Aq, bA.p, bB.p)
 md"""
 The following function uses the definition of γ for scleronomic constraints:
 
-$\gamma = −(𝑪_ω \boldsymbol{v})_ω \boldsymbol{v}$
+$\gamma = −(\boldsymbol{A}_ω \boldsymbol{v})_ω \boldsymbol{v}$
 """
 
 # ╔═╡ 48f1fe45-f503-47b9-a7cc-6d0cd4425c58
