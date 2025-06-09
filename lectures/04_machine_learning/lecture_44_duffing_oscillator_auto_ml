@@ -11,6 +11,7 @@ begin
 	using Optimisers
 	using Random
 	using Plots
+	using StatsPlots
 	using Statistics
 	import Flux.MLUtils: DataLoader
 	using PlutoUI
@@ -23,7 +24,7 @@ end
 md"""
 # Programming Multibody Systems in Julia
 
-### Lecture 4.4: Automatic Machine Learning with Duffing Oscillator
+### Lecture 4.4: Automated Machine Learning with Duffing Oscillator
 
 Grzegorz Orzechowski
   
@@ -121,7 +122,7 @@ For each sample:
 begin
     Random.seed!(123)
 
-    N_total = 2000   # number of samples per dataset
+    N_total = 4000   # number of samples per dataset
 
     # Preallocate arrays
     inputs1  = zeros(Float32, N_total, 2 + n_steps)   # [x0, v0, fhat0..fhat63]
@@ -156,8 +157,6 @@ begin
 
     println("Dataset 1 generated: inputs1 size = ", size(inputs1), ", targets1 size = ", size(targets1))
 end
-
-###
 
 # ╔═╡ db8f77e7-a911-4924-bc08-4900f219f192
 md"""
@@ -206,8 +205,6 @@ begin
     println("Dataset 2 generated: inputs2 size = ", size(inputs2), ", targets2 size = ", size(targets2))
 end
 
-###
-
 # ╔═╡ 217cca2a-6603-44ca-8cbb-d3d59f86f151
 md"""
 ### Combine Datasets and Split Training/Testing
@@ -238,9 +235,6 @@ begin
 
     println("Training samples: ", size(X_train, 2), ", Test samples: ", size(X_test, 2))
 end
-
-# ╔═╡ 90402eb6-873b-4135-a40f-7125999b9c74
-plot(inputs_all[:, 1])
 
 # ╔═╡ 03513cc0-9d3e-4133-a7be-1a2225f2a27c
 md"""
@@ -330,18 +324,17 @@ For efficiency, we train each configuration for a reduced number of epochs (`epo
 
 # ╔═╡ 9ebe7f3f-cb43-418d-b686-348712e5ead7
 begin
-	Random.seed!(789)
-	hidden_dims = [64, 128, 256]
-	lrs         = [5f-3, 1f-3, 5f-4]
-	batchSizes  = [16, 32, 64]
-	dropout_rates = [0.05f0, 0.1f0, 0.15f0]
+	hidden_dims = [128, 256]
+	lrs         = [1f-3, 5f-3]
+	batchSizes  = [64, 128]
+	dropout_rates = [0.01f0, 0.001f0]
 	layers_count = [2, 3]
-	activation_functions = [elu, sigmoid_fast, tanh_fast]
+	activation_functions = [swish, selu]
 	
 	combinations = collect(product(hidden_dims, lrs, batchSizes, dropout_rates, layers_count, activation_functions))
 
-	epochs_grid = 100
-	λ = 5f-3
+	epochs_grid = 60
+	λ = 1f-3
 	
 	results_mt = Vector{Tuple{Int,Float32,Int,Float32,Int,Function,Float32}}(undef, length(combinations))
 
@@ -355,8 +348,34 @@ md"""
 
 # ╔═╡ d4753649-f8c6-492f-8f59-084ef5bc6489
 function train_model(; hidden_dim::Int, layers_count::Int, dropout_rate::Real, activation_function::Function)
-	@assert any(layers_count .== [1, 2, 3])
-	if layers_count == 3
+	@assert any(layers_count .== [1, 2, 3, 4, 5])
+	if layers_count == 5
+		Chain(
+			Dense(2 + n_steps, hidden_dim, activation_function),
+			Dropout(dropout_rate),
+			Dense(hidden_dim, hidden_dim, activation_function),
+			Dropout(dropout_rate),
+			Dense(hidden_dim, hidden_dim, activation_function),
+			Dropout(dropout_rate),
+			Dense(hidden_dim, hidden_dim, activation_function),
+			Dropout(dropout_rate),
+			Dense(hidden_dim, hidden_dim, activation_function),
+			Dropout(dropout_rate),
+			Dense(hidden_dim, n_steps)
+		)
+	elseif layers_count == 4
+		Chain(
+			Dense(2 + n_steps, hidden_dim, activation_function),
+			Dropout(dropout_rate),
+			Dense(hidden_dim, hidden_dim, activation_function),
+			Dropout(dropout_rate),
+			Dense(hidden_dim, hidden_dim, activation_function),
+			Dropout(dropout_rate),
+			Dense(hidden_dim, hidden_dim, activation_function),
+			Dropout(dropout_rate),
+			Dense(hidden_dim, n_steps)
+		)
+	elseif layers_count == 3
 		Chain(
 			Dense(2 + n_steps, hidden_dim, activation_function),
 			Dropout(dropout_rate),
@@ -382,6 +401,11 @@ function train_model(; hidden_dim::Int, layers_count::Int, dropout_rate::Real, a
 		)
 	end
 end
+
+# ╔═╡ 1dd5858b-0311-41fc-bec3-d32bde628c08
+md"""
+## Grid search -- find the best set of hyperparameters
+"""
 
 # ╔═╡ de2fede5-c7ef-454a-af83-f469637baa65
 begin
@@ -428,9 +452,17 @@ begin
 	println("Auto ML training completed in $(round(time() - t_start, digits=2)) seconds")
 end
 
-# ╔═╡ 2508c367-b057-43f2-9f74-f5053e04c7aa
+# ╔═╡ 4300419b-0faa-4979-bf18-54ce9e1c6faf
+md"""
+## Hyperparameter Impact: Candle Plots
+
+Visualize the distribution of validation loss for each hyperparameter using candle (quartile-whisker) plots.
+"""
+
+# ╔═╡ 39c6939b-8763-4519-8459-c04e8bd9e474
 begin
-	# Extract hyperparameter vectors
+	
+	# Prepare DataFrame from results_mt
 	hd_vals   = [r[1] for r in results_mt]
 	lr_vals   = [r[2] for r in results_mt]
 	bs_vals   = [r[3] for r in results_mt]
@@ -438,60 +470,40 @@ begin
 	lc_vals   = [r[5] for r in results_mt]
 	af_vals   = string.([r[6] for r in results_mt])
 	loss_vals = [r[7] for r in results_mt]
+
+	plot_loss_candle(vals, xlab) = begin
+		boxplot(
+			string.(vals), loss_vals;
+		    xlabel = xlab,
+		    ylabel = "Validation Loss",
+		    title = "Loss vs $xlab",
+		    legend = false
+		)
+	end
 	
-	# 1. Scatter: Hidden Dim vs Loss
-	p1 = scatter(
-	    hd_vals, loss_vals;
-	    xlabel="Hidden Dim", ylabel="Validation Loss",
-	    title="Loss vs Hidden Dim", legend=false
-	)
+	# 1. Hidden Dim vs Loss
+	p1 = plot_loss_candle(hd_vals, "Hidden Dim")
 	
-	# 2. Scatter: Learning Rate vs Loss (log-log)
-	p2 = scatter(
-	    lr_vals, loss_vals;
-	    xlabel="Learning Rate", ylabel="Validation Loss",
-	    xscale=:log10, yscale=:log10,
-	    title="Loss vs Learning Rate", legend=false
-	)
+	# 2. Learning Rate vs Loss 
+	p2 = plot_loss_candle(lr_vals, "Learning Rate")
 	
-	# 3. Scatter: Batch Size vs Loss
-	p3 = scatter(
-	    bs_vals, loss_vals;
-	    xlabel="Batch Size", ylabel="Validation Loss",
-	    title="Loss vs Batch Size", legend=false
-	)
+	# 3. Batch Size vs Loss
+	p3 = plot_loss_candle(bs_vals, "Batch Size")
 	
-	# 4. Scatter: Dropout Rate vs Loss
-	p4 = scatter(
-	    dr_vals, loss_vals;
-	    xlabel="Dropout Rate", ylabel="Validation Loss",
-	    title="Loss vs Dropout Rate", legend=false
-	)
+	# 4. Dropout Rate vs Loss
+	p4 = plot_loss_candle(dr_vals, "Dropout Rate")
 	
-	# 5. Bar: Average Loss vs Layers Count
-	unique_lc     = sort(unique(lc_vals))
-	mean_loss_lc  = [mean(loss_vals[findall(x->x==lc, lc_vals)]) for lc in unique_lc]
-	p5 = bar(
-	    string.(unique_lc), mean_loss_lc;
-	    xlabel="Layers Count", ylabel="Mean Validation Loss",
-	    title="Avg Loss vs Layers Count"
-	)
+	# 5. Average Loss vs Layers Count
+	p5 = plot_loss_candle(lc_vals, "Layers Count")
 	
-	# 6. Bar: Average Loss vs Activation Function
-	unique_af     = unique(af_vals)
-	mean_loss_af  = [mean(loss_vals[findall(x->x==af, af_vals)]) for af in unique_af]
-	p6 = bar(
-	    unique_af, mean_loss_af;
-	    xlabel="Activation Function", ylabel="Mean Validation Loss",
-	    title="Avg Loss vs Activation"
-	)
+	# 6. Average Loss vs Activation Function
+	p6 = plot_loss_candle(af_vals, "Activation Function")
 	
 	# Combine into a 3x2 grid
 	plot(p1, p2, p3, p4, p5, p6; layout=(3,2), size=(800,900))
 end
 
 # ╔═╡ 1eabf65d-61a8-494c-8f40-92556fe99f01
-### 
 md"""
 ## Select Best Hyperparameters and Retrain Final Model
 
@@ -502,7 +514,6 @@ After running the grid search into `results_mt` (each entry
 2. Find the index of the minimum loss.  
 3. Retrieve the corresponding hyperparameter tuple.  
 """
-###
 
 # ╔═╡ 104a85dc-1ff9-4f9f-8228-9ef1d186c7d9
 begin
@@ -524,8 +535,6 @@ begin
     println(" • activation_fun  = ", best_af)
     println("Validation loss = ", round(best_loss, digits=6))
 end
-
-###
 
 # ╔═╡ 522eb901-faea-4c79-80b1-dd063fc1ae26
 ### 
@@ -571,8 +580,6 @@ begin
     println("Final validation loss = ", round(val_loss_hist[end], digits=6))
 end
 
-###
-
 # ╔═╡ 5e31d16d-0dd5-4e5b-b9fa-5199f9240bc3
 md"""
 ## Final Loss Curves
@@ -606,7 +613,7 @@ Pick a random test sample, feed input through the surrogate, and compare the pre
 
 # ╔═╡ 16367f03-4b0d-493d-9b31-58e2f5b3b38e
 begin
-    idx = rand(1:size(X_test, 2))
+	idx = 786 # rand(1:size(X_test, 2))
     x_input = X_test[:, idx:idx]
     true_traj = Y_test[:, idx]        # size n_steps
     pred_traj_final = final_model(x_input)[:, 1]  # size n_steps
@@ -630,7 +637,8 @@ begin
     plt_compare_final
 end
 
-###
+# ╔═╡ 2225237d-2fff-4b59-937a-9034aea9ae93
+idx
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -642,6 +650,7 @@ Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 
 [compat]
 DifferentialEquations = "~7.16.1"
@@ -649,6 +658,7 @@ Flux = "~0.16.4"
 Optimisers = "~0.4.6"
 Plots = "~1.40.13"
 PlutoUI = "~0.7.23"
+StatsPlots = "~0.15.7"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -657,7 +667,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "a5115aa4279ff2a9f8b37073b321df133a6eebda"
+project_hash = "7bd3c8e12f31982c9eba91b405fd5674d285ead1"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e2478490447631aedba0823d4d7a80b2cc8cdb32"
@@ -749,6 +759,18 @@ git-tree-sha1 = "d57bd3762d308bded22c3b82d033bff85f6195c6"
 uuid = "ec485272-7323-5ecc-a04f-4719b315124d"
 version = "0.4.0"
 
+[[deps.Arpack]]
+deps = ["Arpack_jll", "Libdl", "LinearAlgebra", "Logging"]
+git-tree-sha1 = "9b9b347613394885fd1c8c7729bfc60528faa436"
+uuid = "7d9fca2a-8960-54d3-9f78-7d1dccf2cb97"
+version = "0.5.4"
+
+[[deps.Arpack_jll]]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "OpenBLAS_jll", "Pkg"]
+git-tree-sha1 = "5ba6c757e8feccf03a1554dfaf3e26b3cfc7fd5e"
+uuid = "68821587-b530-5797-8361-c406ea357684"
+version = "3.5.1+1"
+
 [[deps.ArrayInterface]]
 deps = ["Adapt", "LinearAlgebra"]
 git-tree-sha1 = "9606d7832795cbef89e06a550475be300364a8aa"
@@ -812,6 +834,12 @@ version = "1.1.1"
     Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
     OpenCL = "08131aa3-fb12-5dee-8b74-c09406e224a2"
     oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
+
+[[deps.AxisAlgorithms]]
+deps = ["LinearAlgebra", "Random", "SparseArrays", "WoodburyMatrices"]
+git-tree-sha1 = "01b8ccb13d68535d73d2b0c23e39bd23155fb712"
+uuid = "13072b0f-2c55-5437-9ae7-d433b7a33950"
+version = "1.1.0"
 
 [[deps.BandedMatrices]]
 deps = ["ArrayLayouts", "FillArrays", "LinearAlgebra", "PrecompileTools"]
@@ -972,6 +1000,12 @@ deps = ["Static", "StaticArrayInterface"]
 git-tree-sha1 = "05ba0d07cd4fd8b7a39541e31a7b0254704ea581"
 uuid = "fb6a15b2-703c-40df-9091-08a04967cfa9"
 version = "0.1.13"
+
+[[deps.Clustering]]
+deps = ["Distances", "LinearAlgebra", "NearestNeighbors", "Printf", "Random", "SparseArrays", "Statistics", "StatsBase"]
+git-tree-sha1 = "3e22db924e2945282e70c33b75d4dde8bfa44c94"
+uuid = "aaaa29a8-35af-508c-8bc3-b662a17a0fe5"
+version = "0.15.8"
 
 [[deps.CodecZlib]]
 deps = ["TranscodingStreams", "Zlib_jll"]
@@ -1375,6 +1409,18 @@ git-tree-sha1 = "466d45dc38e15794ec7d5d63ec03d776a9aff36e"
 uuid = "b22a6f82-2f65-5046-a5b2-351ab43fb4e5"
 version = "4.4.4+1"
 
+[[deps.FFTW]]
+deps = ["AbstractFFTs", "FFTW_jll", "LinearAlgebra", "MKL_jll", "Preferences", "Reexport"]
+git-tree-sha1 = "7de7c78d681078f027389e067864a8d53bd7c3c9"
+uuid = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
+version = "1.8.1"
+
+[[deps.FFTW_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "6d6219a004b8cf1e0b4dbe27a2860b8e04eba0be"
+uuid = "f5851436-0d7a-5f13-b9de-f02708fd171a"
+version = "3.3.11+0"
+
 [[deps.FLoops]]
 deps = ["BangBang", "Compat", "FLoopsBase", "InitialValues", "JuliaVariables", "MLStyle", "Serialization", "Setfield", "Transducers"]
 git-tree-sha1 = "0a2e5873e9a5f54abb06418d57a8df689336a660"
@@ -1680,6 +1726,16 @@ deps = ["Markdown"]
 uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 version = "1.11.0"
 
+[[deps.Interpolations]]
+deps = ["Adapt", "AxisAlgorithms", "ChainRulesCore", "LinearAlgebra", "OffsetArrays", "Random", "Ratios", "Requires", "SharedArrays", "SparseArrays", "StaticArrays", "WoodburyMatrices"]
+git-tree-sha1 = "88a101217d7cb38a7b481ccd50d21876e1d1b0e0"
+uuid = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
+version = "0.15.1"
+weakdeps = ["Unitful"]
+
+    [deps.Interpolations.extensions]
+    InterpolationsUnitfulExt = "Unitful"
+
 [[deps.InverseFunctions]]
 git-tree-sha1 = "a779299d77cd080bf77b97535acecd73e1c5e5cb"
 uuid = "3587e190-3f89-42d0-90ee-14403ec27112"
@@ -1754,6 +1810,12 @@ weakdeps = ["EnzymeCore", "LinearAlgebra", "SparseArrays"]
     EnzymeExt = "EnzymeCore"
     LinearAlgebraExt = "LinearAlgebra"
     SparseArraysExt = "SparseArrays"
+
+[[deps.KernelDensity]]
+deps = ["Distributions", "DocStringExtensions", "FFTW", "Interpolations", "StatsBase"]
+git-tree-sha1 = "7d703202e65efa1369de1279c162b915e245eed1"
+uuid = "5ab0869b-81aa-558d-bb23-cbf5423bbe9b"
+version = "0.6.9"
 
 [[deps.Krylov]]
 deps = ["LinearAlgebra", "Printf", "SparseArrays"]
@@ -2148,6 +2210,12 @@ git-tree-sha1 = "cac9cc5499c25554cba55cd3c30543cff5ca4fab"
 uuid = "46d2c3a1-f734-5fdb-9937-b9b9aeba4221"
 version = "0.2.4"
 
+[[deps.MultivariateStats]]
+deps = ["Arpack", "Distributions", "LinearAlgebra", "SparseArrays", "Statistics", "StatsAPI", "StatsBase"]
+git-tree-sha1 = "816620e3aac93e5b5359e4fdaf23ca4525b00ddf"
+uuid = "6f286f6a-111f-5878-ab1e-185364afe411"
+version = "0.10.3"
+
 [[deps.NLSolversBase]]
 deps = ["ADTypes", "DifferentiationInterface", "Distributed", "FiniteDiff", "ForwardDiff"]
 git-tree-sha1 = "b14c7be6046e7d48e9063a0053f95ee0fc954176"
@@ -2195,6 +2263,12 @@ deps = ["PrettyPrint"]
 git-tree-sha1 = "1a0fa0e9613f46c9b8c11eee38ebb4f590013c5e"
 uuid = "71a1bf82-56d0-4bbc-8a3c-48b961074391"
 version = "0.1.5"
+
+[[deps.NearestNeighbors]]
+deps = ["Distances", "StaticArrays"]
+git-tree-sha1 = "8a3271d8309285f4db73b4f662b1b290c715e85e"
+uuid = "b8a86587-4115-5ab1-83bc-aa920d37bbce"
+version = "0.4.21"
 
 [[deps.NetworkOptions]]
 uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
@@ -2273,6 +2347,20 @@ weakdeps = ["ForwardDiff"]
 
     [deps.NonlinearSolveSpectralMethods.extensions]
     NonlinearSolveSpectralMethodsForwardDiffExt = "ForwardDiff"
+
+[[deps.Observables]]
+git-tree-sha1 = "7438a59546cf62428fc9d1bc94729146d37a7225"
+uuid = "510215fc-4207-5dde-b226-833fc4488ee2"
+version = "0.5.5"
+
+[[deps.OffsetArrays]]
+git-tree-sha1 = "117432e406b5c023f665fa73dc26e79ec3630151"
+uuid = "6fe1bfb0-de20-5000-8ca7-80f57d26f881"
+version = "1.17.0"
+weakdeps = ["Adapt"]
+
+    [deps.OffsetArrays.extensions]
+    OffsetArraysAdaptExt = "Adapt"
 
 [[deps.Ogg_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -2760,6 +2848,16 @@ git-tree-sha1 = "c6ec94d2aaba1ab2ff983052cf6a606ca5985902"
 uuid = "e6cf234a-135c-5ec9-84dd-332b85af5143"
 version = "1.6.0"
 
+[[deps.Ratios]]
+deps = ["Requires"]
+git-tree-sha1 = "1342a47bf3260ee108163042310d26f2be5ec90b"
+uuid = "c84ed2f1-dad5-54f0-aa8e-dbefe2724439"
+version = "0.4.5"
+weakdeps = ["FixedPointNumbers"]
+
+    [deps.Ratios.extensions]
+    RatiosFixedPointNumbersExt = "FixedPointNumbers"
+
 [[deps.RealDot]]
 deps = ["LinearAlgebra"]
 git-tree-sha1 = "9f0a1b71baaf7650f4fa8a1d168c7fb6ee41f0c9"
@@ -2918,6 +3016,12 @@ git-tree-sha1 = "3bac05bc7e74a75fd9cba4295cde4045d9fe2386"
 uuid = "6c6a2e73-6563-6170-7368-637461726353"
 version = "1.2.1"
 
+[[deps.SentinelArrays]]
+deps = ["Dates", "Random"]
+git-tree-sha1 = "712fb0231ee6f9120e005ccd56297abbc053e7e0"
+uuid = "91c51154-3ec4-41a3-a24f-3f23e20d615c"
+version = "1.4.8"
+
 [[deps.Serialization]]
 uuid = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
 version = "1.11.0"
@@ -3066,14 +3170,11 @@ deps = ["ArrayInterface", "Compat", "IfElse", "LinearAlgebra", "PrecompileTools"
 git-tree-sha1 = "96381d50f1ce85f2663584c8e886a6ca97e60554"
 uuid = "0d7ed370-da01-4f52-bd93-41d350b8b718"
 version = "1.8.0"
+weakdeps = ["OffsetArrays", "StaticArrays"]
 
     [deps.StaticArrayInterface.extensions]
     StaticArrayInterfaceOffsetArraysExt = "OffsetArrays"
     StaticArrayInterfaceStaticArraysExt = "StaticArrays"
-
-    [deps.StaticArrayInterface.weakdeps]
-    OffsetArrays = "6fe1bfb0-de20-5000-8ca7-80f57d26f881"
-    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [[deps.StaticArrays]]
 deps = ["LinearAlgebra", "PrecompileTools", "Random", "StaticArraysCore"]
@@ -3123,6 +3224,12 @@ weakdeps = ["ChainRulesCore", "InverseFunctions"]
     [deps.StatsFuns.extensions]
     StatsFunsChainRulesCoreExt = "ChainRulesCore"
     StatsFunsInverseFunctionsExt = "InverseFunctions"
+
+[[deps.StatsPlots]]
+deps = ["AbstractFFTs", "Clustering", "DataStructures", "Distributions", "Interpolations", "KernelDensity", "LinearAlgebra", "MultivariateStats", "NaNMath", "Observables", "Plots", "RecipesBase", "RecipesPipeline", "Reexport", "StatsBase", "TableOperations", "Tables", "Widgets"]
+git-tree-sha1 = "3b1dcbf62e469a67f6733ae493401e53d92ff543"
+uuid = "f3b207a7-027a-5e70-b257-86293d7955fd"
+version = "0.15.7"
 
 [[deps.SteadyStateDiffEq]]
 deps = ["ConcreteStructs", "DiffEqBase", "DiffEqCallbacks", "LinearAlgebra", "NonlinearSolveBase", "Reexport", "SciMLBase"]
@@ -3197,6 +3304,12 @@ version = "0.3.40"
 deps = ["Dates"]
 uuid = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 version = "1.0.3"
+
+[[deps.TableOperations]]
+deps = ["SentinelArrays", "Tables", "Test"]
+git-tree-sha1 = "e383c87cf2a1dc41fa30c093b2a19877c83e1bc1"
+uuid = "ab02a1b2-a7df-11e8-156e-fb1833f50b87"
+version = "1.2.0"
 
 [[deps.TableTraits]]
 deps = ["IteratorInterfaceExtensions"]
@@ -3357,6 +3470,18 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "5db3e9d307d32baba7067b13fc7b5aa6edd4a19a"
 uuid = "2381bf8a-dfd0-557d-9999-79630e7b1b91"
 version = "1.36.0+0"
+
+[[deps.Widgets]]
+deps = ["Colors", "Dates", "Observables", "OrderedCollections"]
+git-tree-sha1 = "e9aeb174f95385de31e70bd15fa066a505ea82b9"
+uuid = "cc8bc4a8-27d6-5769-a93b-9d913e69aa62"
+version = "0.6.7"
+
+[[deps.WoodburyMatrices]]
+deps = ["LinearAlgebra", "SparseArrays"]
+git-tree-sha1 = "c1a7aa6219628fcd757dede0ca95e245c5cd9511"
+uuid = "efce3f68-66dc-5838-9240-27a6d6f5f9b6"
+version = "1.0.0"
 
 [[deps.XML2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libiconv_jll", "Zlib_jll"]
@@ -3668,25 +3793,27 @@ version = "1.8.1+0"
 # ╠═cd2c4db8-8100-4231-88bf-59ac9fed3973
 # ╟─db8f77e7-a911-4924-bc08-4900f219f192
 # ╠═b317cbce-73f0-4790-a77c-fdf856489e14
-# ╠═217cca2a-6603-44ca-8cbb-d3d59f86f151
+# ╟─217cca2a-6603-44ca-8cbb-d3d59f86f151
 # ╠═66a8c595-e43b-4f95-a54a-de485b73d3f1
-# ╠═90402eb6-873b-4135-a40f-7125999b9c74
-# ╠═03513cc0-9d3e-4133-a7be-1a2225f2a27c
+# ╟─03513cc0-9d3e-4133-a7be-1a2225f2a27c
 # ╠═e9b9ed4a-e7ef-4f05-9924-33ecd0bc4df6
 # ╟─5318bfb4-7df8-4a21-9783-6e11dc276ce6
 # ╠═9ebe7f3f-cb43-418d-b686-348712e5ead7
 # ╟─8f5e34aa-1456-408b-9b46-499cd1df58c3
-# ╠═d4753649-f8c6-492f-8f59-084ef5bc6489
+# ╟─d4753649-f8c6-492f-8f59-084ef5bc6489
+# ╟─1dd5858b-0311-41fc-bec3-d32bde628c08
 # ╠═de2fede5-c7ef-454a-af83-f469637baa65
-# ╠═2508c367-b057-43f2-9f74-f5053e04c7aa
-# ╠═1eabf65d-61a8-494c-8f40-92556fe99f01
+# ╟─4300419b-0faa-4979-bf18-54ce9e1c6faf
+# ╟─39c6939b-8763-4519-8459-c04e8bd9e474
+# ╟─1eabf65d-61a8-494c-8f40-92556fe99f01
 # ╠═104a85dc-1ff9-4f9f-8228-9ef1d186c7d9
-# ╠═522eb901-faea-4c79-80b1-dd063fc1ae26
+# ╟─522eb901-faea-4c79-80b1-dd063fc1ae26
 # ╠═9ab660f0-e6e9-477b-87bb-45a9343413d0
-# ╠═5e31d16d-0dd5-4e5b-b9fa-5199f9240bc3
+# ╟─5e31d16d-0dd5-4e5b-b9fa-5199f9240bc3
 # ╠═3285bb9f-fbfa-44b9-974a-7bdeb82110dd
 # ╠═f8db61bf-a79f-4c62-a617-d2613094af56
 # ╟─fd7642d7-4ea3-4d9d-bbd1-85441898afcc
 # ╠═16367f03-4b0d-493d-9b31-58e2f5b3b38e
+# ╠═2225237d-2fff-4b59-937a-9034aea9ae93
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

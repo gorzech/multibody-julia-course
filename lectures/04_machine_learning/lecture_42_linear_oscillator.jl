@@ -42,7 +42,7 @@ Assume you have the following CSV files (each row is one sample):
 
 We’ll read them into DataFrames, convert to `Array{Float32}` and inspect shapes.
 
-- **input**: $\boldsymbol{x} = [x_0, \dot{x}_0, F_0, \ldots,  F_n-1]^T$
+- **input**: $\boldsymbol{x} = [x_0, \dot{x}_0, F_0, \ldots,  F_{n-1}]^T$
 - **output**: $\boldsymbol{y} = [x_1, \ldots, x_n]^T$  with $x_i = x(t=i\cdot h)$; $h = 0.5/64$
 - note that the force is scaled by 1/2000 to normalize the input vector.
 """
@@ -134,7 +134,7 @@ Hyperparameters are e.g.:
 
 - **Optimizer:** ADAM with learning rate $4 \times 10^{-3}$
     
-- **Epochs:** 480
+- **Epochs:** 420
     
 - **Batch size:** 32
     
@@ -143,7 +143,7 @@ Hyperparameters are e.g.:
 # ╔═╡ e6baa188-03f8-460f-a09b-8dc5f6e2c917
 begin
 	lr = 0.004f0
-	nEpoch = 480
+	nEpoch = 420
 	batchSize = 32
 	
 	opt_algorithm = Optimisers.Adam(lr)       
