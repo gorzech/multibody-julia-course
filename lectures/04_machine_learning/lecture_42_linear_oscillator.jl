@@ -15,13 +15,15 @@ begin
 	using Random
 	using LaTeXStrings
 	Random.seed!(42)  # for reproducibility
+	using PlutoUI
+	PlutoUI.TableOfContents()
 end
 
 # ╔═╡ 0a5ac8a6-3dde-11f0-0d44-53b19460e655
 md"""
 # Programming Multibody Systems in Julia
 
-### Lecture 12: Example of linear oscillator surrogate Model  
+### Lecture 4.2: Example of linear oscillator surrogate Model  
 
 Peter Manzl and Grzegorz Orzechowski
   
@@ -30,7 +32,7 @@ Details:  This file uses previously created data.
 
 # ╔═╡ ffeb87c8-92a6-4cd3-bc4c-2da4ecf52caa
 md"""
-## 2. Load Data from CSVs
+## Load Data from CSVs
 
 Assume you have the following CSV files (each row is one sample):
 - `data/linear_inputsTraining.csv`
@@ -40,8 +42,8 @@ Assume you have the following CSV files (each row is one sample):
 
 We’ll read them into DataFrames, convert to `Array{Float32}` and inspect shapes.
 
-- **input**: $\boldsymbol{x} = [x_0, \dot{x}_0, F_0, ... F_n-1]^T$
-- **output**: $\boldsymbol{y} = [x_1, ... x_n]^T$  with $x_i = x(t=i\cdot h)$; $h = 0.5/64$
+- **input**: $\boldsymbol{x} = [x_0, \dot{x}_0, F_0, \ldots,  F_n-1]^T$
+- **output**: $\boldsymbol{y} = [x_1, \ldots, x_n]^T$  with $x_i = x(t=i\cdot h)$; $h = 0.5/64$
 - note that the force is scaled by 1/2000 to normalize the input vector.
 """
 
@@ -73,7 +75,7 @@ end
 
 # ╔═╡ 4da1523e-c574-480f-adfa-44c6f5c27c44
 md"""
-## 3. Time Vector for Plotting
+## Time Vector for Plotting
 
 We reconstruct the time‐axis `t_out` as in the original example:
 - The sampling interval $h = \frac{0.5}{64}$.
@@ -88,7 +90,7 @@ t_out = collect(h:h:(h * 64f0))
 
 # ╔═╡ dd1fb14c-aa4d-4b8b-b0e7-5fffba1f1d16
 md"""
-## 4. Define Neural Network Surrogate
+## Define Neural Network Surrogate
 
 We use a single linear layer (no bias) to map inputs → outputs.  
 
@@ -122,7 +124,7 @@ title  = "Untrained Weight Matrix (Heatmap)"
 
 # ╔═╡ 9b710f0d-2b5c-4dee-95b9-87cbd5f17435
 md"""
-## 5. Hyperparameters
+## Hyperparameters
 
 In deep learning Hyperparameters are _configuration variables_ for training and are required to reproduce results.  
 Hyperparameters are e.g.: 
@@ -130,11 +132,11 @@ Hyperparameters are e.g.:
 * Size of training / validation / test dataset. 
 * neural network architecture and settings: number and size of layers, activation function,  
 
-- **Optimizer:** ADAM with learning rate $5 \times 10^{-2}$
+- **Optimizer:** ADAM with learning rate $4 \times 10^{-3}$
     
-- **Epochs:** 1200
+- **Epochs:** 480
     
-- **Batch size:** 256
+- **Batch size:** 32
     
 """
 
@@ -148,13 +150,12 @@ begin
 	opt_state = Optimisers.setup(opt_algorithm, myNeuralNetwork)
 	
 	loss_fn = Flux.Losses.mse
-	# loss_fn(m, x, y) = Flux.Losses.mse(m(x), y)
 end
 
 # ╔═╡ 8940efcd-bee0-4f46-bead-43a060652a23
 md"""
 
-## 6. Prepare DataLoaders
+## Prepare DataLoaders
 
 We transpose inputsTraining and targetsTraining so that each batch is (inputDim, batchSize) → (outputDim, batchSize).
 
@@ -182,12 +183,12 @@ end
 # ╔═╡ 6dda6519-1b13-4780-8225-f29d938c2743
 md"""
 
-## 7. Training Loop
+## Training Loop
 
 Use the modern Flux+Optimisers API:
 
-1. For each batch, compute ∇model = gradient(m -> loss_fn(m(x), y), model)[1].
-2. Call Optimisers.update!(opt_state, model, ∇model)—this mutates model in place.
+1. For each batch, compute `∇model = gradient(m -> loss_fn(m(x), y), model)[1]`.
+2. Call `Optimisers.update!(opt_state, model, ∇model)`—this mutates model in place.
 3. Record training and validation losses.
     
 """
@@ -224,7 +225,7 @@ end
 
 # ╔═╡ 2649584b-5b5e-4948-8e03-7ab964e64bb1
 md"""
-### 8. Combined Plot of Training and Validation Losses
+## Combined Plot of Training and Validation Losses
 """
 
 # ╔═╡ 8ee9f772-33ad-4538-acbd-d592cd5cc55d
@@ -248,7 +249,7 @@ end
 
 # ╔═╡ 129708f4-d68a-444c-8d10-b62ef9e7ba93
 md"""
-### Note:
+### Note
 * The validation set can be used to identify overfitting: training loss might still decrease while validation loss increases. 
 * Nonlinear activation functions (e.g. ReLu) would decrease accuracy in this case
 * This accuracy can only be expected in the linear case.
@@ -262,7 +263,7 @@ In this example a linear spring-damper system is trained with a single linear la
 
 # ╔═╡ e70b14b7-686c-4f93-a817-397cd08a2585
 md"""
-### 9. Visualize Weight Matrix
+## Visualize Weight Matrix
 
 - Display a heatmap of the trained weight matrix of size (outputDim, inputDim).
 """
@@ -277,7 +278,7 @@ title  = "Trained Weight Matrix (Heatmap)"
 
 # ╔═╡ c31adf02-7dde-4194-abcf-afe14c520316
 md"""
-## Note
+### Note
 * When using only a single linear layer without bias, the weight matrix can be visualized directly.
 * Each column i represents the system response for an input:
   * i=0: initial displacement $x_0$
@@ -290,14 +291,14 @@ Due to the priciple of superposition for ordinary differential equation, the sol
 
 # ╔═╡ 4e9e0056-cbd4-4dca-8c91-5f515f70794b
 md"""
-### 10. Plot Weights for First Output Unit
+## Plot Weights for First Output Unit
 
 Examine the weight vector corresponding to the first output dimension.
 
 """
 
 # ╔═╡ fe5856bd-ad40-49be-9b1a-783004e85d8d
-w_trained = myNeuralNetwork[1].weight  # size (outputDim, inputDim)
+w_trained = myNeuralNetwork[1].weight;  # size (outputDim, inputDim)
 
 # ╔═╡ 28bcf3c6-544b-491f-903e-faf6ef522ac3
 plt4 = plot(
@@ -311,7 +312,7 @@ labels=[L"displacement due to $x_0$" L"displacement due to $\dot{x}_0$"]
 
 # ╔═╡ 94e8302c-fff5-4eb1-ac16-a3b27112ad7d
 md"""
-## 11. Plot Predictions vs. True Signal (First Test Sample)
+## Plot Predictions vs. True Signal (First Test Sample)
 
 Compare the neural network’s predicted time-series against the true target for the first test sample.
 """
@@ -348,7 +349,7 @@ end
 
 # ╔═╡ f1473815-fe75-4dbb-a562-c612c5d06204
 md"""
-## 12. Final Notes
+## Final Notes
 
 - Training and validation losses are recorded during training.  
 - You can adjust:
@@ -357,7 +358,6 @@ md"""
   - Batch size (batchSize),
   - Or try a different optimizer,
   to see how the surrogate model performance changes.  
-- For larger datasets or more complex pipelines, exploring other batching utilities (e.g., MLDataPattern.jl or DataLoaders.jl) may be beneficial.
 
 Feel free to experiment with adding hidden layers or non-linear activations to improve the surrogate model’s approximation quality.
 """
@@ -371,6 +371,7 @@ Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
 LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 Optimisers = "3bd65402-5787-11e9-1adc-39752487f4e2"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
@@ -381,6 +382,7 @@ Flux = "~0.14.25"
 LaTeXStrings = "~1.4.0"
 Optimisers = "~0.3.4"
 Plots = "~1.40.13"
+PlutoUI = "~0.7.23"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -389,7 +391,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "f9026f7030aa1e0013dada89e6679fd43f4af1c0"
+project_hash = "500958e8a6c1b7d3aee21b5d4b39efd3a91b78a3"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -401,6 +403,12 @@ weakdeps = ["ChainRulesCore", "Test"]
     [deps.AbstractFFTs.extensions]
     AbstractFFTsChainRulesCoreExt = "ChainRulesCore"
     AbstractFFTsTestExt = "Test"
+
+[[deps.AbstractPlutoDingetjes]]
+deps = ["Pkg"]
+git-tree-sha1 = "6e1d2a35f2f90a4bc7c2ed98079b2ba09c35b83a"
+uuid = "6e696c72-6542-2067-7265-42206c756150"
+version = "1.3.2"
 
 [[deps.Accessors]]
 deps = ["CompositionsBase", "ConstructionBase", "Dates", "InverseFunctions", "MacroTools"]
@@ -940,6 +948,24 @@ git-tree-sha1 = "2eaa69a7cab70a52b9687c8bf950a5a93ec895ae"
 uuid = "076d061b-32b6-4027-95e0-9a2c6f6d7e74"
 version = "0.2.0"
 
+[[deps.Hyperscript]]
+deps = ["Test"]
+git-tree-sha1 = "8d511d5b81240fc8e6802386302675bdf47737b9"
+uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
+version = "0.0.4"
+
+[[deps.HypertextLiteral]]
+deps = ["Tricks"]
+git-tree-sha1 = "7134810b1afce04bbc1045ca1985fbe81ce17653"
+uuid = "ac1192a8-f4b3-4bfe-ba22-af5b92cd3ab2"
+version = "0.9.5"
+
+[[deps.IOCapture]]
+deps = ["Logging", "Random"]
+git-tree-sha1 = "b6d6bfdd7ce25b0f9b2f6b3dd56b2673a66c8770"
+uuid = "b5f81e59-6552-4d32-b1f0-c071b021bf89"
+version = "0.2.5"
+
 [[deps.IRTools]]
 deps = ["InteractiveUtils", "MacroTools"]
 git-tree-sha1 = "950c3717af761bc3ff906c2e8e52bd83390b6ec2"
@@ -1474,6 +1500,12 @@ version = "1.40.13"
     ImageInTerminal = "d8c32880-2388-543b-8c61-d9f865259254"
     Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
+[[deps.PlutoUI]]
+deps = ["AbstractPlutoDingetjes", "Base64", "Dates", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "Markdown", "Random", "Reexport", "UUIDs"]
+git-tree-sha1 = "5152abbdab6488d5eec6a01029ca6697dff4ec8f"
+uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+version = "0.7.23"
+
 [[deps.PooledArrays]]
 deps = ["DataAPI", "Future"]
 git-tree-sha1 = "36d8b4b899628fb92c2749eb488d884a926614d3"
@@ -1815,6 +1847,11 @@ version = "0.4.84"
     LazyArrays = "5078a376-72f3-5289-bfd5-ec5146d43c02"
     OnlineStatsBase = "925886fa-5bf2-5e8e-b522-a9147a512338"
     Referenceables = "42d2dcc6-99eb-4e98-b66c-637b7d73030e"
+
+[[deps.Tricks]]
+git-tree-sha1 = "6cae795a5a9313bbb4f60683f7263318fc7d1505"
+uuid = "410a4b4d-49e4-4fbc-ab6d-cb71b17b3775"
+version = "0.1.10"
 
 [[deps.URIs]]
 git-tree-sha1 = "cbbebadbcc76c5ca1cc4b4f3b0614b3e603b5000"
@@ -2205,7 +2242,7 @@ version = "1.8.1+0"
 # ╠═e0b8ce74-e481-42d7-a813-b2e2cc5f3ff4
 # ╟─6dda6519-1b13-4780-8225-f29d938c2743
 # ╠═29db1f28-031e-4f99-b402-850b76d09a34
-# ╠═2649584b-5b5e-4948-8e03-7ab964e64bb1
+# ╟─2649584b-5b5e-4948-8e03-7ab964e64bb1
 # ╠═8ee9f772-33ad-4538-acbd-d592cd5cc55d
 # ╟─129708f4-d68a-444c-8d10-b62ef9e7ba93
 # ╟─e70b14b7-686c-4f93-a817-397cd08a2585

@@ -4,82 +4,75 @@
 using Markdown
 using InteractiveUtils
 
-# ╔═╡ f270d7b7-020c-4a66-8335-4c32c957ccb8
-using DifferentialEquations, Flux, Optimisers, Random, Plots, Statistics
+# ╔═╡ 10c23ecc-dd4b-4017-bc4e-3a18d66bb92f
+begin 
+	using DifferentialEquations
+	using Flux
+	using Optimisers
+	using Random
+	using Plots
+	using Statistics
+	import Flux.MLUtils: DataLoader
+	using PlutoUI
+	PlutoUI.TableOfContents()
+end
 
-# ╔═╡ 22abe4f3-6ac2-4e9b-b43c-6714ae192632
-using Base.Iterators: product
+# ╔═╡ 72295586-467f-4ce2-9a7e-e5b9d3a4f77d
+md"""
+# Programming Multibody Systems in Julia
 
-# ╔═╡ cf647393-4b49-4c77-a186-cb495e7b7fb8
-using Base.Threads
+### Lecture 4.3: Surrogate Modeling: Duffing Oscillator with External Forcing
+
+Grzegorz Orzechowski and Peter Manzl
+  
+Details: DNN trained on Duffing oscillator dynamics with randomized forces or harmonics.  
+"""
 
 # ╔═╡ 9506fa63-64a5-40d8-8ff5-1dba292847b4
-### A Pluto.jl notebook ###
-
-### 
 md"""
-# Surrogate Modeling: Duffing Oscillator with External Forcing
+## Duffing Oscillator 
 
-**DNN trained on Duffing oscillator dynamics with randomized forces or harmonics**
-
-In this file, a deep neural network is trained on the dynamics of a Duffing oscillator. The equations of motion (EOM) are:
+In this file, a deep neural network is trained on the dynamics of a [Duffing oscillator](https://en.wikipedia.org/wiki/Duffing_equation). The equations of motion (EOM) are:
 
 $$m \,\ddot{x} + d \,\dot{x} + k \,x + \alpha \,k \,x^3 = F(t).$$
 
 In the used dataset, parameters are fixed as:
-- \(m = 1\),
-- \(k = 1600\),
-- \(d = 8\),
-- \(\alpha = 1\).
+-  $m = 1$,
+-  $k = 1600$,
+-  $d = 8$,
+-  $\alpha = 1$.
 
-Randomized forces \(F_i\) are applied in the range \(\bigl[-2000,\,2000\bigr]\). For learning, inputs are normalized as \(\hat{f}_i = \tfrac{1}{2000}F_i\).
+Randomized forces $F_i$ are applied in the range $\bigl[-2000,\,2000\bigr]$. For learning, inputs are normalized as $\hat{f}_i = \tfrac{1}{2000}F_i$.
 
 **Input vector**:
-\[
-\bigl[x_0,\;\dot{x}_0,\;\hat{f}_0,\;\dots,\;\hat{f}_{n-1}\bigr]^T.
-\]
+
+$\bigl[x_0,\;\dot{x}_0,\;\hat{f}_0,\;\dots,\;\hat{f}_{n-1}\bigr]^T.$
 
 **Output vector**:
-\[
-\bigl[x_1,\;x_2,\;\dots,\;x_n\bigr]^T, \quad x_i = x\bigl(t = i\,h\bigr),\quad h = \tfrac{0.5}{64}.
-\]
+$\bigl[x_1,\;x_2,\;\dots,\;x_n\bigr]^T, \quad x_i = x\bigl(t = i\,h\bigr),\quad h = \tfrac{0.5}{64}.$
 
 - **Dataset 1**: Randomized forces for each sample.
-- **Dataset 2**: Randomized harmonics with \(\omega \in [0,\,4\pi]\) (uniform), amplitude also in \([-2000,\,2000]\).
+- **Dataset 2**: Randomized harmonics with $\omega \in [0,\,4\pi]$ (uniform), amplitude also in $[-2000,\,2000]$.
 
 Below, we generate both datasets, train a DNN surrogate, and compare predictions to true trajectories.
 """
-###
 
-###
-
-# ╔═╡ cd25ef0e-e959-4a6c-9a95-727e147ddf40
-md"""
-## 1. Package Imports
-
-We use:
-- `DifferentialEquations.jl` for simulating the Duffing ODE.
-- `Flux.jl` for defining and training the neural network surrogate.
-- `Optimisers.jl` for the optimizer (Adam).
-- `Random` for reproducibility.
-- `Plots.jl` for visualization.
-- `Statistics` for basic aggregation (e.g., `mean`).
-"""
-###
-
-# ╔═╡ 9e4428f3-5df6-4667-89f4-0c82ebcb2f9f
-import Flux.MLUtils: DataLoader
-
-###
+# ╔═╡ fe5075cc-c194-49f8-9159-a7a695fe3b98
+begin 
+	m = 1.0f0
+    k = 1600.0f0
+    d = 8.0f0
+    α = 1.0f0
+end
 
 # ╔═╡ e0508cd6-422b-4e7f-8396-8f49754a8ebb
 md"""
-## 2. Problem Setup
+## Problem Setup
 
-- Time step: \(h = \tfrac{0.5}{64}\).
-- Number of steps per trajectory: \(n = 64\).
-- Total integration time: \(T = n \times h = 0.5\).
-- Time vector: \(t_i = i\,h\) for \(i=0,\dots,n\).
+- Time step: $h = \tfrac{0.5}{64}$.
+- Number of steps per trajectory: $n = 64$.
+- Total integration time: $T = n \times h = 0.5\,$s.
+- Time vector: $t_i = i\,h$ for $i=0,\dots,n$.
 
 Define constants and the Duffing ODE (second-order rewritten as first-order).
 """
@@ -87,50 +80,43 @@ Define constants and the Duffing ODE (second-order rewritten as first-order).
 
 # ╔═╡ dc658836-643a-4590-8134-eac8959f0563
 begin
-    const m = 1.0f0
-    const k = 1600.0f0
-    const d = 8.0f0
-    const α = 1.0f0
-
-    const h = 0.5f0 / 64f0
-    const n_steps = 64
-    const T = h * n_steps
-    const t_steps = collect(0.0f0:h:T)    # length n_steps+1
-
-    # Function to create ODE function given a force sequence `forces` of length n_steps
-    function duffing_forces!(du, u, p, t)
-        # p = (forces, h)
-        forces, h = p
-        x, v = u
-        # Determine index i = floor(t/h)+1, clamp between 1 and n_steps
-        i = Int(floor(t / h)) + 1
-        i = clamp(i, 1, n_steps)
-        F_t = forces[i]
-        du[1] = v
-        du[2] = F_t - d * v - k * x - α * k * x^3
-    end
+    h = 0.5f0 / 64f0
+    n_steps = 64
+    T = h * n_steps
+    t_steps = collect(0.0f0:h:T)    # length n_steps+1
 end
 
-###
+# ╔═╡ 749ee546-1fb0-4560-91f5-fba5957a5add
+# Function to create ODE function given a force sequence `forces` of length n_steps
+function duffing_forces!(du, u, p, t)
+	# p = (forces, h)
+	forces, h = p
+	x, v = u
+	# Determine index i = floor(t/h)+1, clamp between 1 and n_steps
+	i = Int(floor(t / h)) + 1
+	i = clamp(i, 1, n_steps)
+	F_t = forces[i]
+	du[1] = v
+	du[2] = F_t - d * v - k * x - α * k * x^3
+end
 
 # ╔═╡ 17e5c561-61e3-4fcd-8131-1cb75164e361
 md"""
-## 3. Generate Dataset 1: Randomized Forces
+## Generate Dataset 1: Randomized Forces
 
 For each sample:
-1. Random initial state \(\bigl(x_0,\dot{x}_0\bigr)\in[-1,\,1]^2\).
-2. Random force sequence \(F_i \sim \mathcal{U}(-2000,\,2000)\) for \(i=0,\dots,\,n-1\).
-3. Normalize \(\hat{f}_i = F_i / 2000\).
-4. Integrate the ODE for \(t\in[0,\,T]\) with forcing \(F(t)\) piecewise constant on \([i\,h,\,(i+1)\,h)\).
-5. Record positions \(x_1,\dots,x_n\) at \(t=h,\dots,T\).
+1. Random initial state $\bigl(x_0,\dot{x}_0\bigr)\in[-1,\,1]$.
+2. Random force sequence $F_i \sim \mathcal{U}(-2000,\,2000)$ for $i=0,\dots,\,n-1$.
+3. Normalize $\hat{f}_i = F_i / 2000$.
+4. Integrate the ODE for $t\in[0,\,T]$ with forcing $F(t)$ piecewise constant on $[i\,h,\,(i+1)\,h)$.
+5. Record positions $x_1,\dots,x_n$ at $t=h,\dots,T$.
 """
-###
 
 # ╔═╡ 35cd5f00-3bf3-4ad0-a3a1-14b1f09222be
 begin
     Random.seed!(123)
 
-    N_total = 1000   # number of samples per dataset
+    N_total = 2000   # number of samples per dataset
 
     # Preallocate arrays
     inputs1  = zeros(Float32, N_total, 2 + n_steps)   # [x0, v0, fhat0..fhat63]
@@ -170,15 +156,14 @@ end
 
 # ╔═╡ b5385c42-6e70-401c-b60d-8c6ea9e2f1db
 md"""
-## 4. Generate Dataset 2: Randomized Harmonics
+## Generate Dataset 2: Randomized Harmonics
 
 For each sample:
-1. Random initial state \((x_0,\dot{x}_0)\).
-2. Random amplitude \(A \sim \mathcal{U}(-2000,\,2000)\), random \(\omega \sim \mathcal{U}(0,\,4\pi)\).
-3. Define force sequence \(F_i = A \sin(\omega \, t_i)\), then normalize: \(\hat{f}_i = F_i/2000\).
-4. Integrate Duffing ODE with this forcing and record \(x_1,\dots,x_n\).
+1. Random initial state $(x_0,\dot{x}_0)$.
+2. Random amplitude $A \sim \mathcal{U}(-2000,\,2000)$, random $\omega \sim \mathcal{U}(0,\,4\pi)$.
+3. Define force sequence $F_i = A \sin(\omega \, t_i)$, then normalize: $\hat{f}_i = F_i/2000$.
+4. Integrate Duffing ODE with this forcing and record $x_1,\dots,x_n$.
 """
-###
 
 # ╔═╡ d9dcb4fb-8888-4631-a66e-699dfd264f32
 begin
@@ -220,11 +205,10 @@ end
 
 # ╔═╡ 82eb140c-8b91-48ea-b755-d5330d206932
 md"""
-## 5. Combine Datasets and Split Training/Testing
+## Combine Datasets and Split Training/Testing
 
 We stack Dataset 1 and Dataset 2, then split 80/20 for training and testing.
 """
-###
 
 # ╔═╡ db298f43-7220-4630-92ad-0dbcb0e09c1e
 begin
@@ -250,82 +234,102 @@ begin
     println("Training samples: ", size(X_train, 2), ", Test samples: ", size(X_test, 2))
 end
 
-###
-
 # ╔═╡ 6b4fa229-b07c-468a-a46e-c535a79f07e3
 plot(inputs_all[:, 1])
 
-# ╔═╡ 61d28441-2e61-4d2a-8477-7dca4db6b7fd
-X_all[:, 1]
-
 # ╔═╡ a13055da-5c99-435a-b7a3-47cdb9a06a00
 md"""
-## 6. Define Neural Network Surrogate
+## Define Neural Network Surrogate
 
 We use a multilayer perceptron (MLP):
-- Input dimension: \(2 + n\_steps\).
-- Hidden layer: `hidden_dim = 128` (ReLU activation).
-- Output dimension: \(n\_steps\) (no activation).
+- Input dimension: $2 + n\_steps$.
+- Hidden layer: `hidden_dim = 128` (Sigmoid activation).
+- Hidden layer count: 2
+- Dropout rate: 0.05
+- Output dimension: $n\_steps$ (no activation).
 """
-###
 
 # ╔═╡ 26d81216-e046-4f61-96ce-986cc8df8183
 begin
     hidden_dim = 128
-	dropout_rate = 0.2
+	dropout_rate = 0.05
 	
     model = Chain(
-        Dense(2 + n_steps, hidden_dim, relu),
+        Dense(2 + n_steps, hidden_dim, sigmoid_fast),
 		Dropout(dropout_rate),
-		Dense(hidden_dim, hidden_dim, relu),
-		Dropout(dropout_rate),
-		Dense(hidden_dim, hidden_dim, relu),
+		Dense(hidden_dim, hidden_dim, sigmoid_fast),
 		Dropout(dropout_rate),
         Dense(hidden_dim, n_steps)
     )
-
-    println("Untrained model output size: ", size(model(X_test[:, 1:1])))
 end
 
-###
+# ╔═╡ c1e512aa-f8fa-4eb8-bca3-b4140f2a4e5a
+md"""
+## Regularization in Neural Networks
 
-# ╔═╡ fbd7ea56-d158-4ad9-9756-b6278059338c
-model
+**Why Regularize?**
+
+- Prevent **overfitting**: too complex models memorize training data
+- Improve **generalization**: better performance on unseen data
+- Control **model complexity** and **training stability**
+
+**Common Techniques**
+
+1. **L2 Weight Decay**  
+   Penalize large weights by adding $\lambda\|w\|^2$ to the loss
+2. **Dropout**  
+   Randomly disable neurons during training to prevent co-adaptation
+3. **Early Stopping**  
+   Stop training when validation loss stops improving
+4. **Data Augmentation**  
+   Expand dataset by applying transformations (e.g., noise, shifts)
+5. **Batch Normalization**  
+   Normalize activations to reduce internal covariate shift
+6. **L1 Regularization**  
+   Encourage weight sparsity via $\lambda\|w\|_1$
+
+**Guidelines for Hyperparameters**
+
+- **L2 λ**: typically in $[10^{-6},10^{-2}]$
+- **Dropout rate**: often between 0.1 and 0.5
+- Combine multiple methods for best generalization
+
+**Note on AdamW** -- valid for othe _W_ variants of optimizers
+
+- `AdamW` = `Adam` + decoupled weight decay
+- It’s a regularizer built into the optimizer.
+- Equivalent to L₂ weight‐decay, but implemented so it doesn’t interfere with Adam’s adaptive moment estimates.
+
+"""
 
 # ╔═╡ 805e95ac-fc9e-4e4a-8862-e0cb0e9ba7c9
 md"""
-## 7. Hyperparameters and Optimizer
+## Hyperparameters and Optimizer
 
-- Optimizer: Adam with learning rate \(1\times 10^{-3}\).  
-- Epochs: 300.  
-- Batch size: 64.  
+- Optimizer: Adam with learning rate $2\times 10^{-3}$.  
+- Epochs: 2000.  
+- Batch size: 256.
+- Weight l2-norm regularization factor: $\lambda=0.01$.
 
 Loss: Mean squared error between predicted trajectory and true trajectory.
 """
-###
 
 # ╔═╡ 82593745-5615-4331-9e89-c827ef815741
 begin
-    learning_rate = 5f-4
+	learning_rate = 2f-3
     nEpoch = 2000
-    batchSize = 64
-
-    opt_algorithm = Optimisers.Adam(learning_rate)
-    opt_state = Optimisers.setup(opt_algorithm, model)
-
-    loss_fn(m, x, y) = Flux.Losses.mse(m(x), y)
+    batchSize = 256
+	λ = 1f-2
 end
-
-###
 
 # ╔═╡ 1251a07b-579f-4257-a0ab-1e2951eb5229
 md"""
-## 8. Prepare DataLoader
+## Prepare DataLoader
 
 Batch `(X_train, Y_train)` into mini-batches.
 Each batch:
-- `x_batch`: \((2+n\_steps,\,\text{batchSize})\).
-- `y_batch`: \((n\_steps,\,\text{batchSize})\).
+- `x_batch`: $(2+n\_steps,\,\text{batchSize})$.
+- `y_batch`: $(n\_steps,\,\text{batchSize})$.
 """
 ###
 
@@ -335,65 +339,109 @@ begin
     val_loader   = DataLoader((X_test, Y_test),    batchsize = batchSize, shuffle = false)
 end
 
-###
-
-# ╔═╡ ef711d1c-99d8-49be-961e-7ba8f839b4fe
+# ╔═╡ 00ac4126-9ea6-48d1-b830-3d41911eb64b
 md"""
-## 9. Training Loop
+## Reusable Training Function with Early Stopping
 
-For each epoch (1..nEpoch):
-1. Loop over `train_loader`, compute \(\nabla_{\mathrm{model}} = \nabla \, \ell(\mathrm{model}(x\_batch),\,y\_batch)\), update with `Optimisers.update!`.
-2. Record average training loss.
-3. Every 10 epochs, compute validation loss over `val_loader`.
+We define `train_loop!` that:
+- Accepts a `model`, an optimiser algorithm, a training DataLoader and a validation DataLoader.
+- Trains for up to `n_epochs` epochs, recording training and validation loss each epoch.
+- Stops early if validation loss does not improve for `patience` consecutive epochs.
+
+Returns:
+- `train_loss_hist::Vector{Float32}`
+- `val_loss_hist::Vector{Float32}`
+- the trained `model` (mutated in place)
 """
-###
 
-# ╔═╡ f0a757ee-d863-421e-ac56-a2c02f5e7811
+# ╔═╡ 527f494f-d4c2-400d-9511-b68248434205
+# 3. Use these inside your training loop or train_loop! function:
+function train_loop!(
+	model,
+	opt_algorithm,
+	train_loader,
+	val_loader;
+	n_epochs::Int = 100,
+	patience::Int = 20,
+	loss_fn = Flux.Losses.mse
+)
+	# setup optimizer state
+	opt_state = Optimisers.setup(opt_algorithm, model)
 
+	# histories
+	train_loss_hist = Float32[]
+	val_loss_hist   = Float32[]
+
+	best_val = Inf
+	no_improve = 0
+
+	for epoch in 1:n_epochs
+		# --- training phase ---
+		running_loss = 0f0
+		for (x_b, y_b) in train_loader
+			∇m = gradient((m) -> loss_fn(m(x_b), y_b), model)[1]
+			Optimisers.update!(opt_state, model, ∇m)
+			running_loss += loss_fn(model(x_b), y_b)
+		end
+		push!(train_loss_hist, running_loss / length(train_loader))
+
+		# --- validation phase ---
+		total_val = 0f0
+		for (x_v, y_v) in val_loader
+			total_val += loss_fn(model(x_v), y_v)
+		end
+		curr_val = total_val / length(val_loader)
+		push!(val_loss_hist, curr_val)
+
+		# --- early stopping check ---
+		if curr_val < best_val
+			best_val = curr_val
+			no_improve = 0
+		else
+			no_improve += 1
+			if no_improve >= patience
+				break
+			end
+		end
+	end
+
+	return train_loss_hist, val_loss_hist
+end
+
+# ╔═╡ 5f06d422-6e2a-4c0f-aa4c-91d0e33d05e5
+md"""
+## Actual training
+
+Note the use of **AdamW** optimizer for additional weight regularization.
+"""
 
 # ╔═╡ 7ab4e4aa-7e0c-45f9-a4dd-711038ab9e15
 begin
-    loss_epoch     = Float32[]
-    lossEpochSteps = Int[]
-    lossValidation = Float32[]
-
-    t_start = time()
-    for epoch in 1:nEpoch
-        running_loss = 0f0
-        # Training
-        for (x_batch, y_batch) in train_loader
-            ∇model = gradient(m -> loss_fn(m, x_batch, y_batch), model)[1]
-            Optimisers.update!(opt_state, model, ∇model)
-            running_loss += loss_fn(model, x_batch, y_batch)
-        end
-        push!(loss_epoch, running_loss / length(train_loader))
-
-        # Validation every 10 epochs
-        if epoch % 10 == 0
-            push!(lossEpochSteps, epoch)
-            total_val_loss = 0f0
-            for (x_val, y_val) in val_loader
-                total_val_loss += loss_fn(model, x_val, y_val)
-            end
-            push!(lossValidation, total_val_loss / length(val_loader))
-        end
-    end
+	Random.seed!(432)
+	t_start = time()
+	optimizer_with_l2_regularization = Optimisers.AdamW(learning_rate, (0.9,0.999), λ)
+	loss_epoch, lossValidation = train_loop!(
+        model,
+        optimizer_with_l2_regularization,
+        train_loader,
+        val_loader;
+        n_epochs = nEpoch,
+        patience = 50,
+        loss_fn = Flux.Losses.mse
+    )
     println("Training completed in $(round(time() - t_start, digits=2)) seconds")
 end
 
-###
-
 # ╔═╡ 5b0b0d27-dc30-4685-97fd-1d34b02724d6
 md"""
-## 10. Combined Plot of Training and Validation Losses
+## Combined Plot of Training and Validation Losses
 
 Below is a combined plot showing training loss (curve) and validation loss (scatter) on a logarithmic scale.
 """
-###
 
 # ╔═╡ b34d587b-6973-40c8-ad70-c5ae67b4d88f
 begin
-    plt_loss = plot(
+    plot(
         loss_epoch,
         xlabel="Epoch",
         ylabel="Loss",
@@ -402,24 +450,18 @@ begin
         label = "Training Loss"
     )
     plot!(
-        plt_loss,
-        lossEpochSteps,
         lossValidation,
         seriestype = :scatter,
         label = "Validation Loss"
     )
-    plt_loss
 end
-
-###
 
 # ╔═╡ 9238bae1-bfe7-4d83-8292-527bbf14d751
 md"""
-## 11. Example Prediction vs. True Trajectory
+## Example Prediction vs. True Trajectory
 
 Pick a random test sample, feed input through the surrogate, and compare the predicted trajectory to the true trajectory.
 """
-###
 
 # ╔═╡ 4c9f7e87-690a-479d-aaa1-89859ef894f0
 begin
@@ -451,278 +493,18 @@ end
 
 # ╔═╡ 911846c9-13a9-40a8-91e8-cc1f9148832c
 md"""
-## 12. Final Notes
+## Final Notes
 
 - Two datasets were generated:
-  1. Randomized force sequences in \([-2000,\,2000]\).
-  2. Randomized harmonic forces \(A\sin(\omega t)\) with \(A\in[-2000,2000]\), \(\omega\in[0,4\pi]\).
-- Inputs include \((x_0, \dot{x}_0)\) and normalized forces \(\hat{f}_i\in[-1,1]\).
-- The DNN maps inputs \(\in\mathbb{R}^{2+64}\) to outputs \(\in\mathbb{R}^{64}\).
+  1. Randomized force sequences in $[-2000,\,2000]$.
+  2. Randomized harmonic forces $A\sin(\omega t)$ with $A\in[-2000,2000]$, $\omega\in[0,4\pi]$.
+- Inputs include $(x_0, \dot{x}_0)$ and normalized forces $\hat{f}_i\in[-1,1]$.
+- The DNN maps inputs $\in\mathbb{R}^{2+64}$ to outputs $\in\mathbb{R}^{64}$.
 - Loss is MSE on the entire trajectory.
+- We use several regularization strategies: early stopping, dropout layers, and L2 weight regularization.
 - You can adjust `hidden_dim`, learning rate (`lr`), `nEpoch`, `batchSize`, or network depth/width for improved performance.
 - For larger datasets, consider data normalization or more advanced architectures (e.g., convolutional, recurrent).
 """
-###
-
-# ╔═╡ 5318bfb4-7df8-4a21-9783-6e11dc276ce6
-### 
-md"""
-## 13. Hyperparameter Grid Search (AutoML)
-
-We now perform a simple grid search over key hyperparameters of our Duffing‐oscillator surrogate:
-- Hidden‐layer size (`hidden_dim`)
-- Learning rate (`lr`)
-- Batch size (`batchSize`)
-
-For efficiency, we train each configuration for a reduced number of epochs (`epochs_grid = 100`) and record the validation loss. At the end, we report the combination with the lowest validation loss.
-"""
-###
-
-# ╔═╡ 9ebe7f3f-cb43-418d-b686-348712e5ead7
-begin
-	Random.seed!(789)
-	hidden_dims = [64, 128, 256]
-	lrs         = [5f-3, 1f-3, 5f-4]
-	batchSizes  = [16, 32, 64]
-	dropout_rates = [0.1f0, 0.15f0, 0.2f0]
-	layers_count = [2, 3]
-	activation_functions = [relu, elu, sigmoid_fast, leakyrelu]
-	
-	combinations = collect(product(hidden_dims, lrs, batchSizes, dropout_rates, layers_count, activation_functions))
-
-	epochs_grid = 100
-	
-	results_mt = Vector{Tuple{Int,Float32,Int,Float32,Int,Function,Float32}}(undef, length(combinations))
-end;
-
-# ╔═╡ de2fede5-c7ef-454a-af83-f469637baa65
-# Parallel loop over combinations
-@threads for idx in 1:length(combinations)
-    hd, lr, bs, dr, lc, af = combinations[idx]
-    # 1) Create fresh model and optimizer
-    model_g = if lc == 3
-		Chain(
-			Dense(2 + n_steps, hd, af),
-			Dropout(dr),
-			Dense(hd, hd, af),
-			Dropout(dr),
-			Dense(hd, hd, af),
-			Dropout(dr),
-			Dense(hd, n_steps)
-		)
-	else
-		Chain(
-			Dense(2 + n_steps, hd, af),
-			Dropout(dr),
-			Dense(hd, hd, af),
-			Dropout(dr),
-			Dense(hd, n_steps)
-		)
-	end
-    opt_st = Optimisers.setup(Optimisers.Adam(lr), model_g)
-    loss_g(m,x,y) = Flux.Losses.mae(m(x), y)
-
-    # 2) DataLoaders for this combo
-    dl_train = DataLoader((X_train, Y_train), batchsize=bs, shuffle=true)
-    dl_val   = DataLoader((X_test,  Y_test),  batchsize=bs, shuffle=false)
-
-    # 3) Train for a small number of epochs
-    for epoch in 1:epochs_grid
-        for (x_b, y_b) in dl_train
-            ∇m = gradient(m -> loss_g(m, x_b, y_b), model_g)[1]
-            Optimisers.update!(opt_st, model_g, ∇m)
-        end
-    end
-
-    # 4) Compute validation loss
-    total_vl = 0f0
-    for (x_v, y_v) in dl_val
-        total_vl += loss_g(model_g, x_v, y_v)
-    end
-    val_loss = total_vl / length(dl_val)
-
-    # 5) Store result
-    results_mt[idx] = (hd, lr, bs, dr, lc, af, val_loss)
-end
-
-# ╔═╡ 1eabf65d-61a8-494c-8f40-92556fe99f01
-### 
-md"""
-## 16. Select Best Hyperparameters and Retrain Final Model
-
-After running the grid search into `results_mt` (each entry  
-`(hd, lr, bs, dr, lc, af, val_loss)`), we:
-
-1. Extract all validation losses.  
-2. Find the index of the minimum loss.  
-3. Retrieve the corresponding hyperparameter tuple.  
-"""
-###
-
-# ╔═╡ 104a85dc-1ff9-4f9f-8228-9ef1d186c7d9
-begin
-    # 1. Collect the validation losses (last element of each tuple)
-    val_losses = [res[7] for res in results_mt]
-
-    # 2. Find the index of the minimum validation loss
-    best_idx = argmin(val_losses)
-
-    # 3. Retrieve the best hyperparameter combination
-    best_hd, best_lr, best_bs, best_dr, best_lc, best_af, best_loss = results_mt[best_idx]
-
-    println("Best hyperparameters:")
-    println(" • hidden_dim      = ", best_hd)
-    println(" • learning_rate   = ", best_lr)
-    println(" • batch_size      = ", best_bs)
-    println(" • dropout_rate    = ", best_dr)
-    println(" • layers_count    = ", best_lc)
-    println(" • activation_fun  = ", best_af)
-    println("Validation loss = ", round(best_loss, digits=6))
-end
-
-###
-
-# ╔═╡ 522eb901-faea-4c79-80b1-dd063fc1ae26
-### 
-md"""
-## 17. Instantiate and Train Final Model with Loss Histories
-
-Using the best hyperparameters, we now train a fresh model on the full training set  
-for a larger number of epochs (`nEpoch_final`), while collecting training and validation loss each epoch.
-"""
-###
-
-# ╔═╡ 9ab660f0-e6e9-477b-87bb-45a9343413d0
-begin
-    # Unpack best params
-    hd, lr, bs, dr, lc, af = best_hd, best_lr, best_bs, best_dr, best_lc, best_af
-
-    # Build the final model
-    final_model = if lc == 3
-        Chain(
-            Dense(2 + n_steps, hd, af),
-            Dropout(dr),
-            Dense(hd, hd, af),
-            Dropout(dr),
-            Dense(hd, hd, af),
-            Dropout(dr),
-            Dense(hd, n_steps)
-        )
-    else
-        Chain(
-            Dense(2 + n_steps, hd, af),
-            Dropout(dr),
-            Dense(hd, hd, af),
-            Dropout(dr),
-            Dense(hd, n_steps)
-        )
-    end
-
-    # Setup optimizer on final model
-    opt_state_final = Optimisers.setup(Optimisers.Adam(lr), final_model)
-
-    # Define loss
-    loss_final(m, x, y) = Flux.Losses.mae(m(x), y)
-
-    # DataLoaders
-    train_loader_final = DataLoader((X_train, Y_train), batchsize=bs, shuffle=true)
-    val_loader_final   = DataLoader((X_test,  Y_test),  batchsize=bs, shuffle=false)
-
-    # Training parameters
-    nEpoch_final = 500  # longer training for final model
-
-    # Preallocate loss histories
-    train_loss_hist = Float32[]
-    val_loss_hist   = Float32[]
-
-    # Training loop with loss recording
-    for epoch in 1:nEpoch_final
-        # Training phase
-        running_loss = 0f0
-        for (x_b, y_b) in train_loader_final
-            ∇m = gradient(m -> loss_final(m, x_b, y_b), final_model)[1]
-            Optimisers.update!(opt_state_final, final_model, ∇m)
-            running_loss += loss_final(final_model, x_b, y_b)
-        end
-        avg_train = running_loss / length(train_loader_final)
-        push!(train_loss_hist, avg_train)
-
-        # Validation phase
-        total_val = 0f0
-        for (x_v, y_v) in val_loader_final
-            total_val += loss_final(final_model, x_v, y_v)
-        end
-        avg_val = total_val / length(val_loader_final)
-        push!(val_loss_hist, avg_val)
-    end
-
-    println("Final training completed.")
-    println("Final validation loss = ", round(val_loss_hist[end], digits=6))
-end
-
-###
-
-# ╔═╡ 5e31d16d-0dd5-4e5b-b9fa-5199f9240bc3
-md"""
-## 18. Final Loss Curves
-
-Plot of training vs. validation loss over epochs (log scale).
-"""
-###
-
-# ╔═╡ 3285bb9f-fbfa-44b9-974a-7bdeb82110dd
-plt_final = plot(
-    1:nEpoch_final,
-    train_loss_hist,
-    label      = "Training Loss",
-    xlabel     = "Epoch",
-    ylabel     = "Loss",
-    yscale     = :log10,
-    title      = "Final Model Loss Curves"
-);
-
-# ╔═╡ f8db61bf-a79f-4c62-a617-d2613094af56
-plot!(
-    plt_final,
-    1:nEpoch_final,
-    val_loss_hist,
-    label      = "Validation Loss"
-)
-
-# ╔═╡ fd7642d7-4ea3-4d9d-bbd1-85441898afcc
-md"""
-## 11. Example Prediction vs. True Trajectory
-
-Pick a random test sample, feed input through the surrogate, and compare the predicted trajectory to the true trajectory.
-"""
-###
-
-# ╔═╡ 16367f03-4b0d-493d-9b31-58e2f5b3b38e
-begin
-    # idx = rand(1:size(X_test, 2))
-    # x_input = X_test[:, idx:idx]
-    # true_traj = Y_test[:, idx]        # size n_steps
-    pred_traj_final = final_model(x_input)[:, 1]  # size n_steps
-
-    plt_compare_final = plot(
-        t_steps[2:end],            # t = h, 2h, …, T
-        pred_traj_final,
-        label="NN Prediction",
-        linestyle = :solid
-    )
-    plot!(
-        plt_compare_final,
-        t_steps[2:end],
-        true_traj,
-        label="True Trajectory",
-        linestyle = :dash
-    )
-    xlabel!("Time (s)")
-    ylabel!("x(t)")
-    title!("Surrogate vs. True Duffing Trajectory")
-    plt_compare_final
-end
-
 ###
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -732,6 +514,7 @@ DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
 Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
 Optimisers = "3bd65402-5787-11e9-1adc-39752487f4e2"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
@@ -740,6 +523,7 @@ DifferentialEquations = "~7.16.1"
 Flux = "~0.16.4"
 Optimisers = "~0.4.6"
 Plots = "~1.40.13"
+PlutoUI = "~0.7.23"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -748,7 +532,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "0ae2212b2212a0971f98198d3b6c9d52020231d5"
+project_hash = "a5115aa4279ff2a9f8b37073b321df133a6eebda"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e2478490447631aedba0823d4d7a80b2cc8cdb32"
@@ -771,6 +555,12 @@ weakdeps = ["ChainRulesCore", "Test"]
     [deps.AbstractFFTs.extensions]
     AbstractFFTsChainRulesCoreExt = "ChainRulesCore"
     AbstractFFTsTestExt = "Test"
+
+[[deps.AbstractPlutoDingetjes]]
+deps = ["Pkg"]
+git-tree-sha1 = "6e1d2a35f2f90a4bc7c2ed98079b2ba09c35b83a"
+uuid = "6e696c72-6542-2067-7265-42206c756150"
+version = "1.3.2"
 
 [[deps.Accessors]]
 deps = ["CompositionsBase", "ConstructionBase", "Dates", "InverseFunctions", "MacroTools"]
@@ -1714,6 +1504,24 @@ deps = ["LinearAlgebra", "OpenLibm_jll", "SpecialFunctions"]
 git-tree-sha1 = "68c173f4f449de5b438ee67ed0c9c748dc31a2ec"
 uuid = "34004b35-14d8-5ef3-9330-4cdb6864b03a"
 version = "0.3.28"
+
+[[deps.Hyperscript]]
+deps = ["Test"]
+git-tree-sha1 = "8d511d5b81240fc8e6802386302675bdf47737b9"
+uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
+version = "0.0.4"
+
+[[deps.HypertextLiteral]]
+deps = ["Tricks"]
+git-tree-sha1 = "7134810b1afce04bbc1045ca1985fbe81ce17653"
+uuid = "ac1192a8-f4b3-4bfe-ba22-af5b92cd3ab2"
+version = "0.9.5"
+
+[[deps.IOCapture]]
+deps = ["Logging", "Random"]
+git-tree-sha1 = "b6d6bfdd7ce25b0f9b2f6b3dd56b2673a66c8770"
+uuid = "b5f81e59-6552-4d32-b1f0-c071b021bf89"
+version = "0.2.5"
 
 [[deps.IRTools]]
 deps = ["InteractiveUtils", "MacroTools"]
@@ -2686,6 +2494,12 @@ version = "1.40.13"
     ImageInTerminal = "d8c32880-2388-543b-8c61-d9f865259254"
     Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
+[[deps.PlutoUI]]
+deps = ["AbstractPlutoDingetjes", "Base64", "Dates", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "Markdown", "Random", "Reexport", "UUIDs"]
+git-tree-sha1 = "5152abbdab6488d5eec6a01029ca6697dff4ec8f"
+uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+version = "0.7.23"
+
 [[deps.PoissonRandom]]
 deps = ["Random"]
 git-tree-sha1 = "a0f1159c33f846aa77c3f30ebbc69795e5327152"
@@ -3332,6 +3146,11 @@ version = "0.4.84"
     OnlineStatsBase = "925886fa-5bf2-5e8e-b522-a9147a512338"
     Referenceables = "42d2dcc6-99eb-4e98-b66c-637b7d73030e"
 
+[[deps.Tricks]]
+git-tree-sha1 = "6cae795a5a9313bbb4f60683f7263318fc7d1505"
+uuid = "410a4b4d-49e4-4fbc-ab6d-cb71b17b3775"
+version = "0.1.10"
+
 [[deps.TruncatedStacktraces]]
 deps = ["InteractiveUtils", "MacroTools", "Preferences"]
 git-tree-sha1 = "ea3e54c2bdde39062abf5a9758a23735558705e1"
@@ -3712,48 +3531,35 @@ version = "1.8.1+0"
 """
 
 # ╔═╡ Cell order:
-# ╠═9506fa63-64a5-40d8-8ff5-1dba292847b4
-# ╠═cd25ef0e-e959-4a6c-9a95-727e147ddf40
-# ╠═f270d7b7-020c-4a66-8335-4c32c957ccb8
-# ╠═22abe4f3-6ac2-4e9b-b43c-6714ae192632
-# ╠═9e4428f3-5df6-4667-89f4-0c82ebcb2f9f
-# ╠═e0508cd6-422b-4e7f-8396-8f49754a8ebb
+# ╟─72295586-467f-4ce2-9a7e-e5b9d3a4f77d
+# ╠═10c23ecc-dd4b-4017-bc4e-3a18d66bb92f
+# ╟─9506fa63-64a5-40d8-8ff5-1dba292847b4
+# ╠═fe5075cc-c194-49f8-9159-a7a695fe3b98
+# ╟─e0508cd6-422b-4e7f-8396-8f49754a8ebb
 # ╠═dc658836-643a-4590-8134-eac8959f0563
-# ╠═17e5c561-61e3-4fcd-8131-1cb75164e361
+# ╠═749ee546-1fb0-4560-91f5-fba5957a5add
+# ╟─17e5c561-61e3-4fcd-8131-1cb75164e361
 # ╠═35cd5f00-3bf3-4ad0-a3a1-14b1f09222be
-# ╠═b5385c42-6e70-401c-b60d-8c6ea9e2f1db
+# ╟─b5385c42-6e70-401c-b60d-8c6ea9e2f1db
 # ╠═d9dcb4fb-8888-4631-a66e-699dfd264f32
-# ╠═82eb140c-8b91-48ea-b755-d5330d206932
+# ╟─82eb140c-8b91-48ea-b755-d5330d206932
 # ╠═db298f43-7220-4630-92ad-0dbcb0e09c1e
 # ╠═6b4fa229-b07c-468a-a46e-c535a79f07e3
-# ╠═61d28441-2e61-4d2a-8477-7dca4db6b7fd
-# ╠═a13055da-5c99-435a-b7a3-47cdb9a06a00
+# ╟─a13055da-5c99-435a-b7a3-47cdb9a06a00
 # ╠═26d81216-e046-4f61-96ce-986cc8df8183
-# ╠═fbd7ea56-d158-4ad9-9756-b6278059338c
-# ╠═805e95ac-fc9e-4e4a-8862-e0cb0e9ba7c9
+# ╟─c1e512aa-f8fa-4eb8-bca3-b4140f2a4e5a
+# ╟─805e95ac-fc9e-4e4a-8862-e0cb0e9ba7c9
 # ╠═82593745-5615-4331-9e89-c827ef815741
-# ╠═1251a07b-579f-4257-a0ab-1e2951eb5229
+# ╟─1251a07b-579f-4257-a0ab-1e2951eb5229
 # ╠═6252e714-cc3f-440a-806d-d410c6b71ea4
-# ╠═ef711d1c-99d8-49be-961e-7ba8f839b4fe
-# ╠═f0a757ee-d863-421e-ac56-a2c02f5e7811
+# ╟─00ac4126-9ea6-48d1-b830-3d41911eb64b
+# ╠═527f494f-d4c2-400d-9511-b68248434205
+# ╟─5f06d422-6e2a-4c0f-aa4c-91d0e33d05e5
 # ╠═7ab4e4aa-7e0c-45f9-a4dd-711038ab9e15
-# ╠═5b0b0d27-dc30-4685-97fd-1d34b02724d6
+# ╟─5b0b0d27-dc30-4685-97fd-1d34b02724d6
 # ╠═b34d587b-6973-40c8-ad70-c5ae67b4d88f
-# ╠═9238bae1-bfe7-4d83-8292-527bbf14d751
+# ╟─9238bae1-bfe7-4d83-8292-527bbf14d751
 # ╠═4c9f7e87-690a-479d-aaa1-89859ef894f0
-# ╠═911846c9-13a9-40a8-91e8-cc1f9148832c
-# ╠═5318bfb4-7df8-4a21-9783-6e11dc276ce6
-# ╠═cf647393-4b49-4c77-a186-cb495e7b7fb8
-# ╠═9ebe7f3f-cb43-418d-b686-348712e5ead7
-# ╠═de2fede5-c7ef-454a-af83-f469637baa65
-# ╟─1eabf65d-61a8-494c-8f40-92556fe99f01
-# ╠═104a85dc-1ff9-4f9f-8228-9ef1d186c7d9
-# ╠═522eb901-faea-4c79-80b1-dd063fc1ae26
-# ╠═9ab660f0-e6e9-477b-87bb-45a9343413d0
-# ╠═5e31d16d-0dd5-4e5b-b9fa-5199f9240bc3
-# ╠═3285bb9f-fbfa-44b9-974a-7bdeb82110dd
-# ╠═f8db61bf-a79f-4c62-a617-d2613094af56
-# ╠═fd7642d7-4ea3-4d9d-bbd1-85441898afcc
-# ╠═16367f03-4b0d-493d-9b31-58e2f5b3b38e
+# ╟─911846c9-13a9-40a8-91e8-cc1f9148832c
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

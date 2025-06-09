@@ -52,7 +52,7 @@ end
 md"""
 # Programming Multibody Systems in Julia
 
-### Lecture 11: Machine Learning for Multibody System Dynamics
+### Lecture 4.1: Machine Learning for Multibody System Dynamics
 **An intuitive introduction**
 
 Grzegorz Orzechowski and Peter Manzl
