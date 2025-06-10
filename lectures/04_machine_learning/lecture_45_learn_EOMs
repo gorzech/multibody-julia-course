@@ -56,16 +56,19 @@ begin
     α = 1.0f0
 end
 
+# ╔═╡ d5c4e3d9-61db-4151-9a9b-8ee6e4419bb8
+duffing_equation(F, x, v) = F - d * v - k * x - α * k * x^3
+
 # ╔═╡ 531fc27a-b612-4a53-90a3-2c74272eec63
 for i in 1:N
 	# random state and forcing
 	x = randn(Float32) * 2f0 - 1f0
-	v = randn(Float32) * 400f0 - 200f0
-	F = (rand(Float32)*2f0 - 1f0)*2000f0   # in [-2000,2000]	
+	v = (randn(Float32) * 2f0 - 1f0) * 100f0 # in [-200, 200]
+	F = (rand(Float32) * 2f0 - 1f0) * 2000f0   # in [-2000,2000]	
 	
 	# analytic RHS
 	dx = v
-	dv = F - d*v - k*x - α*k*x^3
+	dv = duffing_equation(F, x, v)
 	
 	# store
 	X[:, i] = Float32.([x, v, F])
@@ -256,7 +259,7 @@ function duffing_forces!(du, u, p, t)
 	i = clamp(i, 1, n_steps)
 	F_t = forces[i]
 	du[1] = v
-	du[2] = F_t - d * v - k * x - α * k * x^3
+	du[2] = duffing_equation(F_t, x, v)
 end
 
 # ╔═╡ 63977a52-c268-4c40-b44e-d4b8d5be7d4a
@@ -3331,6 +3334,7 @@ version = "1.8.1+0"
 # ╠═efe09a7c-0dd6-4295-9969-070eaa2c016b
 # ╠═4bd5f38b-928d-4e13-a88a-2d4123f723ee
 # ╠═377877d9-f18c-40b4-a399-01db1b8ac0be
+# ╠═d5c4e3d9-61db-4151-9a9b-8ee6e4419bb8
 # ╠═489b6934-4f39-43ac-b114-50607ca80be5
 # ╠═531fc27a-b612-4a53-90a3-2c74272eec63
 # ╠═ccdfc446-df80-43d8-b7b5-ca4dc938e9fc
@@ -3345,7 +3349,7 @@ version = "1.8.1+0"
 # ╠═3ef9f0b7-35b0-4420-bfc3-dd700e9af18d
 # ╠═61cfd58c-17dd-4e4b-878c-f26f9fa40f67
 # ╠═c0bf3956-195e-4391-b181-0ed9ba850f94
-# ╠═b918b926-5516-45cd-a5ed-9722356cc364
+# ╟─b918b926-5516-45cd-a5ed-9722356cc364
 # ╠═82958b27-9698-41a3-b8b9-15c51c753b4e
 # ╠═27a8fbe3-925b-4131-8d65-7ce52198ed8c
 # ╠═82ee2089-6913-465c-be4d-4dfcc3707c8e
