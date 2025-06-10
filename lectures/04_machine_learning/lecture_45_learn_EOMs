@@ -62,13 +62,13 @@ duffing_equation(F, x, v) = F - d * v - k * x - α * k * x^3
 # ╔═╡ 531fc27a-b612-4a53-90a3-2c74272eec63
 for i in 1:N
 	# random state and forcing
-	x = randn(Float32) * 2f0 - 1f0
-	v = (randn(Float32) * 2f0 - 1f0) * 100f0 # in [-200, 200]
+	x = rand(Float32) * 2f0 - 1f0
+	v = (rand(Float32) * 2f0 - 1f0) * 100f0 # in [-200, 200]
 	F = (rand(Float32) * 2f0 - 1f0) * 2000f0   # in [-2000,2000]	
 	
-	# analytic RHS
-	dx = v
-	dv = duffing_equation(F, x, v)
+	# analytic RHS - with 5% of noise
+	dx = (1f0 + 0.05f0 * randn(Float32)) * v
+	dv = (1f0 + 0.05f0 * randn(Float32)) * duffing_equation(F, x, v)
 	
 	# store
 	X[:, i] = Float32.([x, v, F])
@@ -84,6 +84,45 @@ begin
 	t_y = fit(ZScoreTransform, Y; dims=2)
 end
 
+# ╔═╡ 74644900-556b-431b-86c8-30d4b5a6f9be
+"""
+  build_mlp(input_dim, hidden_sizes, output_dim; σ=relu)
+
+Construct an MLP with
+- `input_dim` inputs
+- hidden layers of sizes given by the vector `hidden_sizes`
+- one final Dense layer to `output_dim`
+- `dropout_rate` between all layers if > 0
+- activation `σ` between every layer (except after the last).
+"""
+function build_mlp(input_dim::Integer,
+                   hidden_sizes::AbstractVector{<:Integer},
+                   output_dim::Integer;
+				   dropout_rate = 0f0,
+                   σ = relu)
+
+	layers = Vector{Any}()
+	is_dropout = dropout_rate > 0f0
+
+	push_layers!(l, in_dim, out_dim) = begin
+		push!(l, Dense(in_dim, out_dim, σ))
+		if is_dropout
+			push!(l, Dropout(dropout_rate))
+		end
+	end
+	
+	in_dim = input_dim
+	# build each hidden Dense + activation
+	for h in hidden_sizes
+		push_layers!(layers, in_dim, h)
+		in_dim = h
+	end
+	# final output layer (no activation, no dropout by default)
+	push!(layers, Dense(in_dim, output_dim))
+	
+	return Chain(layers...)
+end
+
 # ╔═╡ 5c439704-e5e5-4db3-af44-a60b817960dc
 ### 
 md"""
@@ -91,22 +130,29 @@ Define and train a small MLP to map $[x,v,\hat f]\to[\dot x,\dot v]$.
 """
 ###
 
-# ╔═╡ 7f34b9ec-abb6-4ae8-872b-92964f844316
-surrogate = Chain(
-  Dense(3, 128, swish),
-  Dropout(0.1),
-  Dense(128, 128, swish),
-  Dropout(0.1),
-  Dense(128, 2)
-)
+# ╔═╡ b130b1ee-55c7-4994-9f7a-cf02a07261ce
+build_model(hidden_sizes; dropout_rate = 0f0, σ = tanh_fast) = 
+	build_mlp(3, hidden_sizes, 2; dropout_rate = dropout_rate, σ = σ)
+
+# ╔═╡ e3bc90ee-7a23-461e-b3da-95b88755e742
+# All the settings
+begin
+	hidden_dims = [128, 128]
+	dropout_rate = 0.01
+	σ = swish
+	batchSize = 64
+	learning_rate = 1f-3
+	λ = 1e-4
+	patience = 50
+	loss_fn = Flux.Losses.mse
+	# Build a fresh surrogate so it will be trained from scratch.
+	surrogate = build_model(hidden_dims, dropout_rate=dropout_rate, σ = σ)
+end
 
 # ╔═╡ 7f4427af-744f-453a-8e6d-9219c08a8623
 md"""
 ## Prepare data loader
 """
-
-# ╔═╡ c01982d8-7cca-4f80-a85e-2756ffc59d30
-batchSize = 64
 
 # ╔═╡ 47a3d6c0-0fb9-437a-bbac-99adff56f111
 begin
@@ -122,9 +168,6 @@ begin
 	Y_val   = transform(t_y, Y[:, val_idx])
 end
 
-# ╔═╡ 162c2d42-fd08-4587-91f9-c7b96f66fbeb
-plot(Y[2, :])
-
 # ╔═╡ 3ef9f0b7-35b0-4420-bfc3-dd700e9af18d
 begin
 	train_loader = DataLoader((X_train, Y_train), 
@@ -134,7 +177,7 @@ begin
 end
 
 # ╔═╡ 61cfd58c-17dd-4e4b-878c-f26f9fa40f67
-opt_alg = Optimisers.AdamW(1f-3, (0.9, 0.999), 1f-3)
+opt_alg = Optimisers.AdamW(learning_rate, (0.9, 0.999), λ)
 
 # ╔═╡ c0bf3956-195e-4391-b181-0ed9ba850f94
 nEpoch = 2000
@@ -200,9 +243,12 @@ train_loss_hist, val_loss_hist = train_loop!(
 	train_loader,
 	val_loader;
 	n_epochs = nEpoch,
-	patience = 50,
-	loss_fn = Flux.Losses.mse
-)
+	patience = patience,
+	loss_fn = loss_fn
+);
+
+# ╔═╡ 8d3697bf-321e-4a79-af18-208c5391fb3b
+println("Validation loss is ", val_loss_hist[end])
 
 # ╔═╡ 27a8fbe3-925b-4131-8d65-7ce52198ed8c
 begin
@@ -236,18 +282,25 @@ Flux.testmode!(surrogate)
 
 # ╔═╡ 9ca12c68-7c67-4c4d-8109-e46a2408dfa1
 function surrogate_ode!(du, u, p, t)
-  # u = (x,v), but our network expects [x,v,fhat]
-  forces, h = p            # pass in a force‐sequence and step h
-  i = clamp(Int(floor(t/h))+1, 1, length(forces))
-
-  inp = Float32[u[1]; u[2]; forces[i]]
-  dud = surrogate(transform(t_x, inp))     # returns a 2‐vector [dx, dv]
+	# u = (x,v), but our network expects [x,v,fhat]
+	forces, h = p            # pass in a force‐sequence and step h
+	i = clamp(Int(floor(t/h))+1, 1, length(forces))
+	
+	inp = Float32[u[1]; u[2]; forces[i]]
+	dud = surrogate(transform(t_x, inp))     # returns a 2‐vector [dx, dv]
 
 	du .= StatsBase.reconstruct(t_y, dud)
 end
 
-# ╔═╡ 021b8db1-309e-4e67-a7a3-22fd32d09e4b
-n_steps = 64
+# ╔═╡ 312608d2-e09d-4c7d-b777-ca23bbca5e4c
+begin
+	n_steps = 64
+	h = 0.5f0 / 64f0
+	F_seq = (randn(Float32, n_steps) .- 0.5f0).*2000f0
+	p = (F_seq, h)
+	u0 = [0.1f0, 0.0f0]
+	tspan = (0.0f0, h*n_steps)
+end;
 
 # ╔═╡ 489b6934-4f39-43ac-b114-50607ca80be5
 function duffing_forces!(du, u, p, t)
@@ -262,32 +315,17 @@ function duffing_forces!(du, u, p, t)
 	du[2] = duffing_equation(F_t, x, v)
 end
 
-# ╔═╡ 63977a52-c268-4c40-b44e-d4b8d5be7d4a
-h = 0.5f0 / 64f0
-
-# ╔═╡ 9279cfca-d71f-44ea-b69f-64dfda7d45a2
-F_seq = randn(Float32, n_steps).*2000f0
-
-# ╔═╡ 93c8bb33-8338-4ddb-8f16-4987c7814a85
-p = (F_seq, h)
-
-# ╔═╡ 76d8d9c6-0fb3-471e-992d-838b09956461
-u0 = [0.1f0, 0.0f0]
-
-# ╔═╡ 368b5410-c424-432e-bf2d-213b49f8208e
-tspan = (0.0f0, h*n_steps)
-
 # ╔═╡ df92db62-4595-48e2-b8c1-cb926f771bf1
 prob = ODEProblem(surrogate_ode!, u0, tspan, p)
 
 # ╔═╡ f03fd794-6734-4b33-9630-2dc37a107c61
-sol = solve(prob, Tsit5())
+sol = solve(prob, Tsit5());
 
 # ╔═╡ 89dd6011-897a-4e0d-b73e-a1536c57c7c5
-prob_exact = ODEProblem(duffing_forces!, u0, (0.0f0, 0.5f0), (F_seq, h))
+prob_exact = ODEProblem(duffing_forces!, u0, tspan, p)
 
 # ╔═╡ 88086ae7-1b81-47ca-a024-d4392fc45f1f
-sol_exact = solve(prob_exact, Tsit5())
+sol_exact = solve(prob_exact, Tsit5());
 
 # ╔═╡ 69e4dd7a-5f67-410e-b536-6083253d7487
 begin
@@ -3340,28 +3378,24 @@ version = "1.8.1+0"
 # ╠═ccdfc446-df80-43d8-b7b5-ca4dc938e9fc
 # ╠═cdfe14b5-1960-4f94-8f24-1c52071e9505
 # ╠═8d641894-04ef-4e89-82d6-cbbbe2ba4933
+# ╟─74644900-556b-431b-86c8-30d4b5a6f9be
 # ╟─5c439704-e5e5-4db3-af44-a60b817960dc
-# ╠═7f34b9ec-abb6-4ae8-872b-92964f844316
+# ╠═b130b1ee-55c7-4994-9f7a-cf02a07261ce
+# ╠═e3bc90ee-7a23-461e-b3da-95b88755e742
 # ╟─7f4427af-744f-453a-8e6d-9219c08a8623
-# ╠═c01982d8-7cca-4f80-a85e-2756ffc59d30
-# ╠═47a3d6c0-0fb9-437a-bbac-99adff56f111
-# ╠═162c2d42-fd08-4587-91f9-c7b96f66fbeb
-# ╠═3ef9f0b7-35b0-4420-bfc3-dd700e9af18d
+# ╟─47a3d6c0-0fb9-437a-bbac-99adff56f111
+# ╟─3ef9f0b7-35b0-4420-bfc3-dd700e9af18d
 # ╠═61cfd58c-17dd-4e4b-878c-f26f9fa40f67
 # ╠═c0bf3956-195e-4391-b181-0ed9ba850f94
 # ╟─b918b926-5516-45cd-a5ed-9722356cc364
-# ╠═82958b27-9698-41a3-b8b9-15c51c753b4e
-# ╠═27a8fbe3-925b-4131-8d65-7ce52198ed8c
-# ╠═82ee2089-6913-465c-be4d-4dfcc3707c8e
-# ╠═b9c8a7c5-4642-44b3-9fea-19ad450a6f57
+# ╟─82958b27-9698-41a3-b8b9-15c51c753b4e
+# ╠═8d3697bf-321e-4a79-af18-208c5391fb3b
+# ╟─27a8fbe3-925b-4131-8d65-7ce52198ed8c
+# ╟─82ee2089-6913-465c-be4d-4dfcc3707c8e
+# ╟─b9c8a7c5-4642-44b3-9fea-19ad450a6f57
 # ╠═b21858af-1f89-4898-85d2-2bdc2691206a
 # ╠═9ca12c68-7c67-4c4d-8109-e46a2408dfa1
-# ╠═021b8db1-309e-4e67-a7a3-22fd32d09e4b
-# ╠═63977a52-c268-4c40-b44e-d4b8d5be7d4a
-# ╠═9279cfca-d71f-44ea-b69f-64dfda7d45a2
-# ╠═93c8bb33-8338-4ddb-8f16-4987c7814a85
-# ╠═76d8d9c6-0fb3-471e-992d-838b09956461
-# ╠═368b5410-c424-432e-bf2d-213b49f8208e
+# ╠═312608d2-e09d-4c7d-b777-ca23bbca5e4c
 # ╠═df92db62-4595-48e2-b8c1-cb926f771bf1
 # ╠═f03fd794-6734-4b33-9630-2dc37a107c61
 # ╠═89dd6011-897a-4e0d-b73e-a1536c57c7c5

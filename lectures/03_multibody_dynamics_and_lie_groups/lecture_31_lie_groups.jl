@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.20.8
+# v0.20.9
 
 using Markdown
 using InteractiveUtils
@@ -25,12 +25,10 @@ begin
 	using PlutoUI
 	using LinearAlgebra
 	using BenchmarkTools
+	using StaticArrays
 	plotlyjs()
 	default(label = false, legend = false)
 end;
-
-# ╔═╡ ebbb9fef-322e-4243-a3f1-ccb7ede44dc8
-using StaticArrays
 
 # ╔═╡ bd11828d-81ca-42d9-850c-f54422335b5e
 md"""
@@ -370,15 +368,22 @@ Code taken from `lecture_21`
 
 # ╔═╡ b5885b8b-c3fd-4caa-a4f8-fabb3ff3a90c
 @kwdef struct RigidBodyParams
-    I::Matrix{Float64}          # 3×3 inertia matrix
+    I::SMatrix{3, 3, Float64}          # 3×3 inertia matrix
     T::Function                 # T(t): torque function returning 3×1 vector
 	normalize_quaternions::Bool = false
 end
 
+# ╔═╡ abf3781b-7804-433e-914b-1f978116e882
+skew(u::SVector{3,T}) where T = @SMatrix [
+	  zero(T)  -u[3]  u[2];
+	  u[3]   zero(T) -u[1];
+	 -u[2]    u[1]  zero(T)
+	]
+
 # ╔═╡ e321a03c-da0d-429c-8cc6-d76f8fcc92e4
 function L_matrix(q)
     e0, e1, e2, e3 = q
-    return [
+    return @SMatrix [
         -e1   e0  -e3   e2;
         -e2   e3   e0  -e1;
         -e3  -e2   e1   e0
@@ -402,7 +407,7 @@ function rigid_body!(du, u, p::RigidBodyParams, t)
     #   q = orientation quaternion (4,)
     #   ω = angular velocity in body frame (3,)
     q = @view u[1:4]
-    ω = @view u[5:7]
+    ω = SVector(u[5],u[6],u[7])
 
     # Output derivatives
     dq = @view du[1:4]
@@ -410,7 +415,7 @@ function rigid_body!(du, u, p::RigidBodyParams, t)
 
     # Parameters
     I = p.I         # Inertia matrix in body frame (3x3)
-    T = p.T(t)      # External torque in body frame, may depend on time
+    # T = p.T(t)      # External torque in body frame, may depend on time
 
     # Quaternion kinematics
 	if p.normalize_quaternions
@@ -420,8 +425,9 @@ function rigid_body!(du, u, p::RigidBodyParams, t)
     dq[:] = 0.5 * transpose(L) * ω
 
     # Rigid body rotational dynamics (Euler's equation)
-    Iω = I * ω
-    dω[:] = I \ (T - cross(ω, Iω))  # Equivalent to inv(I)*(T - ω × (Iω))
+    # Iω = I * ω
+	ωIω = skew(ω) * I * ω
+    dω[:] = -I \ ωIω  # Equivalent to inv(I)*(T - ω × (Iω))
 end
 
 # ╔═╡ f9738195-675f-49f4-9524-d5de7de9ff0e
@@ -436,10 +442,10 @@ Let's check this.
 """
 
 # ╔═╡ 18526569-4745-48c1-920a-c61d84725305
-I_top = Diagonal([0.1, 1.0, 10.0])
+I_top = SMatrix{3, 3}(Diagonal([0.1, 1.0, 10.0]))
 
 # ╔═╡ 41b943a9-33ef-495d-83c3-9f7a30a0368e
-p_top = RigidBodyParams(I = I_top, T = t -> [0, 0, 0], normalize_quaternions=false) # no external torque
+p_top = RigidBodyParams(I = I_top, T = t -> SVector(0.0, 0.0, 0.0), normalize_quaternions=false) # no external torque
 
 # ╔═╡ ec29187e-aa14-4297-a3a7-c83128f730e4
 # Initial conditions
@@ -448,6 +454,9 @@ begin
 	ω0_top = [1e-3, 1.0, 1e-3] # we need some small disturbance
 	u0_top = [q0_top; ω0_top]
 end
+
+# ╔═╡ 8c99a14b-1ce9-4bb1-a11d-43895feec35b
+du = similar(u0_top)
 
 # ╔═╡ ff9bb4b4-72f3-483e-bf7d-94d11c28c4c8
 tspan_top = (0.0, 20.0)
@@ -540,21 +549,24 @@ md"""
 ## Check LieGroup integrator
 """
 
-# ╔═╡ ed79c331-150f-4021-8f03-661d09748d0a
-skew(u::SVector{3,T}) where T = @SMatrix [
-  zero(T)  -u[3]  u[2];
-  u[3]   zero(T) -u[1];
- -u[2]    u[1]  zero(T)
-]
-
 # ╔═╡ 30ae3cc1-ce03-4f69-89d7-274e444d855a
 one(Float16)
 
 # ╔═╡ 31902baa-d167-48d9-bbd6-aa98a3811e9e
-function quat_mult(q1::SVector{4,T}, q2::SVector{4,T}) where T
-  s = q1[1]*q2[1] - dot(q1[2:4], q2[2:4])
-  v = q1[1]*q2[2:4] .+ q2[1]*q1[2:4] .+ cross(q1[2:4], q2[2:4])
-  return SVector(s, v...)
+@inline function quat_mult(q1::SVector{4,T}, q2::SVector{4,T}) where T
+    # Destructure to plain scalars
+    a1, b1, c1, d1 = q1
+    a2, b2, c2, d2 = q2
+
+    # scalar part
+    s = a1*a2 - b1*b2 - c1*c2 - d1*d2
+
+    # vector part
+    x = a1*b2 + a2*b1 + c1*d2 - d1*c2
+    y = a1*c2 + a2*c1 + d1*b2 - b1*d2
+    z = a1*d2 + a2*d1 + b1*c2 - c1*b2
+
+    return SVector(s, x, y, z)
 end
 
 # ╔═╡ 2eb46e08-6206-430f-a2ab-939ab3935136
@@ -618,9 +630,6 @@ function custom_rk4(
         if is_lie
             Δq1 = dt * wi
             Δw1 = dt * SVector(k1[5],k1[6],k1[7])
-        # else
-        #     Δq1 = dt * SVector(k1[1],k1[2],k1[3],k1[4])
-        #     Δw1 = dt * SVector(k1[5],k1[6],k1[7])
         end
 
         # Stage 2 prep
@@ -637,9 +646,6 @@ function custom_rk4(
         if is_lie
             Δq2 = dt * invdexp(w2, Δq1/2)
             Δw2 = dt * SVector(k2[5],k2[6],k2[7])
-        # else
-        #     Δq2 = dt * SVector(k2[1],k2[2],k2[3],k2[4])
-        #     Δw2 = dt * SVector(k2[5],k2[6],k2[7])
         end
 
         # Stage 3 prep
@@ -656,9 +662,6 @@ function custom_rk4(
         if is_lie
             Δq3 = dt * invdexp(w3, Δq2/2)
             Δw3 = dt * SVector(k3[5],k3[6],k3[7])
-        # else
-        #     Δq3 = dt * SVector(k3[1],k3[2],k3[3],k3[4])
-        #     Δw3 = dt * SVector(k3[5],k3[6],k3[7])
         end
 
         # Stage 4 prep
@@ -675,9 +678,6 @@ function custom_rk4(
         if is_lie
             Δq4 = dt * invdexp(w4, Δq3)
             Δw4 = dt * SVector(k4[5],k4[6],k4[7])
-        # else
-        #     Δq4 = dt * SVector(k4[1],k4[2],k4[3],k4[4])
-        #     Δw4 = dt * SVector(k4[5],k4[6],k4[7])
         end
 
         # combine
@@ -691,7 +691,7 @@ function custom_rk4(
         end
     end
 
-    return collect(tspan), transpose(F)
+    return tspan, transpose(F)
 end
 
 # ╔═╡ f867a1fd-197c-47f9-bb92-e2ac7dfc4510
@@ -743,7 +743,7 @@ md"""
 """
 
 # ╔═╡ 914061d1-3fd9-4dfd-9e94-302d83ef052d
-t_span_bench = 0.0:0.001:10.0
+t_span_bench = 0.0:0.01:10.0
 
 # ╔═╡ b49c4dc7-1e53-4221-9961-eca75ca43c5f
 begin
@@ -3590,13 +3590,15 @@ version = "1.8.1+0"
 # ╟─2112053e-5b4e-48d0-8bfa-a79213c82682
 # ╟─b6831ab7-4912-44a6-ba6d-e6848934f1eb
 # ╠═b5885b8b-c3fd-4caa-a4f8-fabb3ff3a90c
+# ╠═abf3781b-7804-433e-914b-1f978116e882
 # ╠═e321a03c-da0d-429c-8cc6-d76f8fcc92e4
 # ╠═d098022c-9592-4ec1-9b52-7caf03c38e75
 # ╠═f8ab6415-f637-4136-afbc-a606605d98df
 # ╟─f9738195-675f-49f4-9524-d5de7de9ff0e
-# ╠═18526569-4745-48c1-920a-c61d84725305
+# ╟─18526569-4745-48c1-920a-c61d84725305
 # ╠═41b943a9-33ef-495d-83c3-9f7a30a0368e
-# ╠═ec29187e-aa14-4297-a3a7-c83128f730e4
+# ╟─ec29187e-aa14-4297-a3a7-c83128f730e4
+# ╠═8c99a14b-1ce9-4bb1-a11d-43895feec35b
 # ╠═ff9bb4b4-72f3-483e-bf7d-94d11c28c4c8
 # ╠═10b61807-2d35-4121-83ea-dd23ee04ec66
 # ╠═090e9ea8-ab41-408e-be3b-ea557a1f536e
@@ -3605,13 +3607,11 @@ version = "1.8.1+0"
 # ╠═fb1bdaf1-8ac4-4248-83fa-818373c9cf70
 # ╟─0c5739ce-44c7-4daf-a570-411167b9945f
 # ╠═97c661ab-97cd-4cef-9c9d-5eecb3d4dbf3
-# ╠═d708f8e4-5a62-4eba-91b9-2d7b9dbe3589
+# ╟─d708f8e4-5a62-4eba-91b9-2d7b9dbe3589
 # ╟─fc6f154d-9f05-4d03-a897-12dab03fe818
 # ╠═57da86a0-5ae4-4533-aaf4-5b623a948a46
 # ╠═8b60eee1-3539-4d34-949a-b582d361d20d
 # ╟─e064f06a-73fa-4131-b6fd-b351a8bbc397
-# ╠═ebbb9fef-322e-4243-a3f1-ccb7ede44dc8
-# ╠═ed79c331-150f-4021-8f03-661d09748d0a
 # ╠═30ae3cc1-ce03-4f69-89d7-274e444d855a
 # ╠═31902baa-d167-48d9-bbd6-aa98a3811e9e
 # ╠═2eb46e08-6206-430f-a2ab-939ab3935136
